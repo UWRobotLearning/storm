@@ -55,7 +55,12 @@ class ArmBase(RolloutBase):
         # initialize dynamics model:
         dynamics_horizon = mppi_params['horizon'] * model_params['dt']
         #Create the dynamical system used for rollouts
-        self.dynamics_model = URDFKinematicModel(join_path(assets_path,exp_params['model']['urdf_path']),
+        urdf_path = None
+        if exp_params['model']['urdf_path'] is not None:
+            urdf_path = join_path(assets_path,exp_params['model']['urdf_path'])
+
+
+        self.dynamics_model = URDFKinematicModel(urdf_path,
                                                  dt=exp_params['model']['dt'],
                                                  batch_size=mppi_params['num_particles'],
                                                  horizon=dynamics_horizon,

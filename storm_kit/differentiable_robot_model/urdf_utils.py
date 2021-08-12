@@ -60,7 +60,11 @@ from urdf_parser_py.urdf import URDF
 
 class URDFRobotModel(object):
     def __init__(self, urdf_path, tensor_args={'device':"cpu", 'dtype':torch.float32}):
-        self.robot = URDF.from_xml_file(urdf_path)
+        if urdf_path is not None:
+            self.robot = URDF.from_xml_file(urdf_path)
+        else:
+            self.robot = URDF.from_parameter_server()
+            print("Reading URDF from server")
         self.urdf_path = urdf_path
         self._device = tensor_args['device']
         self.tensor_args = tensor_args
