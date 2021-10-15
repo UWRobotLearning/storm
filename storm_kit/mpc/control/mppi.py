@@ -102,156 +102,167 @@ class MPPI(OLGaussianMPC):
         self.kappa = kappa
         self.visual_traj = visual_traj
 
-    def _update_distribution(self, trajectories):
+    def _compute_weights(self, trajectories):
         """
-           Update moments in the direction using sampled
-           trajectories
-
-
+            compute trajectory weights
         """
         costs = trajectories["costs"].to(**self.tensor_args)
-        vis_seq = trajectories[self.visual_traj].to(**self.tensor_args)
+        # vis_seq = trajectories[self.visual_traj].to(**self.tensor_args)
         actions = trajectories["actions"].to(**self.tensor_args)
         w = self._exp_util(costs, actions)
+        return w
+
+    # def _update_distribution(self, trajectories):
+    #     """
+    #        Update moments in the direction using sampled
+    #        trajectories
+
+
+    #     """
+    #     costs = trajectories["costs"].to(**self.tensor_args)
+    #     # vis_seq = trajectories[self.visual_traj].to(**self.tensor_args)
+    #     actions = trajectories["actions"].to(**self.tensor_args)
+    #     w = self._exp_util(costs, actions)
         
-        #Update best action
-        best_idx = torch.argmax(w)
-        self.best_idx = best_idx
-        self.best_traj = torch.index_select(actions, 0, best_idx).squeeze(0)
+    #     #Update best action
+    #     best_idx = torch.argmax(w)
+    #     self.best_idx = best_idx
+    #     self.best_traj = torch.index_select(actions, 0, best_idx).squeeze(0)
 
-        top_values, top_idx = torch.topk(self.total_costs, 10)
-        #print(ee_pos_seq.shape, top_idx)
-        self.top_values = top_values
-        self.top_idx = top_idx
-        self.top_trajs = torch.index_select(vis_seq, 0, top_idx).squeeze(0)
-        #print(self.top_traj.shape)
-        #print(self.best_traj.shape, best_idx, w.shape)
-        #self.best_trajs = torch.index_select(
-
-        weighted_seq = w.T * actions.T
-
-        sum_seq = torch.sum(weighted_seq.T, dim=0)
-
-        new_mean = sum_seq
-        #print(self.stomp_matrix.shape, self.full_scale_tril.shape)
-        #cov = self.stomp_matrix #torch.matmul(self.full_scale_tril, self.stomp_matrix)
-        #m_matrix = (1.0 / self.horizon) * cov # f_norm(cov,dim=0)
-        #sum_seq = sum_seq.transpose(0,1)
+    #     top_values, top_idx = torch.topk(self.total_costs, 10)
+    #     #print(ee_pos_seq.shape, top_idx)
+    #     self.top_values = top_values
+    #     self.top_idx = top_idx
+    #     # self.top_trajs = torch.index_select(vis_seq, 0, top_idx).squeeze(0)
         
-        #new_mean = torch.matmul(m_matrix,sum_seq.reshape(self.horizon * self.d_action,1)).view(self.d_action, self.horizon).transpose(0,1)
+    #     #print(self.top_traj.shape)
+    #     #print(self.best_traj.shape, best_idx, w.shape)
+    #     #self.best_trajs = torch.index_select(
+
+    #     weighted_seq = w.T * actions.T
+
+    #     sum_seq = torch.sum(weighted_seq.T, dim=0)
+
+    #     new_mean = sum_seq
+    #     #print(self.stomp_matrix.shape, self.full_scale_tril.shape)
+    #     #cov = self.stomp_matrix #torch.matmul(self.full_scale_tril, self.stomp_matrix)
+    #     #m_matrix = (1.0 / self.horizon) * cov # f_norm(cov,dim=0)
+    #     #sum_seq = sum_seq.transpose(0,1)
+        
+    #     #new_mean = torch.matmul(m_matrix,sum_seq.reshape(self.horizon * self.d_action,1)).view(self.d_action, self.horizon).transpose(0,1)
         
         
-        # plot mean:
-        # = new_mean.cpu().numpy()
-        #b = sum_seq.cpu().numpy()#.T
-        #print(w, top_idx)
-        #new_mean = sum_seq.T
-        #matplotlib.use('tkagg')
-        self.mean_action = (1.0 - self.step_size_mean) * self.mean_action +\
-            self.step_size_mean * new_mean
-        #c = self.mean_action.cpu().numpy()
-        #plt.plot(a[:,0])
-        #plt.plot(b[:,0])
-        #plt.plot(actions[top_idx[0],:,0].cpu().numpy())
-        #plt.show()
+    #     # plot mean:
+    #     # = new_mean.cpu().numpy()
+    #     #b = sum_seq.cpu().numpy()#.T
+    #     #print(w, top_idx)
+    #     #new_mean = sum_seq.T
+    #     #matplotlib.use('tkagg')
+    #     self.mean_action = (1.0 - self.step_size_mean) * self.mean_action +\
+    #         self.step_size_mean * new_mean
+    #     #c = self.mean_action.cpu().numpy()
+    #     #plt.plot(a[:,0])
+    #     #plt.plot(b[:,0])
+    #     #plt.plot(actions[top_idx[0],:,0].cpu().numpy())
+    #     #plt.show()
 
-        delta = actions - self.mean_action.unsqueeze(0)
+    #     delta = actions - self.mean_action.unsqueeze(0)
 
-        #Update Covariance
-        if self.update_cov:
-            if self.cov_type == 'sigma_I':
-                #weighted_delta = w * (delta ** 2).T
-                #cov_update = torch.mean(torch.sum(weighted_delta.T, dim=0))
-                #print(cov_update.shape, self.cov_action)
-                raise NotImplementedError('Need to implement covariance update of form sigma*I')
+    #     #Update Covariance
+    #     if self.update_cov:
+    #         if self.cov_type == 'sigma_I':
+    #             #weighted_delta = w * (delta ** 2).T
+    #             #cov_update = torch.mean(torch.sum(weighted_delta.T, dim=0))
+    #             #print(cov_update.shape, self.cov_action)
+    #             raise NotImplementedError('Need to implement covariance update of form sigma*I')
             
-            elif self.cov_type == 'diag_AxA':
-                #Diagonal covariance of size AxA
-                weighted_delta = w * (delta ** 2).T
-                # cov_update = torch.diag(torch.mean(torch.sum(weighted_delta.T, dim=0), dim=0))
-                cov_update = torch.mean(torch.sum(weighted_delta.T, dim=0), dim=0)
-            elif self.cov_type == 'diag_HxH':
-                raise NotImplementedError
-            elif self.cov_type == 'full_AxA':
-                #Full Covariance of size AxA
-                weighted_delta = torch.sqrt(w) * (delta).T
-                weighted_delta = weighted_delta.T.reshape((self.horizon * self.num_particles, self.d_action))
-                cov_update = torch.matmul(weighted_delta.T, weighted_delta) / self.horizon
-            elif self.cov_type == 'full_HAxHA':# and self.sample_type != 'stomp':
-                weighted_delta = torch.sqrt(w) * delta.view(delta.shape[0], delta.shape[1] * delta.shape[2]).T #.unsqueeze(-1)
-                cov_update = torch.matmul(weighted_delta, weighted_delta.T)
+    #         elif self.cov_type == 'diag_AxA':
+    #             #Diagonal covariance of size AxA
+    #             weighted_delta = w * (delta ** 2).T
+    #             # cov_update = torch.diag(torch.mean(torch.sum(weighted_delta.T, dim=0), dim=0))
+    #             cov_update = torch.mean(torch.sum(weighted_delta.T, dim=0), dim=0)
+    #         elif self.cov_type == 'diag_HxH':
+    #             raise NotImplementedError
+    #         elif self.cov_type == 'full_AxA':
+    #             #Full Covariance of size AxA
+    #             weighted_delta = torch.sqrt(w) * (delta).T
+    #             weighted_delta = weighted_delta.T.reshape((self.horizon * self.num_particles, self.d_action))
+    #             cov_update = torch.matmul(weighted_delta.T, weighted_delta) / self.horizon
+    #         elif self.cov_type == 'full_HAxHA':# and self.sample_type != 'stomp':
+    #             weighted_delta = torch.sqrt(w) * delta.view(delta.shape[0], delta.shape[1] * delta.shape[2]).T #.unsqueeze(-1)
+    #             cov_update = torch.matmul(weighted_delta, weighted_delta.T)
                 
-                # weighted_cov = w * (torch.matmul(delta_new, delta_new.transpose(-2,-1))).T
-                # weighted_cov = w * cov.T
-                # cov_update = torch.sum(weighted_cov.T,dim=0)
-                #
-            #elif self.sample_type == 'stomp':
-            #    weighted_delta = w * (delta ** 2).T
-            #    cov_update = torch.mean(torch.sum(weighted_delta.T, dim=0), dim=0)
-            #    self.cov_action = (1.0 - self.step_size_cov) * self.cov_action +\
-            #        self.step_size_cov * cov_update
-            #    #self.scale_tril = torch.sqrt(self.cov_action)
-            #    return
-            else:
-                raise ValueError('Unidentified covariance type in update_distribution')
+    #             # weighted_cov = w * (torch.matmul(delta_new, delta_new.transpose(-2,-1))).T
+    #             # weighted_cov = w * cov.T
+    #             # cov_update = torch.sum(weighted_cov.T,dim=0)
+    #             #
+    #         #elif self.sample_type == 'stomp':
+    #         #    weighted_delta = w * (delta ** 2).T
+    #         #    cov_update = torch.mean(torch.sum(weighted_delta.T, dim=0), dim=0)
+    #         #    self.cov_action = (1.0 - self.step_size_cov) * self.cov_action +\
+    #         #        self.step_size_cov * cov_update
+    #         #    #self.scale_tril = torch.sqrt(self.cov_action)
+    #         #    return
+    #         else:
+    #             raise ValueError('Unidentified covariance type in update_distribution')
             
-            self.cov_action = (1.0 - self.step_size_cov) * self.cov_action +\
-                self.step_size_cov * cov_update
-            #if(cov_update == 'diag_AxA'):
-            #    self.scale_tril = torch.sqrt(self.cov_action)
-            # self.scale_tril = torch.cholesky(self.cov_action)
+    #         self.cov_action = (1.0 - self.step_size_cov) * self.cov_action +\
+    #             self.step_size_cov * cov_update
+    #         #if(cov_update == 'diag_AxA'):
+    #         #    self.scale_tril = torch.sqrt(self.cov_action)
+    #         # self.scale_tril = torch.cholesky(self.cov_action)
 
         
-    def _shift(self, shift_steps):
-        """
-            Predict good parameters for the next time step by
-            shifting the mean forward one step and growing the covariance
-        """
-        if(shift_steps == 0):
-            return
-        super()._shift(shift_steps)
+    # def _shift(self, shift_steps):
+    #     """
+    #         Predict good parameters for the next time step by
+    #         shifting the mean forward one step and growing the covariance
+    #     """
+        # if(shift_steps == 0):
+        #     return
+        # super()._shift(shift_steps)
 
-        if self.update_cov:
-            if self.cov_type == 'sigma_I':
-                self.cov_action += self.kappa #* self.init_cov_action
-                self.scale_tril = torch.sqrt(self.cov_action)
-                # self.inv_cov_action = 1.0 / self.cov_action
+        # if self.update_cov:
+        #     if self.cov_type == 'sigma_I':
+        #         self.cov_action += self.kappa #* self.init_cov_action
+        #         self.scale_tril = torch.sqrt(self.cov_action)
+        #         # self.inv_cov_action = 1.0 / self.cov_action
 
-            elif self.cov_type == 'diag_AxA':
-                self.cov_action += self.kappa #* self.init_cov_action
-                #self.cov_action[self.cov_action < 0.0005] = 0.0005
-                self.scale_tril = torch.sqrt(self.cov_action)
-                # self.inv_cov_action = 1.0 / self.cov_action
+        #     elif self.cov_type == 'diag_AxA':
+        #         self.cov_action += self.kappa #* self.init_cov_action
+        #         #self.cov_action[self.cov_action < 0.0005] = 0.0005
+        #         self.scale_tril = torch.sqrt(self.cov_action)
+        #         # self.inv_cov_action = 1.0 / self.cov_action
                 
-            elif self.cov_type == 'full_AxA':
-                self.cov_action += self.kappa*self.I
-                self.scale_tril = matrix_cholesky(self.cov_action) # torch.cholesky(self.cov_action) #
-                # self.scale_tril = torch.cholesky(self.cov_action)
-                # self.inv_cov_action = torch.cholesky_inverse(self.scale_tril)
+        #     elif self.cov_type == 'full_AxA':
+        #         self.cov_action += self.kappa*self.I
+        #         self.scale_tril = matrix_cholesky(self.cov_action) # torch.cholesky(self.cov_action) #
+        #         # self.scale_tril = torch.cholesky(self.cov_action)
+        #         # self.inv_cov_action = torch.cholesky_inverse(self.scale_tril)
             
-            elif self.cov_type == 'full_HAxHA':
-                self.cov_action += self.kappa * self.I
+        #     elif self.cov_type == 'full_HAxHA':
+        #         self.cov_action += self.kappa * self.I
 
-                #shift covariance up and to the left
-                # self.cov_action = torch.roll(self.cov_action, shifts=(-self.d_action, -self.d_action), dims=(0,1))
-                # self.cov_action = torch.roll(self.cov_action, shifts=(-self.d_action, -self.d_action), dims=(0,1))
-                # #set bottom A rows and right A columns to zeros
-                # self.cov_action[-self.d_action:,:].zero_()
-                # self.cov_action[:,-self.d_action:].zero_()
-                # #set bottom right AxA block to init_cov value
-                # self.cov_action[-self.d_action:, -self.d_action:] = self.init_cov*self.I2 
+        #         #shift covariance up and to the left
+        #         # self.cov_action = torch.roll(self.cov_action, shifts=(-self.d_action, -self.d_action), dims=(0,1))
+        #         # self.cov_action = torch.roll(self.cov_action, shifts=(-self.d_action, -self.d_action), dims=(0,1))
+        #         # #set bottom A rows and right A columns to zeros
+        #         # self.cov_action[-self.d_action:,:].zero_()
+        #         # self.cov_action[:,-self.d_action:].zero_()
+        #         # #set bottom right AxA block to init_cov value
+        #         # self.cov_action[-self.d_action:, -self.d_action:] = self.init_cov*self.I2 
 
-                shift_dim = shift_steps * self.d_action
-                I2 = torch.eye(shift_dim, **self.tensor_args)
-                self.cov_action = torch.roll(self.cov_action, shifts=(-shift_dim, -shift_dim), dims=(0,1))
-                #set bottom A rows and right A columns to zeros
-                self.cov_action[-shift_dim:,:].zero_()
-                self.cov_action[:,-shift_dim:].zero_()
-                #set bottom right AxA block to init_cov value
-                self.cov_action[-shift_dim:, -shift_dim:] = self.init_cov*I2 
-                #update cholesky decomp
-                self.scale_tril = torch.cholesky(self.cov_action)
-                # self.inv_cov_action = torch.cholesky_inverse(self.scale_tril)
+        #         shift_dim = shift_steps * self.d_action
+        #         I2 = torch.eye(shift_dim, **self.tensor_args)
+        #         self.cov_action = torch.roll(self.cov_action, shifts=(-shift_dim, -shift_dim), dims=(0,1))
+        #         #set bottom A rows and right A columns to zeros
+        #         self.cov_action[-shift_dim:,:].zero_()
+        #         self.cov_action[:,-shift_dim:].zero_()
+        #         #set bottom right AxA block to init_cov value
+        #         self.cov_action[-shift_dim:, -shift_dim:] = self.init_cov*I2 
+        #         #update cholesky decomp
+        #         self.scale_tril = torch.cholesky(self.cov_action)
+        #         # self.inv_cov_action = torch.cholesky_inverse(self.scale_tril)
 
 
     def _exp_util(self, costs, actions):

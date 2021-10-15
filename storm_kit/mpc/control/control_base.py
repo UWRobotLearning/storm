@@ -260,8 +260,9 @@ class Controller(ABC):
         #calculate optimal value estimate if required
         value = 0.0
         if calc_val:
-            trajectories = self.generate_rollouts(state)
-            value = self._calc_val(trajectories)
+            value = self.calculate_optimal_value(state)
+            # trajectories = self.generate_rollouts(state)
+            # value = self._calc_val(trajectories)
 
         # # shift distribution to hotstart next timestep
         # if self.hotstart:
@@ -275,9 +276,9 @@ class Controller(ABC):
 
         return curr_action_seq.to(inp_device, dtype=inp_dtype), value, info
 
-    def get_optimal_value(self, state):
+    def calculate_optimal_value(self, state):
         """
-        Calculate optimal value of a state, i.e 
+        Calculate optimal value (cost_to_go) of a state, i.e 
         value under optimal policy. 
 
         Parameters
@@ -289,9 +290,10 @@ class Controller(ABC):
         value : float
             optimal value estimate of the state
         """
-        self.reset() #reset the control distribution
-        _, value = self.optimize(state, calc_val=True, shift_steps=0)
-        return value
+        # self.reset() #reset the control distribution
+        # _, value = self.optimize(state, calc_val=True, shift_steps=0)
+        # return value
+        raise NotImplementedError('calculate_optimal_value not implemented')
     
     # def seed(self, seed=None):
     #     self.np_random, seed = seeding.np_random(seed)

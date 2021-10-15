@@ -25,7 +25,9 @@ import torch
 import torch.autograd.profiler as profiler
 
 from ...differentiable_robot_model.differentiable_robot_model import DifferentiableRobotModel
-from urdfpy import URDF
+from ...differentiable_robot_model.coordinate_transform import matrix_to_quaternion, quaternion_to_matrix
+
+# from urdfpy import URDF
 from .model_base import DynamicsModelBase
 from .integration_utils import build_int_matrix, build_fd_matrix, tensor_step_acc, tensor_step_vel, tensor_step_pos, tensor_step_jerk
 
@@ -48,8 +50,8 @@ class URDFKinematicModel(DynamicsModelBase):
 
         #self.robot_model.half()
         self.n_dofs = self.robot_model._n_dofs
-        if urdf_path is not None:
-            self.urdfpy_robot = URDF.load(urdf_path) #only for visualization
+        # if urdf_path is not None:
+        #     self.urdfpy_robot = URDF.load(urdf_path) #only for visualization
         
         self.d_state = 3 * self.n_dofs + 1
         self.d_action = self.n_dofs
@@ -179,6 +181,12 @@ class URDFKinematicModel(DynamicsModelBase):
         # get input device:
         inp_device = start_state.device
         start_state = start_state.to(self.device, dtype=self.float_dtype)
+
+        ee_pos_start, ee_rot_start, lin_jac_start, ang_jac_start = self.robot_model.compute_fk_and_jacobian(start_state[:, :self.n_dofs],
+                                                                                                       start_state[:, self.n_dofs:2 * self.n_dofs],
+                                                                                                       link_name=self.ee_link_name) 
+        # print('in kinematic model pos', ee_pos_start)
+        # print('in kinematic model quat', matrix_to_quaternion(ee_rot_start))
         act_seq = act_seq.to(self.device, dtype=self.float_dtype)
         
         # add start state to prev state buffer:
@@ -216,6 +224,7 @@ class URDFKinematicModel(DynamicsModelBase):
             ee_pos_seq, ee_rot_seq, lin_jac_seq, ang_jac_seq = self.robot_model.compute_fk_and_jacobian(state_seq[:,:,:self.n_dofs].view(shape_tup),
                                                                                                     state_seq[:,:,self.n_dofs:2 * self.n_dofs].view(shape_tup),
                                                                                                     link_name=self.ee_link_name)
+
 
         # get link poses:
         for ki,k in enumerate(self.link_names):
@@ -280,22 +289,22 @@ class URDFKinematicModel(DynamicsModelBase):
         return act
 
     #Rendering
-    def render(self, state):
-        q = state[:, 0:self.n_dofs]
-        state_dict = {}
-        for (i,joint) in enumerate(self.urdfpy_robot.actuated_joints):
-            state_dict[joint.name] = q[:,i].item()
-        self.urdfpy_robot.show(cfg=state_dict,use_collision=True) 
+    # def render(self, state):
+    #     q = state[:, 0:self.n_dofs]
+    #     state_dict = {}
+    #     for (i,joint) in enumerate(self.urdfpy_robot.actuated_joints):
+    #         state_dict[joint.name] = q[:,i].item()
+    #     self.urdfpy_robot.show(cfg=state_dict,use_collision=True) 
 
 
-    def render_trajectory(self, state_list):
-        state_dict = {}
-        q = state_list[0][:, 0:self.n_dofs]
-        for (i,joint) in enumerate(self.urdfpy_robot.actuated_joints):
-            state_dict[joint.name] = [q[:,i].item()]
-        for state in state_list[1:]:
-            q = state[:, 0:self.n_dofs]
-            for (i,joint) in enumerate(self.urdfpy_robot.actuated_joints):
-                state_dict[joint.name].append(q[:,i].item())
-        self.urdfpy_robot.animate(cfg_trajectory=state_dict,use_collision=True) 
+    # def render_trajectory(self, state_list):
+    #     state_dict = {}
+    #     q = state_list[0][:, 0:self.n_dofs]
+    #     for (i,joint) in enumerate(self.urdfpy_robot.actuated_joints):
+    #         state_dict[joint.name] = [q[:,i].item()]
+    #     for state in state_list[1:]:
+    #         q = state[:, 0:self.n_dofs]
+    #         for (i,joint) in enumerate(self.urdfpy_robot.actuated_joints):
+    #             state_dict[joint.name].append(q[:,i].item())
+    #     self.urdfpy_robot.animate(cfg_trajectory=state_dict,use_collision=True) 
 

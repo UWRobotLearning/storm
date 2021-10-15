@@ -35,5 +35,6 @@ class RolloutBase:
         pass
     def update_params(self):
         pass
-
+    def __call__(self, start_state, act_seq):
+        return self.rollout_fn(start_state, act_seq)
 
