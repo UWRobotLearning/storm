@@ -23,6 +23,7 @@
 
 import torch
 import torch.nn as nn
+import torch.autograd.profiler as profiler
 
 
 from .gaussian_projection import GaussianProjection
@@ -48,9 +49,10 @@ class ManipulabilityCost(nn.Module):
         
 
         with torch.cuda.amp.autocast(enabled=False):
-            
-            J_J_t = torch.matmul(jac_batch, jac_batch.transpose(-2,-1))
-            score = torch.sqrt(torch.det(J_J_t))
+            with profiler.record_function("manip_cost_matmul"):
+                J_J_t = torch.matmul(jac_batch, jac_batch.transpose(-2,-1))
+            with profiler.record_function("manip_cost_torch_sqrt"):
+                score = torch.sqrt(torch.det(J_J_t))
         score[score != score] = 0.0
         
         

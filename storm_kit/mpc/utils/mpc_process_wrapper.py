@@ -42,7 +42,7 @@ class ControlProcess(object):
         except Exception:
             pass
             
-        torch.save(controller, 'control_instance.p')
+        # torch.save(controller, 'control_instance.p')
         
         try:
             controller.rollout_fn.dynamics_model.robot_model.load_lxml_objects()
@@ -68,9 +68,9 @@ class ControlProcess(object):
         self.opt_queue = Queue(maxsize=1)
 
         
-        self.opt_process = Process(target=optimize_process, args=('control_instance.p', self.opt_queue,self.result_queue))
-        self.opt_process.daemon = True
-        self.opt_process.start()
+        # self.opt_process = Process(target=optimize_process, args=('control_instance.p', self.opt_queue,self.result_queue))
+        # self.opt_process.daemon = True
+        # self.opt_process.start()
         self.controller = controller
         self.control_dt = control_dt
         self.prev_mpc_tstep = 0.0

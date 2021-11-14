@@ -164,7 +164,8 @@ class ArmBase(RolloutBase):
         if(no_coll == True and horizon_cost == False):
             return cost
         if(self.exp_params['cost']['manipulability']['weight'] > 0.0):
-            cost += self.manipulability_cost.forward(J_full)
+            with profiler.record_function("manip_cost"):
+                cost += self.manipulability_cost.forward(J_full)
         
         
         if(horizon_cost):
@@ -197,9 +198,10 @@ class ArmBase(RolloutBase):
 
         if(not no_coll):
             if self.exp_params['cost']['robot_self_collision']['weight'] > 0:
+                with profiler.record_function("self_collision_cost"):
                 #coll_cost = self.robot_self_collision_cost.forward(link_pos_batch, link_rot_batch)
-                coll_cost = self.robot_self_collision_cost.forward(state_batch[:,:,:self.n_dofs])
-                cost += coll_cost
+                    coll_cost = self.robot_self_collision_cost.forward(state_batch[:,:,:self.n_dofs])
+                    cost += coll_cost
             if self.exp_params['cost']['primitive_collision']['weight'] > 0:
                 coll_cost = self.primitive_collision_cost.forward(link_pos_batch, link_rot_batch)
                 cost += coll_cost
