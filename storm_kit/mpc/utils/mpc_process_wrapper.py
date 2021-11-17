@@ -74,6 +74,9 @@ class ControlProcess(object):
         self.controller = controller
         self.control_dt = control_dt
         self.prev_mpc_tstep = 0.0
+        self.first_run = False
+
+
     def predict_next_state(self, t_step, curr_state):
         # predict next state
         # given current t_step, integrate to t_step+mpc_dt
@@ -98,14 +101,19 @@ class ControlProcess(object):
             curr_state = self.predict_next_state(t_step, curr_state)
 
         current_state = np.append(curr_state, t_step + self.mpc_dt)
-        shift_steps = find_first_idx(self.command_tstep, t_step + self.mpc_dt)
-        
+        #shift_steps = find_first_idx(self.command_tstep, t_step + self.mpc_dt)
+        shift_steps = 1
+
         state_tensor = torch.as_tensor(current_state,**self.controller.tensor_args).unsqueeze(0)
 
-
-        mpc_time = time.time()
-        command = list(self.controller.optimize(state_tensor, shift_steps=shift_steps))
-        mpc_time = time.time() - mpc_time
+        if(self.first_run): # run a bunch of times to let cuda warmstart and get a good initial trajectory when starting from scratch
+            for i in range(10):
+                command = list(self.controller.optimize(state_tensor, shift_steps=0))
+            self.first_run = False
+        else:
+            mpc_time = time.time()
+            command = list(self.controller.optimize(state_tensor, shift_steps=shift_steps))
+            mpc_time = time.time() - mpc_time
         command[0] = command[0].cpu().numpy()
         self.command_tstep = self.traj_tstep + t_step
         
