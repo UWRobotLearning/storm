@@ -95,22 +95,80 @@ class MPPI(OLGaussianMPC):
                                    cov_type,
                                    seed,
                                    sample_params=sample_params,
-                                   tensor_args=tensor_args)
+                                   tensor_args=tensor_args,
+                                   visual_traj=visual_traj)
         self.beta = beta
         self.alpha = alpha  # 0 means control cost is on, 1 means off
         self.update_cov = update_cov
         self.kappa = kappa
-        self.visual_traj = visual_traj
 
     def _compute_weights(self, trajectories):
         """
             compute trajectory weights
         """
         costs = trajectories["costs"].to(**self.tensor_args)
-        # vis_seq = trajectories[self.visual_traj].to(**self.tensor_args)
         actions = trajectories["actions"].to(**self.tensor_args)
         w = self._exp_util(costs, actions)
         return w
+
+    def _exp_util(self, costs, actions):
+        """
+            Calculate weights using exponential utility
+        """
+        traj_costs = cost_to_go(costs, self.gamma_seq)
+        # if not self.time_based_weights: traj_costs = traj_costs[:,0]
+        traj_costs = traj_costs[:,0]
+        #control_costs = self._control_costs(actions)
+
+        total_costs = traj_costs #+ self.beta * control_costs
+        
+        
+        # #calculate soft-max
+        w = torch.softmax((-1.0/self.beta) * total_costs, dim=0)
+        self.total_costs = total_costs
+        return w
+
+    def _control_costs(self, actions):
+        if self.alpha == 1:
+            # if not self.time_based_weights:
+            return torch.zeros(actions.shape[0], **self.tensor_args)
+        else:
+            # u_normalized = self.mean_action.dot(np.linalg.inv(self.cov_action))[np.newaxis,:,:]
+            # control_costs = 0.5 * u_normalized * (self.mean_action[np.newaxis,:,:] + 2.0 * delta)
+            # control_costs = np.sum(control_costs, axis=-1)
+            # control_costs = cost_to_go(control_costs, self.gamma_seq)
+            # # if not self.time_based_weights: control_costs = control_costs[:,0]
+            # control_costs = control_costs[:,0]
+            delta = actions - self.mean_action.unsqueeze(0)
+            u_normalized = self.mean_action.matmul(self.full_inv_cov).unsqueeze(0)
+            control_costs = 0.5 * u_normalized * (self.mean_action.unsqueeze(0) + 2.0 * delta)
+            control_costs = torch.sum(control_costs, dim=-1)
+            control_costs = cost_to_go(control_costs, self.gamma_seq)
+            control_costs = control_costs[:,0]
+        return control_costs
+    
+    def _calc_val(self, trajectories):
+        costs = trajectories["costs"].to(**self.tensor_args)
+        actions = trajectories["actions"].to(**self.tensor_args)
+        delta = actions - self.mean_action.unsqueeze(0)
+        
+        traj_costs = cost_to_go(costs, self.gamma_seq)[:,0]
+        control_costs = self._control_costs(delta)
+        total_costs = traj_costs + self.beta * control_costs
+        # calculate log-sum-exp
+        # c = (-1.0/self.beta) * total_costs.copy()
+        # cmax = np.max(c)
+        # c -= cmax
+        # c = np.exp(c)
+        # val1 = cmax + np.log(np.sum(c)) - np.log(c.shape[0])
+        # val1 = -self.beta * val1
+
+        # val = -self.beta * scipy.special.logsumexp((-1.0/self.beta) * total_costs, b=(1.0/total_costs.shape[0]))
+        val = -self.beta * torch.logsumexp((-1.0/self.beta) * total_costs)
+        return val
+        
+
+
 
     # def _update_distribution(self, trajectories):
     #     """
@@ -265,60 +323,5 @@ class MPPI(OLGaussianMPC):
         #         # self.inv_cov_action = torch.cholesky_inverse(self.scale_tril)
 
 
-    def _exp_util(self, costs, actions):
-        """
-            Calculate weights using exponential utility
-        """
-        traj_costs = cost_to_go(costs, self.gamma_seq)
-        # if not self.time_based_weights: traj_costs = traj_costs[:,0]
-        traj_costs = traj_costs[:,0]
-        #control_costs = self._control_costs(actions)
 
-        total_costs = traj_costs #+ self.beta * control_costs
-        
-        
-        # #calculate soft-max
-        w = torch.softmax((-1.0/self.beta) * total_costs, dim=0)
-        self.total_costs = total_costs
-        return w
-
-    def _control_costs(self, actions):
-        if self.alpha == 1:
-            # if not self.time_based_weights:
-            return torch.zeros(actions.shape[0], **self.tensor_args)
-        else:
-            # u_normalized = self.mean_action.dot(np.linalg.inv(self.cov_action))[np.newaxis,:,:]
-            # control_costs = 0.5 * u_normalized * (self.mean_action[np.newaxis,:,:] + 2.0 * delta)
-            # control_costs = np.sum(control_costs, axis=-1)
-            # control_costs = cost_to_go(control_costs, self.gamma_seq)
-            # # if not self.time_based_weights: control_costs = control_costs[:,0]
-            # control_costs = control_costs[:,0]
-            delta = actions - self.mean_action.unsqueeze(0)
-            u_normalized = self.mean_action.matmul(self.full_inv_cov).unsqueeze(0)
-            control_costs = 0.5 * u_normalized * (self.mean_action.unsqueeze(0) + 2.0 * delta)
-            control_costs = torch.sum(control_costs, dim=-1)
-            control_costs = cost_to_go(control_costs, self.gamma_seq)
-            control_costs = control_costs[:,0]
-        return control_costs
-    
-    def _calc_val(self, trajectories):
-        costs = trajectories["costs"].to(**self.tensor_args)
-        actions = trajectories["actions"].to(**self.tensor_args)
-        delta = actions - self.mean_action.unsqueeze(0)
-        
-        traj_costs = cost_to_go(costs, self.gamma_seq)[:,0]
-        control_costs = self._control_costs(delta)
-        total_costs = traj_costs + self.beta * control_costs
-        # calculate log-sum-exp
-        # c = (-1.0/self.beta) * total_costs.copy()
-        # cmax = np.max(c)
-        # c -= cmax
-        # c = np.exp(c)
-        # val1 = cmax + np.log(np.sum(c)) - np.log(c.shape[0])
-        # val1 = -self.beta * val1
-
-        # val = -self.beta * scipy.special.logsumexp((-1.0/self.beta) * total_costs, b=(1.0/total_costs.shape[0]))
-        val = -self.beta * torch.logsumexp((-1.0/self.beta) * total_costs)
-        return val
-        
 

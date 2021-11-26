@@ -87,7 +87,7 @@ class DifferentiableRobotModel(torch.nn.Module):
         self.float_dtype = tensor_args['dtype']
         self.tensor_args = tensor_args
         self.urdf_path = urdf_path
-        
+        print('urdf path', urdf_path)
         self._urdf_model = URDFRobotModel(
             urdf_path=urdf_path, tensor_args=self.tensor_args
         )

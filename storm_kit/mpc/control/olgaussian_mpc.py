@@ -60,6 +60,7 @@ class OLGaussianMPC(Controller):
                  seed=0,
                  sample_params={'type': 'halton', 'fixed_samples': True, 'seed':0, 'filter_coeffs':None},
                  tensor_args={'device':torch.device('cpu'), 'dtype':torch.float32},
+                 visual_traj='state_seq',
                  fixed_actions=False):
         """
         Parameters
@@ -140,6 +141,7 @@ class OLGaussianMPC(Controller):
             self.null_act_seqs = torch.zeros(self.num_null_particles, self.horizon, self.d_action, **self.tensor_args)
             
         self.delta = None
+        self.visual_traj = visual_traj
 
     def _get_action_seq(self, mode='mean'):
         if mode == 'mean':
@@ -224,15 +226,14 @@ class OLGaussianMPC(Controller):
         self.best_traj = torch.index_select(actions, 0, best_idx).squeeze(0)
 
         top_values, top_idx = torch.topk(self.total_costs, 10)
-        #print(ee_pos_seq.shape, top_idx)
         self.top_values = top_values
         self.top_idx = top_idx
-        # self.top_trajs = torch.index_select(vis_seq, 0, top_idx).squeeze(0)
+        if self.visual_traj in trajectories:
+            vis_seq = trajectories[self.visual_traj].to(**self.tensor_args)
+            self.top_trajs = torch.index_select(vis_seq, 0, top_idx).squeeze(0)
+        else: self.top_trajs = None
 
-        #print(self.top_traj.shape)
-        #print(self.best_traj.shape, best_idx, w.shape)
-        #self.best_trajs = torch.index_select(
-
+        #Update mean
         weighted_seq = w.T * actions.T
 
         sum_seq = torch.sum(weighted_seq.T, dim=0)
