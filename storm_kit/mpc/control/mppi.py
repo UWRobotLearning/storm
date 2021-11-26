@@ -108,25 +108,35 @@ class MPPI(OLGaussianMPC):
         """
         costs = trajectories["costs"].to(**self.tensor_args)
         actions = trajectories["actions"].to(**self.tensor_args)
-        w = self._exp_util(costs, actions)
-        return w
-
-    def _exp_util(self, costs, actions):
-        """
-            Calculate weights using exponential utility
-        """
         traj_costs = cost_to_go(costs, self.gamma_seq)
         # if not self.time_based_weights: traj_costs = traj_costs[:,0]
         traj_costs = traj_costs[:,0]
         #control_costs = self._control_costs(actions)
-
         total_costs = traj_costs #+ self.beta * control_costs
-        
         
         # #calculate soft-max
         w = torch.softmax((-1.0/self.beta) * total_costs, dim=0)
         self.total_costs = total_costs
         return w
+        # w = self._exp_util(costs, actions)
+        # return w
+
+    # def _exp_util(self, costs, actions):
+    #     """
+    #         Calculate weights using exponential utility
+    #     """
+        # traj_costs = cost_to_go(costs, self.gamma_seq)
+        # # if not self.time_based_weights: traj_costs = traj_costs[:,0]
+        # traj_costs = traj_costs[:,0]
+        # #control_costs = self._control_costs(actions)
+
+        # total_costs = traj_costs #+ self.beta * control_costs
+        
+        
+        # # #calculate soft-max
+        # w = torch.softmax((-1.0/self.beta) * total_costs, dim=0)
+        # self.total_costs = total_costs
+        # return w
 
     def _control_costs(self, actions):
         if self.alpha == 1:
