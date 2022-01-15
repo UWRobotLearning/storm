@@ -225,10 +225,10 @@ class OLGaussianMPC(Controller):
         self.best_idx = best_idx
         self.best_traj = torch.index_select(actions, 0, best_idx).squeeze(0)
 
-        top_values, top_idx = torch.topk(self.total_costs, 10)
-        self.top_values = top_values
-        self.top_idx = top_idx
         if self.visual_traj in trajectories:
+            top_values, top_idx = torch.topk(self.total_costs, 10)
+            self.top_values = top_values
+            self.top_idx = top_idx
             vis_seq = trajectories[self.visual_traj].to(**self.tensor_args)
             self.top_trajs = torch.index_select(vis_seq, 0, top_idx).squeeze(0)
         else: self.top_trajs = None

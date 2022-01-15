@@ -44,7 +44,7 @@ class RobotSelfCollisionNet():
         
         out_channels = 1
         dropout_ratio = 0.1
-        mlp_layers = [256, 64]
+        mlp_layers = [256, 128, 128, 64]
         self.model = MLPRegression(in_channels, out_channels, mlp_layers,
                                    dropout_ratio, batch_norm=False, act_fn=act_fn,
                                    layer_norm=False, nerf=True)

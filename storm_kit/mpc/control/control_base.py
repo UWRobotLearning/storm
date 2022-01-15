@@ -202,7 +202,7 @@ class Controller(ABC):
     def generate_rollouts(self, state):
         pass
 
-    def optimize(self, state, calc_val=False, shift_steps=1, n_iters=None):
+    def optimize(self, state, calc_val=False, shift_steps=1, n_iters=None, hotstart=None):
         """
         Optimize for best action at current state
 
@@ -226,6 +226,7 @@ class Controller(ABC):
         """
 
         n_iters = n_iters if n_iters is not None else self.n_iters
+        hotstart = hotstart if hotstart is not None else self.hotstart
         # get input device:
         inp_device = state.device
         inp_dtype = state.dtype
@@ -233,7 +234,7 @@ class Controller(ABC):
 
         info = dict(rollout_time=0.0, entropy=[])
         # shift distribution to hotstart from previous timestep
-        if self.hotstart:
+        if hotstart:
             self._shift(shift_steps)
         else:
             self.reset_distribution()
@@ -260,9 +261,9 @@ class Controller(ABC):
         #calculate optimal value estimate if required
         value = 0.0
         if calc_val:
-            value = self.calculate_optimal_value(state)
-            # trajectories = self.generate_rollouts(state)
-            # value = self._calc_val(trajectories)
+            # value = self.calculate_optimal_value(state)
+            trajectories = self.generate_rollouts(state)
+            value = self._calc_val(trajectories)
 
         # # shift distribution to hotstart next timestep
         # if self.hotstart:
@@ -290,10 +291,9 @@ class Controller(ABC):
         value : float
             optimal value estimate of the state
         """
-        # self.reset() #reset the control distribution
-        # _, value = self.optimize(state, calc_val=True, shift_steps=0)
-        # return value
-        raise NotImplementedError('calculate_optimal_value not implemented')
+        self.reset() #reset the control distribution
+        _, value, _  = self.optimize(state, calc_val=True, shift_steps=0, hotstart=False)
+        return value
     
     # def seed(self, seed=None):
     #     self.np_random, seed = seeding.np_random(seed)

@@ -42,17 +42,17 @@ class RobotDataset(torch.utils.data.Dataset):
         sample = {'x': self.x[idx,:], 'y': self.y[idx,:], 'y_gt': self.y_gt[idx,:]}
         return sample
 def create_dataset(robot_name):
-    # checkpoints_dir = get_weights_path()+'/robot_self'
-    checkpoints_dir = '/home/mohak/workspace/storm_rl/weights/robot_self'
+    checkpoints_dir = get_weights_path()+'/robot_self'
+    # checkpoints_dir = '/home/mohak/workspace/storm_rl/weights/robot_self'
     print('checkpoints dir', checkpoints_dir)
     num_particles = 5000
-    # task_file = robot_name+'_reacher.yml'
+    task_file = robot_name+'_reacher.yml'
 
     # load robot model:
     device = torch.device('cuda', 0) 
     tensor_args = {'device':device, 'dtype':torch.float32}
-    # mpc_yml_file = join_path(get_mpc_configs_path(), task_file)
-    mpc_yml_file = '/home/mohak/workspace/storm_rl/content/configs/mpc_configs/franka_reacher-v0.yaml'
+    mpc_yml_file = join_path(get_mpc_configs_path(), task_file)
+    # mpc_yml_file = '/home/mohak/workspace/storm_rl/content/configs/mpc_configs/franka_reacher-v0.yaml'
 
     with open(mpc_yml_file) as file:
         exp_params = yaml.load(file, Loader=yaml.FullLoader)
