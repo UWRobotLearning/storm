@@ -320,7 +320,7 @@ class RobotSphereCollision:
         robot_links = robot_collision_params['link_objs']
 
         # load collision file:
-        print(robot_collision_params)
+        # print(robot_collision_params)
         coll_yml = join_path(get_mpc_configs_path(), robot_collision_params['collision_spheres'])
         with open(coll_yml) as file:
             coll_params = yaml.load(file, Loader=yaml.FullLoader)
