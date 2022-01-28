@@ -59,7 +59,6 @@ class ArmBase(RolloutBase):
         if exp_params['model']['urdf_path'] is not None:
             urdf_path = join_path(assets_path,exp_params['model']['urdf_path'])
 
-
         self.dynamics_model = URDFKinematicModel(urdf_path,
                                                  dt=exp_params['model']['dt'],
                                                  batch_size=mppi_params['num_particles'],
@@ -147,8 +146,6 @@ class ArmBase(RolloutBase):
         state_batch = state_dict['state_seq']
         lin_jac_batch, ang_jac_batch = state_dict['lin_jac_seq'], state_dict['ang_jac_seq']
         link_pos_batch, link_rot_batch = state_dict['link_pos_seq'], state_dict['link_rot_seq']
-        prev_state = state_dict['prev_state_seq']
-        prev_state_tstep = state_dict['prev_state_seq'][:,-1]
         
         retract_state = self.retract_state
         
@@ -180,6 +177,8 @@ class ArmBase(RolloutBase):
                 cost += self.stop_cost_acc.forward(state_batch[:, :, self.n_dofs*2 :self.n_dofs * 3])
 
             if self.exp_params['cost']['smooth']['weight'] > 0:
+                prev_state = state_dict['prev_state_seq']
+                prev_state_tstep = state_dict['prev_state_seq'][:,-1]
                 order = self.exp_params['cost']['smooth']['order']
                 prev_dt = (self.fd_matrix @ prev_state_tstep)[-order:]
                 n_mul = 1
