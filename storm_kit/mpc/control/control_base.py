@@ -240,7 +240,7 @@ class Controller(ABC):
             self.reset_distribution()
             
 
-        with torch.cuda.amp.autocast(enabled=True):
+        with torch.cuda.amp.autocast(enabled=False):
             with torch.no_grad():
                 for _ in range(n_iters):
                     # generate random simulated trajectories

@@ -33,6 +33,7 @@ from ...differentiable_robot_model.coordinate_transform import matrix_to_quatern
 from ...mpc.model.integration_utils import build_fd_matrix
 from ...mpc.rollout.rollout_base import RolloutBase
 from ..cost.robot_self_collision_cost import RobotSelfCollisionCost
+# torch.set_printoptions(precision=8)
 
 class ArmBase(RolloutBase):
     """
@@ -227,9 +228,14 @@ class ArmBase(RolloutBase):
         #print("computing rollout")
         #print(act_seq)
         #print('step...')
+        # print('start state in rollout fn', start_state)
+        # input('....')
         with profiler.record_function("robot_model"):
             state_dict = self.dynamics_model.rollout_open_loop(start_state, act_seq)
-        
+        # print('start stat in state dict')
+        # print('pos', state_dict['state_seq'][:,0,0:self.n_dofs])
+        # print('vel', state_dict['state_seq'][:, 0,self.n_dofs:2*self.n_dofs])
+        # input('...')
         
         #link_pos_seq, link_rot_seq = self.dynamics_model.get_link_poses()
         with profiler.record_function("cost_fns"):

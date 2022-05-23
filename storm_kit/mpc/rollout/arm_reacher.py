@@ -62,7 +62,15 @@ class ArmReacher(ArmBase):
         retract_state = self.retract_state
         goal_state = self.goal_state
         
-        
+        # print('in cost qpos', state_dict['state_seq']
+        #       [:, 0, 0:self.n_dofs])
+        # print('in cost qvel', state_dict['state_seq']
+        #       [:, 0, self.n_dofs:2*self.n_dofs])
+        # print(state_dict['state_seq'][:,0,2*self.n_dofs:3*self.n_dofs])
+        # if action_batch is not None: print(action_batch[:,0])
+        # input('....')
+
+
         goal_cost, rot_err_norm, goal_dist = self.goal_cost.forward(ee_pos_batch, ee_rot_batch,
                                                                     goal_ee_pos, goal_ee_rot)
 
