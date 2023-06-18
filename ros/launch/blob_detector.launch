@@ -1,0 +1,18 @@
+<launch>
+  <arg name="config" default="$(find storm_ros)/configg/blob_detector.yaml" doc="Path to parameter config file"/>
+  <!-- <param name="panda_tray" textfile="$(find franka_mpc_utils)/content/assets/franka_panda_description/robots/panda_arm_tray.urdf"/> -->
+  <!-- <param name="panda_tray" textfile="/home/mohak/workspace/storm_rl/content/assets/urdfs/panda/panda_arm_tray_robot.urdf"/> -->
+  <!-- <include file="$(find franka_mpc_utils)/launch/static_transform_publisher_panda_2.launch" pass_all_args="true"/> -->
+    
+  <node name="blob_detector" pkg="storm_ros" type="blob_detector_node.py" output="screen" clear_params="true">
+    <rosparam file="$(arg config)"/>
+  </node>
+
+   <!-- <node pkg="robot_state_publisher" type="robot_state_publisher" name="rob_st_pub" >
+      <remap from="robot_description" to="panda_tray"/>
+      <param name="publish_frequency" value="300" />    
+    </node> -->
+  <node type="rviz" name="rviz" pkg="rviz" args="-d $(find franka_mpc_utils)/content/blob_detector.rviz" />
+
+
+</launch>

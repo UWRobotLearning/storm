@@ -174,3 +174,6 @@ docs/setup.rst
 # VIM
 *swp
 *swo
+
+tmp_results/*
+runs/*
