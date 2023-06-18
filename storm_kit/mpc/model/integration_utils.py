@@ -102,23 +102,50 @@ def tensor_step_jerk(state, act, state_seq, dt_h, n_dofs, integrate_matrix, fd_m
 
 
 @torch.jit.script
-def euler_integrate(q_0, u, diag_dt, integrate_matrix):
+def euler_integrate(
+    q_0:torch.Tensor, 
+    u:torch.Tensor, 
+    diag_dt:torch.Tensor, 
+    integrate_matrix:torch.Tensor) -> torch.Tensor:
     q_new = q_0 + torch.matmul(integrate_matrix, torch.matmul(diag_dt, u))
     return q_new
 
-#@torch.jit.script
-def tensor_step_acc(state, act, state_seq, dt_h, n_dofs, integrate_matrix, fd_matrix=None):
-    # type: (Tensor, Tensor, Tensor, Tensor, int, Tensor, Optional[Tensor]) -> Tensor
+@torch.jit.script
+def tensor_step_acc(
+    state: torch.Tensor, 
+    act: torch.Tensor, 
+    state_seq: torch.Tensor, 
+    dt_h: torch.Tensor, 
+    integrate_matrix: torch.Tensor, 
+    n_dofs: int, 
+    num_instances:int, 
+    batch_size:int, 
+    horizon:int) -> torch.Tensor:
     # This is batch,n_dof
-    q = state[:,:n_dofs]
-    qd = state[:, n_dofs:2 * n_dofs]
-    qdd_new = act
+    q = state[:, :, :n_dofs]
+    qd = state[:, :, n_dofs:2 * n_dofs]
+    qdd_new = act.view(num_instances*batch_size, horizon, -1)
     diag_dt = torch.diag(dt_h)
-    qd_new = euler_integrate(qd, qdd_new, diag_dt, integrate_matrix)
-    q_new = euler_integrate(q, qd_new, diag_dt, integrate_matrix)
-    state_seq[:,:, :n_dofs] = q_new
-    state_seq[:,:, n_dofs: n_dofs * 2] = qd_new
-    state_seq[:,:, n_dofs * 2: n_dofs * 3] = qdd_new
+
+    qd_new = torch.matmul(integrate_matrix, torch.matmul(diag_dt, qdd_new))
+    qd_new = qd_new.view(num_instances, batch_size, horizon, -1)
+    qd_new += qd.unsqueeze(1)
+
+    q_new = torch.matmul(
+        integrate_matrix, 
+        torch.matmul(diag_dt, qd_new.view(num_instances*batch_size, horizon, -1)))
+    q_new = q_new.view(num_instances, batch_size, horizon, -1)
+    q_new += q.unsqueeze(1)
+
+    qdd_new = qdd_new.view(num_instances, batch_size, horizon, -1)
+    # qd_new = euler_integrate(qd, qdd_new, diag_dt, integrate_matrix)
+    # q_new = euler_integrate(q, qd_new, diag_dt, integrate_matrix)
+
+
+
+    state_seq[:,:, :, :n_dofs] = q_new
+    state_seq[:,:, :, n_dofs: n_dofs * 2] = qd_new
+    state_seq[:,:, :, n_dofs * 2: n_dofs * 3] = qdd_new
     
     return state_seq
 

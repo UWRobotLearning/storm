@@ -55,6 +55,7 @@
 # Copyright (c) Facebook, Inc. and its affiliates.
 
 import torch
+from typing import Tuple, Dict
 from . import utils
 from .coordinate_transform import (
     CoordinateTransform,
@@ -70,13 +71,20 @@ class DifferentiableRigidBody(torch.nn.Module):
     """
     Differentiable Representation of a link
     """
+    joint_limits: Dict[str, float]
 
-    def __init__(self, rigid_body_params, tensor_args={'device':"cpu", 'dtype':torch.float32}):
+    def __init__(self, rigid_body_params, 
+                 device: torch.device = torch.device('cpu')):
+                #  dtype: torch.dtype = torch.float32):
+                #  tensor_args={'device':"cpu", 'dtype':torch.float32}):
 
         super().__init__()
 
-        self.tensor_args = tensor_args
-        self.device = tensor_args['device']
+        # self.tensor_args = tensor_args
+        # self.device = tensor_args['device']
+        # self.float_dtype = tensor_args['dtype']
+        self.device = device
+        # self.dtype = dtype
         self.joint_id = rigid_body_params["joint_id"]
         self.name = rigid_body_params["link_name"]
 
@@ -96,7 +104,9 @@ class DifferentiableRigidBody(torch.nn.Module):
         yaw = self.rot_angles[:,2]
         self.fixed_rotation = (z_rot(yaw) @ y_rot(pitch)) @ x_rot(roll)
         
-        self.joint_limits = rigid_body_params["joint_limits"]
+        self.joint_limits = {'effort': torch.inf, 'lower': -torch.inf, 'upper': torch.inf, 'velocity': -torch.inf}
+        if rigid_body_params["joint_limits"] is not None:
+            self.joint_limits = rigid_body_params["joint_limits"]
 
         # local joint axis (w.r.t. joint coordinate frame):
         self.joint_axis = rigid_body_params["joint_axis"]
@@ -111,47 +121,52 @@ class DifferentiableRigidBody(torch.nn.Module):
         else:
             self.axis_rot_fn = z_rot
 
-        self.joint_pose = CoordinateTransform(tensor_args=tensor_args) #.to(device)
-        self.joint_pose.set_translation(torch.reshape(self.trans, (1, 3)))
+        self.joint_pose = CoordinateTransform(trans=torch.reshape(self.trans, (1,3)), device=self.device) #.to(device)
+        # self.joint_pose.set_translation(torch.reshape(self.trans, (1, 3)))
+        # self.joint_pose_translation = torch.reshape(self.trans, (1, 3))
+        # self.joint_pose_rot = torch.eye(3, **tensor_args).unsqueeze(0) #.to(device)
+
         self._batch_size = -1
         self._batch_trans = None
         self._batch_rot = None
         
         # local velocities and accelerations (w.r.t. joint coordinate frame):
         # in spatial vector terminology: linear velocity v
-        self.joint_lin_vel = torch.zeros((1, 3), **self.tensor_args)
+        self.joint_lin_vel = torch.zeros((1, 3), device=self.device)
         # in spatial vector terminology: angular velocity w
-        self.joint_ang_vel = torch.zeros((1, 3), **self.tensor_args)
+        self.joint_ang_vel = torch.zeros((1, 3), device=self.device)
         # in spatial vector terminology: linear acceleration vd
-        self.joint_lin_acc = torch.zeros((1, 3), **self.tensor_args)
+        self.joint_lin_acc = torch.zeros((1, 3), device=self.device)
         # in spatial vector terminology: angular acceleration wd
-        self.joint_ang_acc = torch.zeros((1, 3), **self.tensor_args)
+        self.joint_ang_acc = torch.zeros((1, 3), device=self.device)
 
-        self.update_joint_state(torch.zeros((1, 1), **self.tensor_args), torch.zeros((1, 1), **self.tensor_args))
-
-
-        # self.update_joint_acc(torch.zeros(1, 1).to(self.device, dtype=self.float_dtype))
-        self.update_joint_acc(torch.zeros((1, 1), **self.tensor_args))
+        self.update_joint_state(torch.zeros((1, 1), device=self.device), torch.zeros((1, 1), device=self.device))
 
 
-        self.pose = CoordinateTransform(tensor_args=self.tensor_args)
+        # self.update_joint_acc(torch.zeros(1, 1).to(self.device, dtype=self.dtype))
+        self.update_joint_acc(torch.zeros((1, 1), device=self.device))
+
+
+        self.pose = CoordinateTransform(device=self.device)
+        # self.pose_position = torch.zeros(())
         # I have different vectors for angular/linear motion/force, but they usually always appear as a pair
         # meaning we usually always compute both angular/linear components.
         # Maybe worthwile thinking of a structure for this - in math notation we would use the notion of spatial vectors
         # drake uses some form of spatial vector implementation
-        self.lin_vel = torch.zeros((1, 3), **self.tensor_args)
-        self.ang_vel = torch.zeros((1, 3), **self.tensor_args)
-        self.lin_acc = torch.zeros((1, 3), **self.tensor_args)
-        self.ang_acc = torch.zeros((1, 3), **self.tensor_args)
+        self.lin_vel = torch.zeros((1, 3), device=self.device)
+        self.ang_vel = torch.zeros((1, 3), device=self.device)
+        self.lin_acc = torch.zeros((1, 3), device=self.device)
+        self.ang_acc = torch.zeros((1, 3), device=self.device)
 
         # in spatial vector terminology this is the "linear force f"
-        self.lin_force = torch.zeros((1, 3), **self.tensor_args)
+        self.lin_force = torch.zeros((1, 3), device=self.device)
         # in spatial vector terminology this is the "couple n"
-        self.ang_force = torch.zeros((1, 3), **self.tensor_args)
+        self.ang_force = torch.zeros((1, 3), device=self.device)
 
         return
 
-    def update_joint_state(self, q, qd):
+    @torch.jit.export
+    def update_joint_state(self, q: torch.Tensor, qd: torch.Tensor) -> None:
         batch_size = q.shape[0]
             
         self.joint_ang_vel = qd @ self.joint_axis
@@ -166,21 +181,27 @@ class DifferentiableRigidBody(torch.nn.Module):
         # when we update the joint angle, we also need to update the transformation
         
         self.joint_pose.set_translation(self._batch_trans)#
+        # self.joint_pose_translation = self._batch_trans
         #self.joint_pose.set_translation(torch.reshape(self.trans, (1, 3)))
         #print(q.shape)
         rot = self.axis_rot_fn(q.squeeze(1))
         
         self.joint_pose.set_rotation(self._batch_rot @ rot)
+        # self.joint_pose_rot = self._batch_rot @ rot
         return
-
-    def update_joint_acc(self, qdd):
+    
+    @torch.jit.export
+    def update_joint_acc(self, qdd: torch.Tensor)-> None:
         # local z axis (w.r.t. joint coordinate frame):
         self.joint_ang_acc = qdd @ self.joint_axis
         return
+    
+    def multiply_inertia_with_motion_vec(self, lin: torch.Tensor, ang: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
 
-    def multiply_inertia_with_motion_vec(self, lin, ang):
-
-        mass, com, inertia_mat = self._get_dynamics_parameters_values()
+        # mass, com, inertia_mat = self._get_dynamics_parameters_values()
+        mass = self.mass
+        com = self.com
+        inertia_mat = self.inertia_mat
 
         mcom = com * mass
         com_skew_symm_mat = utils.vector3_to_skew_symm_matrix(com)
@@ -202,9 +223,11 @@ class DifferentiableRigidBody(torch.nn.Module):
     def _get_dynamics_parameters_values(self):
         return self.mass, self.com, self.inertia_mat
 
-    def get_joint_limits(self):
+    @torch.jit.export
+    def get_joint_limits(self)->Dict[str, float]:
         return self.joint_limits
-
+    
+    @torch.jit.export
     def get_joint_damping_const(self):
         return self.joint_damping
 

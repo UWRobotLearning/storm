@@ -38,14 +38,14 @@ from typing import List
 class RobotCapsuleCollision:
     """ This class holds a batched collision model where the robot is represented as capsules [one per link]
     """
-    def __init__(self, robot_collision_params, batch_size=1, tensor_args={'device':"cpu", 'dtype':torch.float32}):
+    def __init__(self, robot_collision_params, batch_size=1, tensor_args={'device':'cpu', 'dtype':torch.float32}):
         # read capsules
         self.batch_size = batch_size
         self.tensor_args = tensor_args
         # keep track of their pose in world frame
         self._link_capsules = None
         self.link_capsules = None
-        self.l_T_c = CoordinateTransform(tensor_args=self.tensor_args)
+        self.l_T_c = CoordinateTransform(device=self.tensor_args['device'])
         self.robot_collision_params = robot_collision_params
         self.load_robot_collision_model(robot_collision_params)
     
@@ -64,7 +64,7 @@ class RobotCapsuleCollision:
             rot = rpy_angles_to_matrix(rpy)
             
             
-            l_T_c = CoordinateTransform(trans=trans, rot=rot, tensor_args=self.tensor_args)
+            l_T_c = CoordinateTransform(trans=trans, rot=rot, device=self.tensor_args['device'])
             
             r = robot_links[j]['radius']
 
@@ -136,7 +136,7 @@ class RobotMeshCollision:
         self.w_link_points = None
         self.w_batch_link_points = None
         
-        self.l_T_c = CoordinateTransform(tensor_args=self.tensor_args)
+        self.l_T_c = CoordinateTransform(tensor_args=self.tensor_args['device'])
         self.robot_collision_params = robot_collision_params
         self.load_robot_collision_model(robot_collision_params)
         
@@ -183,7 +183,7 @@ class RobotMeshCollision:
 
             trans = trans + (mesh_cent @ rot.transpose(-1,-2))
 
-            l_T_c = CoordinateTransform(trans=trans, rot=rot, tensor_args=self.tensor_args)
+            l_T_c = CoordinateTransform(trans=trans, rot=rot, device=self.tensor_args['device'])
 
             
                         
@@ -299,7 +299,7 @@ class RobotSphereCollision:
         self.w_link_points = None
         self.w_batch_link_spheres = None
         
-        self.l_T_c = CoordinateTransform(tensor_args=self.tensor_args)
+        self.l_T_c = CoordinateTransform(device=self.tensor_args['device'])
         self.robot_collision_params = robot_collision_params
         self.load_robot_collision_model(robot_collision_params)
         
@@ -420,7 +420,8 @@ class RobotSphereCollision:
         
         for i in range(n):
             # link_pts = self._batch_link_spheres[i][:,:,:3]
-            self.w_batch_link_spheres[i][:,:,:3] = transform_point(self._batch_link_spheres[i][:,:,:3], links_rot[:,i,:,:], links_pos[:,i,:].unsqueeze(-2))
+            self.w_batch_link_spheres[i][:,:,:3] = transform_point(
+                self._batch_link_spheres[i][:,:,:3], links_rot[:,i,:,:], links_pos[:,i,:].unsqueeze(-2))
 
     def check_self_collisions_nn(self, q):
         """compute signed distance using NN, uses an instance of :class:`.nn_model.robot_self_collision.RobotSelfCollisionNet`

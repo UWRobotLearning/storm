@@ -256,21 +256,19 @@ def mpc_robot_interactive(args, gym_instance):
             current_robot_state = copy.deepcopy(robot_sim.get_state(env_ptr, robot_ptr))
             
 
-            
             command = mpc_control.get_command(t_step, current_robot_state, control_dt=sim_dt, WAIT=True)
-
             filtered_state_mpc = current_robot_state #mpc_control.current_state
             curr_state = np.hstack((filtered_state_mpc['position'], filtered_state_mpc['velocity'], filtered_state_mpc['acceleration']))
 
-            curr_state_tensor = torch.as_tensor(curr_state, **tensor_args).unsqueeze(0)
+            curr_state_tensor = torch.as_tensor(curr_state, **tensor_args) #.unsqueeze(0)
             # get position command:
             q_des = copy.deepcopy(command['position'])
             qd_des = copy.deepcopy(command['velocity']) #* 0.5
             qdd_des = copy.deepcopy(command['acceleration'])
             
-            ee_error = mpc_control.get_current_error(filtered_state_mpc)
+            # ee_error = mpc_control.get_current_error(filtered_state_mpc)
              
-            pose_state = mpc_control.controller.rollout_fn.get_ee_pose(curr_state_tensor)
+            pose_state = mpc_control.controller.rollout_fn.get_ee_pose(curr_state_tensor.unsqueeze(0))
             
             # get current pose:
             e_pos = np.ravel(pose_state['ee_pos_seq'].cpu().numpy())
@@ -283,23 +281,24 @@ def mpc_robot_interactive(args, gym_instance):
             if(vis_ee_target):
                 gym.set_rigid_transform(env_ptr, ee_body_handle, copy.deepcopy(ee_pose))
 
-            print(["{:.3f}".format(x) for x in ee_error], "{:.3f}".format(mpc_control.opt_dt),
-                  "{:.3f}".format(mpc_control.mpc_dt))
-        
+            # print(["{:.3f}".format(x) for x in ee_error], "{:.3f}".format(mpc_control.opt_dt),
+            #       "{:.3f}".format(mpc_control.mpc_dt))
+            # print("{:.3f}".format(mpc_control.opt_dt),
+            #       "{:.3f}".format(mpc_control.mpc_dt))
             
-            gym_instance.clear_lines()
-            top_trajs = mpc_control.top_trajs.cpu().float()#.numpy()
-            n_p, n_t = top_trajs.shape[0], top_trajs.shape[1]
-            w_pts = w_robot_coord.transform_point(top_trajs.view(n_p * n_t, 3)).view(n_p, n_t, 3)
+            # gym_instance.clear_lines()
+            # top_trajs = mpc_control.top_trajs.cpu().float()#.numpy()
+            # n_p, n_t = top_trajs.shape[0], top_trajs.shape[1]
+            # w_pts = w_robot_coord.transform_point(top_trajs.view(n_p * n_t, 3)).view(n_p, n_t, 3)
 
 
-            top_trajs = w_pts.cpu().numpy()
-            color = np.array([0.0, 1.0, 0.0])
-            for k in range(top_trajs.shape[0]):
-                pts = top_trajs[k,:,:]
-                color[0] = float(k) / float(top_trajs.shape[0])
-                color[1] = 1.0 - float(k) / float(top_trajs.shape[0])
-                gym_instance.draw_lines(pts, color=color)
+            # top_trajs = w_pts.cpu().numpy()
+            # color = np.array([0.0, 1.0, 0.0])
+            # for k in range(top_trajs.shape[0]):
+            #     pts = top_trajs[k,:,:]
+            #     color[0] = float(k) / float(top_trajs.shape[0])
+            #     color[1] = 1.0 - float(k) / float(top_trajs.shape[0])
+            #     gym_instance.draw_lines(pts, color=color)
             
             robot_sim.command_robot_position(q_des, env_ptr, robot_ptr)
             #robot_sim.set_robot_state(q_des, qd_des, env_ptr, robot_ptr)

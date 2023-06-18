@@ -48,7 +48,7 @@ def tensor_capsule(base, tip, radius, tensor=None, tensor_args={'device':"cpu", 
 
 
 def tensor_cube(pose, dims, tensor_args={'device':"cpu", 'dtype':torch.float32}):
-    w_T_b = CoordinateTransform(pose=pose, tensor_args=tensor_args)
+    w_T_b = CoordinateTransform(pose=pose, device=tensor_args['device'])
     b_T_w = w_T_b.inverse()
     dims_t = torch.tensor([dims[0], dims[1], dims[2]], **tensor_args)
     cube = {'trans': w_T_b.translation(), 'rot': w_T_b.rotation(),

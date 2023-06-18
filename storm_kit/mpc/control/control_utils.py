@@ -119,7 +119,7 @@ def get_stomp_cov(horizon, d_action,
 
     # also compute the cholesky decomposition:
     scale_tril = torch.zeros((d_action * horizon, d_action * horizon), **tensor_args)
-    scale_tril = torch.cholesky(cov)
+    scale_tril = torch.linalg.cholesky(cov)
     '''
     k = 0
     act_cov_matrix = cov[k * horizon:k * horizon + horizon, k * horizon:k * horizon + horizon]
@@ -358,8 +358,8 @@ def gaussian_kl(mean0, cov0, mean1, cov1, cov_type="full"):
     return term1 + mahalanobis_dist + term3
 
 
-
-def cost_to_go(cost_seq, gamma_seq):
+@torch.jit.script
+def cost_to_go(cost_seq: torch.Tensor, gamma_seq: torch.Tensor):
     """
         Calculate (discounted) cost to go for given cost sequence
     """
@@ -367,7 +367,9 @@ def cost_to_go(cost_seq, gamma_seq):
     #     return cost_seq
     cost_seq = gamma_seq * cost_seq  # discounted cost sequence
     # cost_seq = torch.cumsum(cost_seq[:, ::-1], axis=-1)[:, ::-1]  # cost to go (but scaled by [1 , gamma, gamma*2 and so on])
-    cost_seq = torch.fliplr(torch.cumsum(torch.fliplr(cost_seq), axis=-1))  # cost to go (but scaled by [1 , gamma, gamma*2 and so on])
+    # cost_seq = torch.fliplr(torch.cumsum(torch.fliplr(cost_seq), axis=-1))  # cost to go (but scaled by [1 , gamma, gamma*2 and so on])
+    # flipped = torch.flip(cost_seq[1][0], [-1])
+    cost_seq = torch.flip(torch.cumsum(torch.flip(cost_seq, [-1]), dim=-1), [-1])  # cost to go (but scaled by [1 , gamma, gamma*2 and so on])
     cost_seq /= gamma_seq  # un-scale it to get true discounted cost to go
     return cost_seq
 

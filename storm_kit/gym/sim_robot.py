@@ -58,6 +58,7 @@ def inv_transform(gym_transform):
                                                    quat[0]))
     
     return new_transform
+
 # Write some helper functions:
 def pose_from_gym(gym_pose):
     pose = np.array([gym_pose.p.x, gym_pose.p.y, gym_pose.p.z,

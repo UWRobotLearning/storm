@@ -31,6 +31,7 @@ class BaseTask():
     def __init__(self, tensor_args={'device':"cpu", 'dtype':torch.float32}):
         self.tensor_args = tensor_args
         self.prev_qdd_des = None
+
     def init_aux(self):
         self.state_filter = JointStateFilter(filter_coeff=self.exp_params['state_filter_coeff'], dt=self.exp_params['control_dt'])
         
@@ -54,7 +55,7 @@ class BaseTask():
     def get_command(self, t_step, curr_state, control_dt, WAIT=False):
 
         # predict forward from previous action and previous state:
-        #self.state_filter.predict_internal_state(self.prev_qdd_des)
+        self.state_filter.predict_internal_state(self.prev_qdd_des)
 
         if(self.state_filter.cmd_joint_state is None):
             curr_state['velocity'] *= 0.0
@@ -65,8 +66,10 @@ class BaseTask():
             next_command, val, info, best_action = self.control_process.get_command_debug(t_step, state_tensor.numpy(), control_dt=control_dt)
         else:
             next_command, val, info, best_action = self.control_process.get_command(t_step, state_tensor.numpy(), control_dt=control_dt)
+        # state_tensor = torch.cat([state_tensor, torch.tensor([t_step])])        
+        # next_command, value, info = self.controller.forward(state_tensor, calc_val=False, shift_steps=1, n_iters=1)
 
-        qdd_des = next_command
+        qdd_des = next_command[0] #.cpu().numpy()
         self.prev_qdd_des = qdd_des
         cmd_des = self.state_filter.integrate_acc(qdd_des)
 

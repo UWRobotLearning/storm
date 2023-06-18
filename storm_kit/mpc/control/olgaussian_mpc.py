@@ -27,6 +27,7 @@ import copy
 
 import numpy as np
 import torch
+import torch.nn as nn
 from torch.distributions.multivariate_normal import MultivariateNormal
 
 from .control_base import Controller
@@ -55,6 +56,7 @@ class OLGaussianMPC(Controller):
                  rollout_fn=None,
                  sample_mode='mean',
                  hotstart=True,
+                 num_instances=1,
                  squash_fn='clamp',
                  cov_type='sigma_I',
                  seed=0,
@@ -82,11 +84,14 @@ class OLGaussianMPC(Controller):
                                             rollout_fn,
                                             sample_mode,
                                             hotstart,
+                                            num_instances,
                                             seed,
                                             tensor_args)
         
         self.init_cov = init_cov 
         self.init_mean = init_mean.clone().to(**self.tensor_args)
+        if self.init_mean.ndim == 2:
+            self.init_mean = self.init_mean.unsqueeze(0).repeat(self.num_instances, 1, 1)
         self.cov_type = cov_type
         self.base_action = base_action
         self.num_particles = num_particles
@@ -96,10 +101,7 @@ class OLGaussianMPC(Controller):
 
         self.null_act_frac = null_act_frac
         self.num_null_particles = round(int(null_act_frac * self.num_particles * 1.0))
-
-
         self.num_neg_particles = round(int(null_act_frac * self.num_particles)) - self.num_null_particles
-
         self.num_nonzero_particles = self.num_particles - self.num_null_particles - self.num_neg_particles
 
         #print(self.num_null_particles, self.num_neg_particles)
@@ -113,7 +115,9 @@ class OLGaussianMPC(Controller):
             self.i_ha = torch.eye(self.d_action, **self.tensor_args).repeat(1, self.horizon)
 
         elif sample_params['type'] == 'halton':
-            self.sample_lib = HaltonSampleLib(self.horizon, self.d_action,
+            self.sample_lib = HaltonSampleLib(self.num_instances,
+                                              self.horizon, 
+                                              self.d_action,
                                               tensor_args=self.tensor_args,
                                               **self.sample_params)
             self.sample_shape = torch.Size([self.num_nonzero_particles - 2])
@@ -129,25 +133,24 @@ class OLGaussianMPC(Controller):
         # initialize covariance types:
         if self.cov_type == 'full_HAxHA':
             self.I = torch.eye(self.horizon * self.d_action, **self.tensor_args)
-            
         else: # AxA
-            self.I = torch.eye(self.d_action, **self.tensor_args)
+            self.I = torch.eye(self.d_action, **self.tensor_args).unsqueeze(0).repeat(self.num_instances, 1, 1)
         
-        self.Z_seq = torch.zeros(1, self.horizon, self.d_action, **self.tensor_args)
+        self.Z_seq = torch.zeros(self.num_instances, 1, self.horizon, self.d_action, **self.tensor_args)
 
         self.reset_distribution()
         if self.num_null_particles > 0:
-            self.null_act_seqs = torch.zeros(self.num_null_particles, self.horizon, self.d_action, **self.tensor_args)
+            self.null_act_seqs = torch.zeros(self.num_instances, self.num_null_particles, self.horizon, self.d_action, **self.tensor_args)
             
         self.delta = None
 
     def _get_action_seq(self, mode='mean'):
         if mode == 'mean':
-            act_seq = self.mean_action.clone()
+            act_seq = self.mean_action.data#.clone()
         elif mode == 'sample':
             delta = self.generate_noise(shape=torch.Size((1, self.horizon)),
                                         base_seed=self.seed_val + 123 * self.num_steps)
-            act_seq = self.mean_action + torch.matmul(delta, self.full_scale_tril)
+            act_seq = self.mean_action.data + torch.matmul(delta, self.full_scale_tril)
         else:
             raise ValueError('Unidentified sampling mode in get_next_action')
         
@@ -166,47 +169,42 @@ class OLGaussianMPC(Controller):
     def sample_actions(self, state=None):
         delta = self.sample_lib.get_samples(sample_shape=self.sample_shape, base_seed=self.seed_val + self.num_steps)
 
-
         #add zero-noise seq so mean is always a part of samples
-        delta = torch.cat((delta, self.Z_seq), dim=0)
-        
+        delta = torch.cat((delta, self.Z_seq), dim=1)
+        #TODO: Is this right?
+        # delta = delta.unsqueeze(0).repeat(self.num_instances, 1, 1, 1)
         # samples could be from HAxHA or AxA:
         # We reshape them based on covariance type:
         # if cov is AxA, then we don't reshape samples as samples are: N x H x A
         # if cov is HAxHA, then we reshape
         if self.cov_type == 'full_HAxHA':
             # delta: N * H * A -> N * HA
-            delta = delta.view(delta.shape[0], self.horizon * self.d_action)
+            delta = delta.view(delta.shape[0], delta.shape[1], self.horizon * self.d_action)
 
-            
-        scaled_delta = torch.matmul(delta, self.full_scale_tril).view(delta.shape[0],
+        scaled_delta = torch.matmul(delta, self.full_scale_tril.unsqueeze(1)).view(delta.shape[0],
+                                                                      delta.shape[1],
                                                                       self.horizon,
                                                                       self.d_action)
+        # debug_act = delta[:,:,:,0].cpu().numpy()
 
-
-
-        #
-        debug_act = delta[:,:,0].cpu().numpy()
-
-        act_seq = self.mean_action.unsqueeze(0) + scaled_delta
-        
-
+        act_seq = self.mean_action.unsqueeze(1) + scaled_delta
         act_seq = scale_ctrl(act_seq, self.action_lows, self.action_highs, squash_fn=self.squash_fn)
-        
+        append_acts = self.best_traj.unsqueeze(1)
 
-        append_acts = self.best_traj.unsqueeze(0)
-        
         #append zero actions (for stopping)
         if self.num_null_particles > 0:
             # zero particles:
 
             # negative action particles:
-            neg_action = -1.0 * self.mean_action.unsqueeze(0)
-            neg_act_seqs = neg_action.expand(self.num_neg_particles,-1,-1)
-            append_acts = torch.cat((append_acts, self.null_act_seqs, neg_act_seqs),dim=0)
+            # neg_action = -1.0 * self.mean_action.unsqueeze(1)
+            # print(neg_action.shape)
+            # neg_act_seqs = neg_action.expand(1, self.num_neg_particles,-1,-1)
+            # print(append_acts.shape, self.null_act_seqs.shape, neg_act_seqs.shape)
 
-        
-        act_seq = torch.cat((act_seq, append_acts), dim=0)
+            # append_acts = torch.cat((append_acts, self.null_act_seqs, neg_act_seqs),dim=1)
+            append_acts = torch.cat((append_acts, self.null_act_seqs),dim=1)
+
+        act_seq = torch.cat((act_seq, append_acts), dim=1)
         return act_seq
 
     def generate_rollouts(self, state):
@@ -222,9 +220,6 @@ class OLGaussianMPC(Controller):
          """
         
         act_seq = self.sample_actions(state=state) # sample noise from covariance of current control distribution
-
-
-
         trajectories = self._rollout_fn(state, act_seq)
         return trajectories
     
@@ -233,24 +228,24 @@ class OLGaussianMPC(Controller):
             Predict mean for the next time step by
             shifting the current mean forward by one step
         """
-        if(shift_steps == 0):
+        if shift_steps == 0:
             return
         # self.new_mean_action = self.mean_action.clone()
         # self.new_mean_action[:-1] = #self.mean_action[1:]
-        self.mean_action = self.mean_action.roll(-shift_steps,0)
-        self.best_traj = self.best_traj.roll(-shift_steps,0)
+        self.mean_action.data = self.mean_action.data.roll(-shift_steps, 1)
+        self.best_traj = self.best_traj.roll(-shift_steps, 1)
         
         if self.base_action == 'random':
-            self.mean_action[-1] = self.generate_noise(shape=torch.Size((1, 1)), 
+            self.mean_action.data[:, -1, :] = self.generate_noise(shape=torch.Size((1, 1)), 
                                                        base_seed=self.seed_val + 123*self.num_steps)
-            self.best_traj[-1] = self.generate_noise(shape=torch.Size((1, 1)), 
+            self.best_traj[:, -1, :] = self.generate_noise(shape=torch.Size((1, 1)), 
                                                      base_seed=self.seed_val + 123*self.num_steps)
         elif self.base_action == 'null':
-            self.mean_action[-shift_steps:].zero_() 
-            self.best_traj[-shift_steps:].zero_()
+            self.mean_action.data[:, -shift_steps:].zero_() 
+            self.best_traj[:, -shift_steps:].zero_()
         elif self.base_action == 'repeat':
-            self.mean_action[-shift_steps:] = self.mean_action[-shift_steps -1].clone()
-            self.best_traj[-shift_steps:] = self.best_traj[-shift_steps -1 ].clone()
+            self.mean_action.data[:, -shift_steps:] = self.mean_action.data[:, -shift_steps -1].unsqueeze(1).clone()
+            self.best_traj[:, -shift_steps:] = self.best_traj[:, -shift_steps -1 ].unsqueeze(1).clone()
             #self.mean_action[-1] = self.mean_action[-2].clone()
             #self.best_traj[-1] = self.best_traj[-2].clone()
         else:
@@ -258,35 +253,41 @@ class OLGaussianMPC(Controller):
         # self.mean_action = self.new_mean_action
 
     def reset_mean(self):
-        self.mean_action = self.init_mean.clone()
-        self.best_traj = self.mean_action.clone()
+        # self.mean_action = self.init_mean.clone()
+        # self.best_traj = self.mean_action.clone()
+        self.mean_action = nn.Parameter(data=self.init_mean.clone(), requires_grad=False)
+        self.best_traj = self.mean_action.data.clone()
 
     def reset_covariance(self):
 
         if self.cov_type == 'sigma_I':
-            self.cov_action = torch.tensor(self.init_cov, **self.tensor_args)
+            init_cov = torch.tensor(self.init_cov, **self.tensor_args).unsqueeze(0).repeat(self.num_instances, 1)
             self.init_cov_action = self.init_cov
+            self.cov_action = nn.Parameter(init_cov, requires_grad=False)
             self.inv_cov_action = 1.0 / self.init_cov  
             self.scale_tril = torch.sqrt(self.cov_action)
         
         elif self.cov_type == 'diag_AxA':
-            self.init_cov_action = torch.tensor([self.init_cov]*self.d_action, **self.tensor_args)
-            self.cov_action = self.init_cov_action
-            self.inv_cov_action = 1.0 / self.cov_action
-            self.scale_tril = torch.sqrt(self.cov_action)
+            init_cov = torch.tensor([self.init_cov]*self.d_action, **self.tensor_args)
+            init_cov = init_cov.unsqueeze(0).repeat(self.num_instances, 1)
+            self.init_cov_action = init_cov
+            self.cov_action = nn.Parameter(data=self.init_cov_action, requires_grad=False)
+            self.inv_cov_action = 1.0 / self.cov_action.data
+            self.scale_tril = torch.sqrt(self.cov_action.data)
 
         
         elif self.cov_type == 'full_AxA':
             self.init_cov_action = torch.diag(torch.tensor([self.init_cov]*self.d_action, **self.tensor_args))
-            self.cov_action = self.init_cov_action
-            self.scale_tril = matrix_cholesky(self.cov_action) #torch.cholesky(self.cov_action)
+            self.init_cov_action = self.init_cov_action.unsqueeze(0).repeat(self.num_instances, 1, 1)
+            self.cov_action = nn.Parameter(data=self.init_cov_action, requires_grad=False)
+            self.scale_tril = matrix_cholesky(self.cov_action.data) #torch.cholesky(self.cov_action)
             self.inv_cov_action = torch.cholesky_inverse(self.scale_tril)
 
         elif self.cov_type == 'full_HAxHA':
             self.init_cov_action = torch.diag(torch.tensor([self.init_cov] * (self.horizon * self.d_action), **self.tensor_args))
-                
-            self.cov_action = self.init_cov_action
-            self.scale_tril = torch.cholesky(self.cov_action)
+            self.init_cov_action = self.init_cov_action.unsqueeze(0).repeat(self.num_instances, 1, 1)
+            self.cov_action = nn.Parameter(self.init_cov_action, requires_grad=False)
+            self.scale_tril = torch.cholesky(self.cov_action.data)
             self.inv_cov_action = torch.cholesky_inverse(self.scale_tril)
             
         else:
@@ -336,7 +337,7 @@ class OLGaussianMPC(Controller):
         if self.cov_type == 'sigma_I':
             return self.scale_tril * self.I
         elif self.cov_type == 'diag_AxA':
-            return torch.diag(self.scale_tril)
+            return torch.diag_embed(self.scale_tril)
         elif self.cov_type == 'full_AxA':
             return self.scale_tril
         elif self.cov_type == 'full_HAxHA':

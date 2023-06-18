@@ -29,6 +29,7 @@ import scipy.special
 import torch
 from torch.distributions.multivariate_normal import MultivariateNormal
 from torch.nn.functional import normalize as f_norm
+from torch.profiler import record_function
 
 from .control_utils import cost_to_go, matrix_cholesky, batch_cholesky
 from .olgaussian_mpc import OLGaussianMPC
@@ -67,6 +68,7 @@ class MPPI(OLGaussianMPC):
                  rollout_fn=None,
                  sample_mode='mean',
                  hotstart=True,
+                 num_instances=1,
                  squash_fn='clamp',
                  update_cov=False,
                  cov_type='sigma_I',
@@ -91,6 +93,7 @@ class MPPI(OLGaussianMPC):
                                    rollout_fn,
                                    sample_mode,
                                    hotstart,
+                                   num_instances,
                                    squash_fn,
                                    cov_type,
                                    seed,
@@ -112,30 +115,26 @@ class MPPI(OLGaussianMPC):
         costs = trajectories["costs"].to(**self.tensor_args)
         vis_seq = trajectories[self.visual_traj].to(**self.tensor_args)
         actions = trajectories["actions"].to(**self.tensor_args)
-        w = self._exp_util(costs, actions)
+        with record_function('mppi:exp_util'):
+            w = self._exp_util(costs, actions)
         
         #Update best action
-        best_idx = torch.argmax(w)
+        best_idx = torch.argmax(w, dim=1)
         self.best_idx = best_idx
-        self.best_traj = torch.index_select(actions, 0, best_idx).squeeze(0)
-
-        top_values, top_idx = torch.topk(self.total_costs, 10)
-        #print(ee_pos_seq.shape, top_idx)
-        self.top_values = top_values
-        self.top_idx = top_idx
-        self.top_trajs = torch.index_select(vis_seq, 0, top_idx).squeeze(0)
-        #print(self.top_traj.shape)
-        #print(self.best_traj.shape, best_idx, w.shape)
-        #self.best_trajs = torch.index_select(
-
+        self.best_traj = torch.index_select(actions, 1, best_idx)[:,0]#.squeeze(1)
+        # self.best_traj = actions[:, self.best_idx]
+        # top_values, top_idx = torch.topk(self.total_costs, 10)
+        # self.top_values = top_values
+        # self.top_idx = top_idx
+        # print(vis_seq.shape, top_idx.shape)
+        # self.top_trajs = torch.index_select(vis_seq, 1, top_idx).squeeze(1) #.squeeze(0)
+        
         weighted_seq = w.T * actions.T
 
-        sum_seq = torch.sum(weighted_seq.T, dim=0)
-
-        new_mean = sum_seq
+        mean_update = torch.sum(weighted_seq.T, dim=1)
+        # new_mean = sum_seq
         
-        delta = actions - self.mean_action.unsqueeze(0)
-
+        delta = actions - self.mean_action.unsqueeze(1)
         #Update Covariance
         if self.update_cov:
             if self.cov_type == 'sigma_I':
@@ -174,14 +173,14 @@ class MPPI(OLGaussianMPC):
             else:
                 raise ValueError('Unidentified covariance type in update_distribution')
             
-            self.cov_action = (1.0 - self.step_size_cov) * self.cov_action +\
+            self.cov_action.data = (1.0 - self.step_size_cov) * self.cov_action.data +\
                 self.step_size_cov * cov_update
             #if(cov_update == 'diag_AxA'):
             #    self.scale_tril = torch.sqrt(self.cov_action)
             # self.scale_tril = torch.cholesky(self.cov_action)
         # print(torch.norm(self.cov_action))
-        self.mean_action = (1.0 - self.step_size_mean) * self.mean_action +\
-            self.step_size_mean * new_mean
+        self.mean_action.data = (1.0 - self.step_size_mean) * self.mean_action.data +\
+            self.step_size_mean * mean_update
 
         
     def _shift(self, shift_steps):
@@ -242,14 +241,11 @@ class MPPI(OLGaussianMPC):
         """
         traj_costs = cost_to_go(costs, self.gamma_seq)
         # if not self.time_based_weights: traj_costs = traj_costs[:,0]
-        traj_costs = traj_costs[:,0]
+        traj_costs = traj_costs[:,:,0]
         #control_costs = self._control_costs(actions)
-
         total_costs = traj_costs #+ self.beta * control_costs
-        
-        
         # #calculate soft-max
-        w = torch.softmax((-1.0/self.beta) * total_costs, dim=0)
+        w = torch.softmax((-1.0/self.beta) * total_costs, dim=1)
         self.total_costs = total_costs
         return w
 

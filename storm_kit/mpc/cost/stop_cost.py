@@ -39,12 +39,12 @@ class StopCost(nn.Module):
         self.horizon = self.traj_dt.shape[0]
         sum_matrix = torch.tril(torch.ones((self.horizon, self.horizon), **self.tensor_args)).T
 
-        if(max_nlimit is not None):
+        if max_nlimit is not None:
             # every timestep max acceleration:
             sum_matrix = torch.tril(torch.ones((self.horizon, self.horizon), **self.tensor_args)).T
             delta_vel = self.traj_dt * max_nlimit
             self.max_vel = ((sum_matrix @ delta_vel).unsqueeze(-1))
-        elif(max_limit is not None):
+        elif max_limit is not None:
             sum_matrix = torch.tril(torch.ones((self.horizon, self.horizon), **self.tensor_args)).T
             delta_vel = torch.ones_like(self.traj_dt) * max_limit
             self.max_vel = ((sum_matrix @ delta_vel).unsqueeze(-1))
@@ -57,8 +57,6 @@ class StopCost(nn.Module):
 
 
         # max velocity threshold:
-        
-
         vel_abs = vel_abs - self.max_vel
         vel_abs[vel_abs < 0.0] = 0.0
         

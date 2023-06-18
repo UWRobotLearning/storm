@@ -22,6 +22,7 @@
 # DEALINGS IN THE SOFTWARE.#
 import torch
 import torch.nn as nn
+from torch.profiler import record_function
 # import torch.nn.functional as F
 from ...geom.sdf.robot_world import RobotWorldCollisionPrimitive
 from .gaussian_projection import GaussianProjection
@@ -37,7 +38,6 @@ class PrimitiveCollisionCost(nn.Module):
         self.proj_gaussian = GaussianProjection(gaussian_params=gaussian_params)
 
         robot_collision_params = robot_params['robot_collision_params']
-        print(robot_collision_params)
         self.batch_size = -1
         # BUILD world and robot:
         self.robot_world_coll = RobotWorldCollisionPrimitive(robot_collision_params,
@@ -49,6 +49,7 @@ class PrimitiveCollisionCost(nn.Module):
         self.n_world_objs = self.robot_world_coll.world_coll.n_objs
         self.t_mat = None
         self.distance_threshold = distance_threshold
+    
     def forward(self, link_pos_seq, link_rot_seq):
 
         
@@ -63,8 +64,9 @@ class PrimitiveCollisionCost(nn.Module):
 
         link_pos_batch = link_pos_seq.view(batch_size * horizon, n_links, 3)
         link_rot_batch = link_rot_seq.view(batch_size * horizon, n_links, 3, 3)
-        dist = self.robot_world_coll.check_robot_sphere_collisions(link_pos_batch,
-                                                                   link_rot_batch)
+        with record_function("primitive_collision_cost:check_sphere_collision"):
+            dist = self.robot_world_coll.check_robot_sphere_collisions(link_pos_batch,
+                                                                    link_rot_batch)
         dist = dist.view(batch_size, horizon, n_links)#, self.n_world_objs)
         # cost only when dist is less
         dist += self.distance_threshold

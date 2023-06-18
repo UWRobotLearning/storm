@@ -32,7 +32,7 @@ from .control_utils import generate_noise, scale_ctrl, generate_gaussian_halton_
 
 
 class SampleLib:
-    def __init__(self, horizon=None, d_action=None, seed=0, mean=None, scale_tril=None,
+    def __init__(self, num_instances=1, horizon=None, d_action=None, seed=0, mean=None, scale_tril=None,
                  covariance_matrix=None,
                  tensor_args={'device': "cpu", 'dtype': torch.float32}, fixed_samples=False,
                  filter_coeffs=None, **kwargs):
@@ -40,6 +40,7 @@ class SampleLib:
         self.tensor_args = tensor_args
         self.horizon = horizon
         self.d_action = d_action
+        self.num_instances = num_instances
         self.seed_val = seed
         self.Z = torch.zeros(self.horizon * self.d_action, **tensor_args)
         self.scale_tril = None
@@ -61,9 +62,9 @@ class SampleLib:
         if self.filter_coeffs is not None:
             beta_0, beta_1, beta_2 = self.filter_coeffs
             # This could be tensorized:
-            for i in range(2, eps.shape[1]):
-                eps[:, i, :] = beta_0 * eps[:, i, :] + beta_1 * \
-                    eps[:, i-1, :] + beta_2 * eps[:, i-2, :]
+            for i in range(2, eps.shape[2]):
+                eps[:, :, i, :] = beta_0 * eps[:, :, i, :] + beta_1 * \
+                    eps[:, :, i-1, :] + beta_2 * eps[:, :, i-2, :]
         return eps
 
     def filter_smooth(self, samples):
@@ -80,9 +81,9 @@ class SampleLib:
 
 
 class HaltonSampleLib(SampleLib):
-    def __init__(self, horizon=0, d_action=0, seed=0, mean=None, scale_tril=None, covariance_matrix=None,
+    def __init__(self, num_instances=1, horizon=0, d_action=0, seed=0, mean=None, scale_tril=None, covariance_matrix=None,
                  tensor_args={'device': "cpu", 'dtype': torch.float32}, fixed_samples=False, filter_coeffs=None, **kwargs):
-        super(HaltonSampleLib, self).__init__(horizon=horizon, d_action=d_action, seed=seed, tensor_args=tensor_args,
+        super(HaltonSampleLib, self).__init__(num_instances=num_instances, horizon=horizon, d_action=d_action, seed=seed, tensor_args=tensor_args,
                                               fixed_samples=fixed_samples, filter_coeffs=filter_coeffs)
 
     def get_samples(self, sample_shape, base_seed=None, filter_smooth=False, **kwargs):
@@ -101,11 +102,13 @@ class HaltonSampleLib(SampleLib):
                                                             float_dtype=self.tensor_args['dtype'])
             self.samples = self.samples.view(
                 self.samples.shape[0], self.horizon, self.d_action)
+            self.samples = self.samples.unsqueeze(0).repeat(self.num_instances, 1, 1, 1)
 
-            if(filter_smooth):
+            if filter_smooth:
                 self.samples = self.filter_smooth(self.samples)
             else:
                 self.samples = self.filter_samples(self.samples)
+        
         return self.samples
 
 

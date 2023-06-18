@@ -74,6 +74,7 @@ class ControlProcess(object):
         self.controller = controller
         self.control_dt = control_dt
         self.prev_mpc_tstep = 0.0
+
     def predict_next_state(self, t_step, curr_state):
         # predict next state
         # given current t_step, integrate to t_step+mpc_dt
@@ -82,10 +83,11 @@ class ControlProcess(object):
 
         # integrate from t1->t2
         for i in range(t1_idx, t2_idx):
-            command = self.command[0][i]
+            command = self.command[0][:,i]
             curr_state = self.controller.rollout_fn.dynamics_model.get_next_state(curr_state, command, self.mpc_dt)
     
         return curr_state
+    
     def get_command_debug(self, t_step, curr_state, debug=False, control_dt=0.01):
         """ This function runs the controller in the same process and waits for optimization to  complete before return of a new command
         Args:
@@ -94,13 +96,16 @@ class ControlProcess(object):
         debug: flag to enable debug commands [not implemented]
         control_dt: dt to integrate command to acceleration space from a higher order space(jerk, snap). 
         """
+        if curr_state.ndim == 1:
+            curr_state = np.expand_dims(curr_state, 0)
+
         if(self.command is not None):
             curr_state = self.predict_next_state(t_step, curr_state)
 
-        current_state = np.append(curr_state, t_step + self.mpc_dt)
+        current_state = np.append(curr_state, np.array([[t_step + self.mpc_dt]]), axis=-1)
         shift_steps = find_first_idx(self.command_tstep, t_step + self.mpc_dt)
         
-        state_tensor = torch.as_tensor(current_state,**self.controller.tensor_args).unsqueeze(0)
+        state_tensor = torch.as_tensor(current_state,**self.controller.tensor_args)
 
 
         mpc_time = time.time()
@@ -108,20 +113,19 @@ class ControlProcess(object):
         mpc_time = time.time() - mpc_time
         command[0] = command[0].cpu().numpy()
         self.command_tstep = self.traj_tstep + t_step
-        
         self.opt_dt = mpc_time
         self.mpc_dt = t_step - self.prev_mpc_tstep
         self.prev_mpc_tstep = copy.deepcopy(t_step)
         
         # get command data:
-        self.top_idx = self.controller.top_idx
-        self.top_values = self.controller.top_values
-        self.top_trajs = self.controller.top_trajs
+        # self.top_idx = self.controller.top_idx
+        # self.top_values = self.controller.top_values
+        # self.top_trajs = self.controller.top_trajs
         self.command = command
-
         command_buffer, command_tstep_buffer = self.truncate_command(self.command[0], t_step, self.command_tstep)
         
-        act = self.controller.rollout_fn.dynamics_model.integrate_action_step(command_buffer[0], self.control_dt)
+        act = self.controller.rollout_fn.dynamics_model.integrate_action_step(command_buffer[:, 0], self.control_dt)
+
         return act, command_tstep_buffer, self.command[1], command_buffer
 
     def get_command(self, t_step, curr_state, debug=False, control_dt=0.01):
@@ -173,7 +177,6 @@ class ControlProcess(object):
 
         command_buffer, command_tstep_buffer = self.truncate_command(self.command[0], t_step, self.command_tstep)
         
-        #print(command_buffer.shape)
         act = self.controller.rollout_fn.dynamics_model.integrate_action_step(command_buffer[0], self.control_dt)
         return act, command_tstep_buffer, self.command[1], command_buffer
     
@@ -182,8 +185,7 @@ class ControlProcess(object):
         f_idx = find_first_idx(command_tstep, trunc_tstep) #- 1
         if(f_idx == -1):
             f_idx = 0
-        #print(f_idx)
-        return command[f_idx:], command_tstep[f_idx:]
+        return command[:,f_idx:], command_tstep[f_idx:]
 
     def update_params(self, **kwargs):
         

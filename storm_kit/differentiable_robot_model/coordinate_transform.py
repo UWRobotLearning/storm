@@ -36,8 +36,8 @@
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
-# in the Software without restriction, including without limitation the rights
-# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# in the Software without restriction, inclu        #new_point = transform_point(point, self._rot, self._trans)
+# ribute, sublicense, and/or sell
 # copies of the Software, and to permit persons to whom the Software is
 # furnished to do so, subject to the following conditions:
 #
@@ -55,11 +55,14 @@
 # Copyright (c) Facebook, Inc. and its affiliates.
 import torch
 import math
+from typing import Tuple, Optional, Dict
+
 
 #import utils
 from .utils import vector3_to_skew_symm_matrix
 
-def _copysign(a, b):
+@torch.jit.script
+def _copysign(a: torch.Tensor, b: torch.Tensor):
     """
     Return a tensor where each element has the absolute value taken from the,
     corresponding element of a, with sign taken from the corresponding
@@ -76,8 +79,9 @@ def _copysign(a, b):
     signs_differ = (a < 0) != (b < 0)
     return torch.where(signs_differ, -a, a)
 
+@torch.jit.script
 def _angle_from_tan(
-    axis: str, other_axis: str, data, horizontal: bool, tait_bryan: bool
+    axis: str, other_axis: str, data: torch.Tensor, horizontal: bool, tait_bryan: bool
 ):
     """
     Extract the first or third Euler angle from the two members of
@@ -108,7 +112,7 @@ def _angle_from_tan(
         return torch.atan2(-data[..., i2], data[..., i1])
     return torch.atan2(data[..., i2], -data[..., i1])
 
-def _index_from_letter(letter: str):
+def _index_from_letter(letter: str)-> int:
     if letter == "X":
         return 0
     if letter == "Y":
@@ -158,7 +162,8 @@ def _index_from_letter(letter: str):
 #     )
 #     return torch.stack(o, -1)
 
-def matrix_to_euler_angles(R, cy_thresh=1e-6):
+@torch.jit.script
+def matrix_to_euler_angles(R: torch.Tensor, cy_thresh: float = 1e-6):
     # if cy_thresh is None:
     #     try:
     #         cy_thresh = np.finfo(M.dtype).eps * 4
@@ -204,7 +209,8 @@ def matrix_to_euler_angles(R, cy_thresh=1e-6):
     # return z, y, x
     return torch.cat([x, y, z], dim=-1)
 
-def matrix_to_quaternion(matrix):
+@torch.jit.script
+def matrix_to_quaternion(matrix: torch.Tensor):
     """
     Convert rotations given as rotation matrices to quaternions.
 
@@ -229,8 +235,8 @@ def matrix_to_quaternion(matrix):
     o3 = _copysign(z, matrix[..., 1, 0] - matrix[..., 0, 1])
     return torch.stack((o0, o1, o2, o3), -1)
 
-
-def quaternion_to_matrix(quaternions):
+@torch.jit.script
+def quaternion_to_matrix(quaternions: torch.Tensor):
     """
     Convert rotations given as quaternions to rotation matrices.
 
@@ -260,7 +266,8 @@ def quaternion_to_matrix(quaternions):
     )
     return o.reshape(quaternions.shape[:-1] + (3, 3))
 
-def rotation_matrix_to_quaternion(rotation_matrix, eps=1e-6):
+@torch.jit.script
+def rotation_matrix_to_quaternion(rotation_matrix: torch.Tensor, eps: float=1e-6):
     """Convert 3x4 rotation matrix to 4d quaternion vector
 
     This algorithm is based on algorithm described in
@@ -280,9 +287,10 @@ def rotation_matrix_to_quaternion(rotation_matrix, eps=1e-6):
         >>> input = torch.rand(4, 3, 4)  # Nx3x4
         >>> output = tgm.rotation_matrix_to_quaternion(input)  # Nx4
     """
-    if not torch.is_tensor(rotation_matrix):
-        raise TypeError("Input type is not a torch.Tensor. Got {}".format(
-            type(rotation_matrix)))
+    # if not torch.is_tensor(rotation_matrix):
+    #     print(rotation_matrix)
+    #     raise TypeError("Input type is not a torch.Tensor. Got {}".format(
+    #         type(rotation_matrix)))
 
     if len(rotation_matrix.shape) > 3:
         raise ValueError(
@@ -339,7 +347,8 @@ def rotation_matrix_to_quaternion(rotation_matrix, eps=1e-6):
     q *= 0.5
     return q
 
-def x_rot(angle):
+@torch.jit.script
+def x_rot(angle: torch.Tensor):
     #  if len(angle.shape) == 0:
     # angle = angle.unsqueeze(0)
     # print("x_rot", angle.shape)
@@ -353,8 +362,8 @@ def x_rot(angle):
     R[:, 2, 2] = torch.cos(angle)
     return R
 
-
-def y_rot(angle):
+@torch.jit.script
+def y_rot(angle: torch.Tensor):
     #  if len(angle.shape) == 0:
     # angle = angle.unsqueeze(0)
 
@@ -370,8 +379,8 @@ def y_rot(angle):
     R[:, 2, 2] = torch.cos(angle)
     return R
 
-
-def z_rot(angle):
+@torch.jit.script
+def z_rot(angle: torch.Tensor):
     #  if len(angle.shape) == 0:
     # angle = angle.unsqueeze(0)
     # print("z_rot", angle.shape)
@@ -387,7 +396,8 @@ def z_rot(angle):
     R[:, 2, 2] = torch.ones(batch_size, device=angle.device, dtype=angle.dtype)
     return R
 
-def rpy_angles_to_matrix(euler_angles):
+@torch.jit.script
+def rpy_angles_to_matrix(euler_angles: torch.Tensor):
     """
     Convert rotations given as RPY euler angles in radians to rotation matrices.
 
@@ -404,80 +414,149 @@ def rpy_angles_to_matrix(euler_angles):
 
     return matrices
 
+@torch.jit.script   
+def multiply_transform(w_rot_l: torch.Tensor, w_trans_l: torch.Tensor, l_rot_c: torch.Tensor, l_trans_c: torch.Tensor)-> Tuple[torch.Tensor, torch.Tensor]:
+    w_rot_c = w_rot_l @ l_rot_c    
+    w_trans_c = (w_rot_l @ l_trans_c.unsqueeze(-1)).squeeze(-1) + w_trans_l
+    return w_rot_c, w_trans_c
 
-class CoordinateTransform(object):
-    def __init__(self, rot=None, trans=None, tensor_args={'device':"cpu", 'dtype':torch.float32}, pose=None):
+@torch.jit.script   
+def multiply_inv_transform(l_rot_w: torch.Tensor, l_trans_w: torch.Tensor, l_rot_c: torch.Tensor, l_trans_c: torch.Tensor)-> Tuple[torch.Tensor, torch.Tensor]:
+    w_rot_l = l_rot_w.transpose(-1,-2)
+    w_rot_c = w_rot_l @ l_rot_c
 
+
+    w_trans_l = -(w_rot_l @ l_trans_w.unsqueeze(2)).squeeze(2)
+    w_trans_c = (w_rot_l @ l_trans_c.unsqueeze(-1)).squeeze(-1) + w_trans_l
+
+    return w_rot_c, w_trans_c
+
+
+@torch.jit.script
+def transform_point(point: torch.Tensor, rot: torch.Tensor, trans: torch.Tensor)->torch.Tensor:
+    #new_point = (rot @ (point).unsqueeze(-1)).squeeze(-1) + trans
+    new_point = (point @ rot.transpose(-1,-2)) + trans
+    return new_point
+
+
+@torch.jit.script
+class CoordinateTransform(object):   
+    rot: torch.Tensor
+    trans: torch.Tensor
+
+    def __init__(self, 
+                rot: Optional[torch.Tensor]=None, 
+                trans: Optional[torch.Tensor]=None, 
+                pose: Optional[torch.Tensor]=None,
+                device: torch.device=torch.device("cpu")):
+                # dtype: torch.dtype=torch.float32):
+
+
+        self.device = device
+        # self.dtype = dtype
+        # self.float_dtype = tensor_args['float_dtype']
+        # self.tensor_args = tensor_args
+
+        self._rot = torch.eye(3, device=self.device).unsqueeze(0) #.to(device)
         
-        self.tensor_args = tensor_args
-        
-        if rot is None:
-            self._rot = torch.eye(3, **tensor_args).unsqueeze(0) #.to(device)
-        else:
-            self._rot = rot.to(**tensor_args)
+        # if rot is None:
+            # self._rot = torch.eye(3, device=self.device).unsqueeze(0) #.to(device)
+        if rot is not None:
+            # self._rot = torch.tensor(rot, device=self.device) #.to(device=self.device)
+            self._rot = rot
         #if len(self._rot.shape) == 2:
         #    self._rot = self._rot.unsqueeze(0)
 
-        if trans is None:
-            self._trans = torch.zeros(1, 3, **tensor_args) #.to(device)
-        else:
-            self._trans = trans.to(**tensor_args)
+        self._trans = torch.zeros((1, 3), device=self.device) #.to(device)
+
+        # if trans is None:
+        #     self._trans = torch.zeros(1, 3, device=self.device) #.to(device)
+        if trans is not None:
+            # self._trans = torch.tensor(trans, device=self.device) #to(device=self.device)
+            self._trans = trans
+
         if len(self._trans.shape) == 1:
             self._trans = self._trans.unsqueeze(0)
 
-        if(pose is not None):
+        if pose is not None:
             self.set_pose(pose)
-    def set_pose(self, pose):
+            
+    def set_pose(self, pose:torch.Tensor) -> None:
         """
         Args:
         pose: x, y, z, qw, qx, qy, qz
         """
         
-        self._trans[0,:] = torch.as_tensor(pose[:3], **self.tensor_args)
-        self._rot = quaternion_to_matrix(torch.as_tensor(pose[3:]).unsqueeze(0)).to(**self.tensor_args)
+        self._trans[0,:] = torch.as_tensor(pose[:3], device=self.device)
+        self._rot = quaternion_to_matrix(torch.as_tensor(pose[3:]).unsqueeze(0)).to(device=self.device)
         
-    def set_translation(self, t):
-        self._trans = t.to(**self.tensor_args)
+    def set_translation(self, t:torch.Tensor)->None:
+        self._trans = torch.as_tensor(t, device=self.device)
         #if len(self._trans.shape) == 1:
         #    self._trans = self._trans.unsqueeze(0)
         return
 
-    def set_rotation(self, rot):
-        self._rot = rot.to(**self.tensor_args)
+    def set_rotation(self, rot: torch.Tensor)->None:
+        self._rot = rot.to(device=self.device)
         #if len(self._rot.shape) == 2:
         #    self._rot = self._rot.unsqueeze(0)
         return
 
-    def rotation(self):
+    def rotation(self) -> torch.Tensor:
         return self._rot
 
-    def translation(self):
+    def translation(self) -> torch.Tensor:
         return self._trans
 
     def inverse(self):
         rot_transpose = self._rot.transpose(-2, -1)
-        return CoordinateTransform(rot_transpose, -(rot_transpose @ self._trans.unsqueeze(2)).squeeze(2), tensor_args=self.tensor_args)
+        return CoordinateTransform(
+            rot=rot_transpose, 
+            trans=-(rot_transpose @ self._trans.unsqueeze(2)).squeeze(2), 
+            pose=None,
+            device=self.device)
 
-    def multiply_transform(self, coordinate_transform):
-        new_rot, new_trans = multiply_transform(self._rot, self._trans, coordinate_transform.rotation(), coordinate_transform.translation())
+    # def multiply_transform(self, coordinate_transform: torch.Tensor):
+    #     new_rot, new_trans = multiply_transform(self._rot, self._trans, coordinate_transform.rotation(), coordinate_transform.translation())
+    #     #new_rot = self._rot @ coordinate_transform.rotation()
+    #     #new_trans = (self._rot @ coordinate_transform.translation().unsqueeze(-1)).squeeze(-1) + self._trans
+    #     return CoordinateTransform(new_rot, new_trans, device=self.device, dtype=self.dtype, pose=None)
+
+    # def multiply_inv_transform(self, coordinate_transform):
+    #     new_rot, new_trans = multiply_inv_transform(coordinate_transform.rotation(), coordinate_transform.translation(), self._rot, self._trans)
+    #     #new_rot = self._rot @ coordinate_transform.rotation()
+    #     #new_trans = (self._rot @ coordinate_transform.translation().unsqueeze(-1)).squeeze(-1) + self._trans
+    #     return CoordinateTransform(new_rot, new_trans, device=self.device, dtype=self.dtype, pose=None)
+
+    def multiply_transform(self, input_trans:torch.Tensor, input_rot: torch.Tensor):
+        new_rot, new_trans = multiply_transform(self._rot, self._trans, input_rot, input_trans)
         #new_rot = self._rot @ coordinate_transform.rotation()
         #new_trans = (self._rot @ coordinate_transform.translation().unsqueeze(-1)).squeeze(-1) + self._trans
-        return CoordinateTransform(new_rot, new_trans, tensor_args=self.tensor_args)
+        return CoordinateTransform(
+            rot=new_rot, 
+            trans=new_trans,
+            pose=None, 
+            device=self.device)
 
-    def multiply_inv_transform(self, coordinate_transform):
-        new_rot, new_trans = multiply_inv_transform(coordinate_transform.rotation(), coordinate_transform.translation(), self._rot, self._trans)
+    def multiply_inv_transform(self, input_trans:torch.Tensor, input_rot:torch.Tensor):
+        new_rot, new_trans = multiply_inv_transform(input_rot, input_trans, self._rot, self._trans)
         #new_rot = self._rot @ coordinate_transform.rotation()
         #new_trans = (self._rot @ coordinate_transform.translation().unsqueeze(-1)).squeeze(-1) + self._trans
-        return CoordinateTransform(new_rot, new_trans, tensor_args=self.tensor_args)
-    
+        return CoordinateTransform(
+            rot=new_rot, 
+            trans=new_trans,
+            pose=None, 
+            device=self.device)
+
     def trans_cross_rot(self):
         return vector3_to_skew_symm_matrix(self._trans) @ self._rot
 
-    def get_transform_matrix(self):
-        mat = torch.eye(4, **self.tensor_args)
+    def get_transform_matrix(self) -> torch.Tensor:
+        mat = torch.eye(4, device=self.device) #, dtype=self.dtype)
         mat[:3,:3] = self._rot
         mat[:3,3] = self._trans
         return mat
+    
     def get_quaternion(self):
         batch_size = self._rot.shape[0]
         M = torch.zeros((batch_size, 4, 4)).to(self._rot.device)
@@ -508,47 +587,15 @@ class CoordinateTransform(object):
             q[n, :] *= 0.5 / math.sqrt(tn * M[n, 3, 3])
         return q
 
-    def transform_point(self, point):
+    def transform_point(self, point: torch.Tensor)->torch.Tensor:
         #if(len(point.shape) == 1):
         #    point = point.unsqueeze(-1)
         #new_point = transform_point(point, self._rot, self._trans)
         #new_point = point @ self._rot.transpose(-1,-2) + self._trans
-        new_point = (self._rot @ (point).unsqueeze(-1)).squeeze(-1) + self._trans
+        # new_point = (self._rot @ (point).unsqueeze(-1)).squeeze(-1) + self._trans
+        new_point = transform_point(point, self._rot, self._trans)
         return new_point
 
 
 
-@torch.jit.script   
-def multiply_transform(w_rot_l, w_trans_l, l_rot_c, l_trans_c):
-    # type: (Tensor, Tensor, Tensor, Tensor) -> Tuple[Tensor, Tensor]
-    #print(l_rot_c.shape, w_rot_l.shape)
-    w_rot_c = w_rot_l @ l_rot_c
-    
-    w_trans_c = (w_rot_l @ l_trans_c.unsqueeze(-1)).squeeze(-1) + w_trans_l
-    
-    #w_trans_c = (l_trans_c @ w_rot_l.transpose(-1,-2)) + w_trans_l
-    #print(w_trans_c - w_trans_l, l_trans_c)
-    return w_rot_c, w_trans_c
 
-@torch.jit.script   
-def multiply_inv_transform(l_rot_w, l_trans_w, l_rot_c, l_trans_c):
-    # type: (Tensor, Tensor, Tensor, Tensor) -> Tuple[Tensor, Tensor]
-    w_rot_l = l_rot_w.transpose(-1,-2)
-    w_rot_c = w_rot_l @ l_rot_c
-
-
-    w_trans_l = -(w_rot_l @ l_trans_w.unsqueeze(2)).squeeze(2)
-    w_trans_c = (w_rot_l @ l_trans_c.unsqueeze(-1)).squeeze(-1) + w_trans_l
-    
-    #w_trans_c = (l_trans_c @ w_rot_l.transpose(-1,-2)) + w_trans_l
-    #print(w_trans_c - w_trans_l, l_trans_c)
-    return w_rot_c, w_trans_c
-
-
-@torch.jit.script
-def transform_point(point, rot, trans):
-    # type: (Tensor, Tensor, Tensor) -> Tensor
-
-    #new_point = (rot @ (point).unsqueeze(-1)).squeeze(-1) + trans
-    new_point = (point @ rot.transpose(-1,-2)) + trans
-    return new_point

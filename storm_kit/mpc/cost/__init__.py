@@ -30,16 +30,12 @@ from .projected_dist_cost import ProjectedDistCost
 from .null_costs import get_inv_null_cost, get_transpose_null_cost
 from .zero_cost import ZeroCost
 from .ee_vel_cost import EEVelCost
+from .manipulability_cost import ManipulabilityCost
 
 from .collision_cost import CollisionCost
 from .primitive_collision_cost import PrimitiveCollisionCost
 from .voxel_collision_cost import VoxelCollisionCost
 
-try:
-    True
-    #from .scene_nn_collision_cost import SceneNNCollisionCost
-except ImportError:
-    pass
 
-__all__ = ['DistCost', 'FiniteDifferenceCost', 'JacobianCost', 'PoseCost', 'ProjectedDistCost', \
-           'ZeroCost', 'get_inv_null_cost','get_transpose_null_cost']
+__all__ = ['DistCost', 'FiniteDifferenceCost', 'JacobianCost', 'PoseCost', 'PoseCostQuaternion', 'ProjectedDistCost', \
+           'ZeroCost', 'ManipulabilityCost', 'get_inv_null_cost','get_transpose_null_cost']

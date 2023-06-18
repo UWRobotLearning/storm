@@ -76,8 +76,8 @@ model:
 cost:
   goal_pose:
     vec_weight: [1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
-    # weight: [10.0, 30.0]
-    weight: [10.0, 20.0]
+    weight: [10.0, 100.0]
+    # weight: [10.0, 20.0]
     position_gaussian_params: {'n':0, 'c':0.0, 's':0.0, 'r':10.0}
     orientation_gaussian_params: {'n':0, 'c':0.0, 's':0.0, 'r':10.0}
     hinge_val: -1
@@ -171,7 +171,7 @@ mppi:
   beta              : 0.1 #1.0
   alpha             : 1
   num_particles     : 1000 #10000
-  update_cov        : True
+  update_cov        : False
   cov_type          : 'diag_AxA' # 
   kappa             : 0.001
   null_act_frac     : 0.01
@@ -180,6 +180,7 @@ mppi:
   squash_fn         : 'clamp'
   hotstart          : True
   visual_traj       : 'ee_pos_seq'
+  num_instances     : 1
   sample_params:
     type: 'multiple'
     fixed_samples: True

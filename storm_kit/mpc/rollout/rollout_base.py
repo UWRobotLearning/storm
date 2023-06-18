@@ -27,12 +27,22 @@
 class RolloutBase:
     def __init__(self):
         pass
-    def cost_fn(self, state, act):
+
+    def compute_cost(self, state_dict, act_batch):
         pass
-    def rollout_fn(self, state, act):
+
+    def compute_observations(self, state_dict, act_batch):
         pass
+
+    def compute_termination(self, state_dict, act_batch):
+        pass
+    
+    def rollout_fn(self, state_dict, act_batch):
+        pass
+    
     def current_cost(self, current_state):
         pass
+    
     def update_params(self):
         pass
 

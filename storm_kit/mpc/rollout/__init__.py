@@ -23,3 +23,9 @@
 """
 This folder contains rollout functions for common robot tasks. Each rollout function consists of a forward dynamics function and a cost function.
 """
+
+from .arm_base import ArmBase
+from .arm_reacher import ArmReacher
+
+
+

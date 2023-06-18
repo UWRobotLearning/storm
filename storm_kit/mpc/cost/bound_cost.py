@@ -39,13 +39,16 @@ class BoundCost(nn.Module):
         self.bound_thresh = bound_thresh * self.bnd_range
         self.bounds[:,1] -= self.bound_thresh
         self.bounds[:,0] += self.bound_thresh
+    
     def forward(self, state_batch):
         inp_device = state_batch.device
 
         bound_mask = torch.logical_and(state_batch < self.bounds[:,1],
                                        state_batch > self.bounds[:,0])
 
-        cost = torch.minimum(torch.square(state_batch - self.bounds[:,0]),torch.square(self.bounds[:,1] - state_batch))
+        cost = torch.minimum(
+            torch.square(state_batch - self.bounds[:,0]), 
+            torch.square(self.bounds[:,1] - state_batch))
         
         cost[bound_mask] = 0.0
 

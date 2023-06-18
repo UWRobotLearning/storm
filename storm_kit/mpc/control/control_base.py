@@ -21,15 +21,15 @@
 # LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
 # FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 # DEALINGS IN THE SOFTWARE.#
-from abc import ABC, abstractmethod
+from abc import abstractmethod
 import copy
 
 import numpy as np
 import torch
-import torch.autograd.profiler as profiler
+import torch.nn as nn
+from torch.profiler import record_function
 
-
-class Controller(ABC):
+class Controller(nn.Module):
     """Base class for sampling based controllers."""
 
     def __init__(self,
@@ -42,6 +42,7 @@ class Controller(ABC):
                  rollout_fn=None,
                  sample_mode='mean',
                  hotstart=True,
+                 num_instances=1,
                  seed=0,
                  tensor_args={'device':torch.device('cpu'), 'dtype':torch.float32}):
         """
@@ -84,10 +85,11 @@ class Controller(ABC):
         float_dtype: torch.dtype
             floating point precision for calculations
         """
+        super().__init__()
         self.tensor_args = tensor_args
         self.d_action = d_action
-        self.action_lows = action_lows.to(**self.tensor_args)
-        self.action_highs = action_highs.to(**self.tensor_args)
+        self.action_lows = torch.as_tensor(action_lows).to(**self.tensor_args)
+        self.action_highs = torch.as_tensor(action_highs).to(**self.tensor_args)
         self.horizon = horizon
         self.gamma = gamma
         self.n_iters = n_iters
@@ -97,6 +99,7 @@ class Controller(ABC):
         self.sample_mode = sample_mode
         self.num_steps = 0
         self.hotstart = hotstart
+        self.num_instances = num_instances
         self.seed_val = seed
         self.trajectories = None
         
@@ -113,7 +116,6 @@ class Controller(ABC):
                 'sample' samples from the distribution
         """        
         pass
-
 
     def sample_actions(self):
         """
@@ -202,6 +204,10 @@ class Controller(ABC):
     def generate_rollouts(self, state):
         pass
 
+    def forward(self, state, calc_val=False, shift_steps=1, n_iters=None):
+        return self.optimize(state, calc_val, shift_steps, n_iters)
+
+
     def optimize(self, state, calc_val=False, shift_steps=1, n_iters=None):
         """
         Optimize for best action at current state
@@ -229,12 +235,16 @@ class Controller(ABC):
         # get input device:
         inp_device = state.device
         inp_dtype = state.dtype
-        state.to(**self.tensor_args)
+        # if state.ndim == 2:
+        #     state = state.unsqueeze(0).repeat(self.num_instances, 1, 1)
+        
+        state = state.to(**self.tensor_args)
 
         info = dict(rollout_time=0.0, entropy=[])
         # shift distribution to hotstart from previous timestep
         if self.hotstart:
-            self._shift(shift_steps)
+            with record_function('mpc:hotstart'):
+                self._shift(shift_steps)
         else:
             self.reset_distribution()
             
@@ -243,10 +253,11 @@ class Controller(ABC):
             with torch.no_grad():
                 for _ in range(n_iters):
                     # generate random simulated trajectories
-                    trajectory = self.generate_rollouts(state)
+                    with record_function('mpc:generate_rollouts'):
+                        trajectory = self.generate_rollouts(state)
 
                     # update distribution parameters
-                    with profiler.record_function("mppi_update"):
+                    with record_function("mpc:update_distribution"):
                         self._update_distribution(trajectory)
                     info['rollout_time'] += trajectory['rollout_time']
 
@@ -256,7 +267,8 @@ class Controller(ABC):
         self.trajectories = trajectory
         #calculate best action
         # curr_action = self._get_next_action(state, mode=self.sample_mode)
-        curr_action_seq = self._get_action_seq(mode=self.sample_mode)
+        with record_function('mpc:get_action_seq'):
+            curr_action_seq = self._get_action_seq(mode=self.sample_mode)
         #calculate optimal value estimate if required
         value = 0.0
         if calc_val:

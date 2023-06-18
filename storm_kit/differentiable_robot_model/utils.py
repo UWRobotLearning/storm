@@ -67,6 +67,23 @@ from functools import reduce
 prod = lambda l: reduce(operator.mul, l, 1)
 torch.set_default_tensor_type(torch.DoubleTensor)
 
+@torch.jit.script
+def convert_into_pytorch_tensor(variable):
+    if isinstance(variable, torch.Tensor):
+        return variable
+    elif isinstance(variable, np.ndarray):
+        return torch.Tensor(variable)
+    else:
+        return torch.Tensor(variable)
+
+@torch.jit.script
+def convert_into_at_least_2d_pytorch_tensor(variable):
+    tensor_var = convert_into_pytorch_tensor(variable)
+    if len(tensor_var.shape) == 1:
+        return tensor_var.unsqueeze(0)
+    else:
+        return tensor_var
+
 def cross_product(vec3a, vec3b):
     vec3a = convert_into_at_least_2d_pytorch_tensor(vec3a)
     vec3b = convert_into_at_least_2d_pytorch_tensor(vec3b)
@@ -85,8 +102,8 @@ def bfill_diagonal(A: torch.Tensor, vec: torch.Tensor):
     A[..., ii, jj] = vec
     return A
 
-
-def vector3_to_skew_symm_matrix(vec3):
+@torch.jit.script
+def vector3_to_skew_symm_matrix(vec3: torch.Tensor)->torch.Tensor:
     vec3 = convert_into_at_least_2d_pytorch_tensor(vec3)
     batch_size = vec3.shape[0]
     skew_symm_mat = vec3.new_zeros((batch_size, 3, 3))
@@ -98,8 +115,8 @@ def vector3_to_skew_symm_matrix(vec3):
     skew_symm_mat[:, 2, 1] = vec3[:, 0]
     return skew_symm_mat
 
-
-def torch_square(x):
+@torch.jit.script
+def torch_square(x: torch.Tensor)->torch.Tensor:
     return x * x
 
 
@@ -115,20 +132,4 @@ def exp_map_so3(omega, epsilon=1.0e-14):
     return exp_omegahat
 
 
-
-def convert_into_pytorch_tensor(variable):
-    if isinstance(variable, torch.Tensor):
-        return variable
-    elif isinstance(variable, np.ndarray):
-        return torch.Tensor(variable)
-    else:
-        return torch.Tensor(variable)
-
-
-def convert_into_at_least_2d_pytorch_tensor(variable):
-    tensor_var = convert_into_pytorch_tensor(variable)
-    if len(tensor_var.shape) == 1:
-        return tensor_var.unsqueeze(0)
-    else:
-        return tensor_var
 
