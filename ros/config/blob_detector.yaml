@@ -6,16 +6,21 @@ publish_freq: 60
 cam_publish_freq: 60
 topic_publishing: "object_pose"
 # blob_frame_id: "object"
-frame_id_base: ["object"]
-detection_mode: "largest" #only largest blob will be published
-num_largest_detections: 1
+frame_id_base: "object"
 # input_is_rectified: True   # Whether the input image is rectified (strongly suggested!)
 # downscale_height: 400      # if the input image is larger than this, scale it down to this pixel height
 
 detector_params:
-  h_nominal: [85.0] #green
-  # hsv_thresh: [[10, 30, 10]] #green
-  hsv_thresh: [[10, 20, 10]] #green
+  num_largest_detections: 1
+  # h_nominal: 85.0 #green
+  # # hsv_thresh: [[10, 30, 10]] #green
+  # hsv_thresh: [10, 20, 10] #green
+  # lower: [86, 31, 4]
+  # upper: [220, 88, 50]
+
+  # lower: [202,95,36]
+  lower: [15, 95, 36]
+  upper: [35, 255, 255]
 
   # h_nominal: 25 #30 #10 #blue_tape is 10
   # hsv_thresh: [10, 20, 50] #blue
@@ -49,7 +54,7 @@ detector_params:
   maxArea: 5000
 
   # Filter by Circularity
-  filterByCircularity: False
+  filterByCircularity: True
   minCircularity: 0.6
   maxCircularity: 1.0
 
@@ -62,5 +67,5 @@ detector_params:
   minInertiaRatio: 0.8 #0.01
   maxInertiaRatio: 1.0
 
-  alpha_smooth: 0.75
-  state_filter_coeff: {'position': 0.3, 'velocity': 0.05, 'acceleration': 0.0}
+  # alpha_smooth: 0.75
+  # state_filter_coeff: {'position': 0.3, 'velocity': 0.05, 'acceleration': 0.0}

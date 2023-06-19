@@ -1,5 +1,5 @@
 <launch>
-  <arg name="config" default="$(find storm_ros)/configg/blob_detector.yaml" doc="Path to parameter config file"/>
+  <arg name="config" default="$(find storm_ros)/config/blob_detector.yaml" doc="Path to parameter config file"/>
   <!-- <param name="panda_tray" textfile="$(find franka_mpc_utils)/content/assets/franka_panda_description/robots/panda_arm_tray.urdf"/> -->
   <!-- <param name="panda_tray" textfile="/home/mohak/workspace/storm_rl/content/assets/urdfs/panda/panda_arm_tray_robot.urdf"/> -->
   <!-- <include file="$(find franka_mpc_utils)/launch/static_transform_publisher_panda_2.launch" pass_all_args="true"/> -->

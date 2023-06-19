@@ -1,3 +1,5 @@
+#!/usr/bin/env python
+
 from curses import raw
 import rospy
 import cv2
@@ -12,8 +14,9 @@ from cv_bridge import CvBridge
 from geometry_msgs.msg import Pose, PoseStamped, PoseArray, TransformStamped, Twist
 from sensor_msgs.msg import CameraInfo, Image as ImageSensor_msg
 
+from blob_detector import BlobDetector
 
-class BlobDetector():
+class BlobDetectorNode():
     def __init__(
             self,
     ):
@@ -23,6 +26,23 @@ class BlobDetector():
         self.rate = rospy.Rate(self.publish_freq)
         self.camera_freq = rospy.get_param('~cam_publish_freq', 30)
         self.cam_dt = float(1.0 / self.camera_freq)
+
+        self.detector_params = rospy.get_param('~detector_params')
+        
+        self.image_msg = None
+        self.img = None
+        self.camera_info = None
+        self.depth_image_msg = None
+        self.depth_image = None
+        self.new_image_received = False
+        
+        self.tstep = 0
+        self.start_t = 0
+
+        self.detector = BlobDetector(
+            **self.detector_params
+        )
+
         self.pub_detection = \
             rospy.Publisher(
                 '~detected_img',
@@ -92,8 +112,32 @@ class BlobDetector():
     def publish_loop(self):
         
         while not rospy.is_shutdown():
-            pass
-    
+            try:
+                if self.img is not None and self.depth_image is not None and self.camera_info is not None:
+                    detections, im_with_keypoints, masked_im = self.detector.get_detections(
+                        self.img, self.depth_image, self.camera_info)
+
+                    print(detections)
+
+                    im_with_keypoints_msg = self.cv_bridge.cv2_to_imgmsg(im_with_keypoints, encoding="passthrough")
+                    im_with_keypoints_msg.header = self.image_msg.header
+                    im_with_keypoints_msg.header.stamp = rospy.Time.now() 
+                    # im_with_keypoints_msg.header.frame_id =  self.image_msg.header.frame_id
+                    self.pub_detection.publish(im_with_keypoints_msg)
+                    self.pub_mask.publish(self.cv_bridge.cv2_to_imgmsg(masked_im, encoding="passthrough"))
+                    self.pub_camera_info.publish(self.camera_info)
+
+                    self.new_image_received = False
+
+                if self.tstep == 0:
+                    self.start_t = rospy.get_time()
+                self.tstep = rospy.get_time() - self.start_t
+                self.rate.sleep()
+
+            except rospy.exceptions.ROSTimeMovedBackwardsException:
+                print('time moved backwards')
+                continue
+
 
     def close(self):
         print('Closing node')
@@ -108,7 +152,7 @@ def main():
 
     # Initialize ROS node
     rospy.init_node('blob_detector')
-    node = BlobDetector()
+    node = BlobDetectorNode()
 
     rospy.loginfo("Running Blob Detector...  (Listening to camera topic: '{}')".format(
         rospy.get_param('~topic_camera')))
