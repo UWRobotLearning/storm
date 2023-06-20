@@ -9,7 +9,7 @@ from storm_kit.mpc.cost import PoseCostQuaternion
 from storm_kit.mpc.rollout import ArmReacher
 from storm_kit.differentiable_robot_model.coordinate_transform import quaternion_to_matrix, matrix_to_quaternion, rpy_angles_to_matrix
 
-class FrankaReacher(FrankaEnv):
+class FrankaPusher(FrankaEnv):
     def __init__(self, cfg, rl_device, sim_device, graphics_device_id, headless, virtual_screen_capture, force_render):
         cfg['rollout']['num_instances'] = cfg['env']['numEnvs']
         cfg['rollout']['horizon'] = 1
@@ -30,6 +30,8 @@ class FrankaReacher(FrankaEnv):
         cfg["env"]["numActions"] = num_acts
 
         super().__init__(cfg, rl_device, sim_device, graphics_device_id, headless, virtual_screen_capture, force_render)
+        print(self.ball_state)
+        exit()
 
         #TODO: Add world definition as well
 
@@ -47,12 +49,95 @@ class FrankaReacher(FrankaEnv):
         )
     
     def _create_envs(self, num_envs, spacing, num_per_row):
-        super()._create_envs(num_envs, spacing, num_per_row)
-        self.target_poses = []
+        lower = gymapi.Vec3(-spacing, -spacing, 0.0)
+        upper = gymapi.Vec3(spacing, spacing, spacing)
+
+        franka_asset, franka_dof_props = self.load_franka_asset()
+        table_asset, table_dims, table_color = self.load_table_asset()
+        ball_asset, ball_color = self.load_ball_asset()
+
+        temp = self.world_model["coll_objs"]["cube"]["table"]["pose"]
+        table_pose_world = gymapi.Transform()
+        table_pose_world.p = gymapi.Vec3(temp[0], temp[1], temp[2] + table_dims.z)
+        table_pose_world.r = gymapi.Quat(0., 0., 0., 1.)
+        franka_start_pose_table = gymapi.Transform()
+        franka_start_pose_table.p = gymapi.Vec3(-table_dims.x/2.0 + 0.2, 0.0, table_dims.z/2.0)
+        franka_start_pose_table.r = gymapi.Quat(0.0, 0.0, 0.0, 1.0)
+        self.franka_pose_world =  table_pose_world * franka_start_pose_table #convert from franka to world frame
+        
+        ball_start_pose_table = gymapi.Transform()
+        ball_start_pose_table.p = gymapi.Vec3(-table_dims.x/2.0 + 0.5, 0.0, table_dims.z/2.0)
+        ball_start_pose_table.r = gymapi.Quat(0.0, 0.0, 0.0, 1.0)
+
+        self.ball_pose_world =  table_pose_world * ball_start_pose_table #convert from franka to world frame
+        print(self.ball_pose_world.p, ball_start_pose_table.p)
+
+        # self.franka_pose_world = gymapi.Transform()
+        # self.franka_pose_world.p = gymapi.Vec3(0.0, 0.0, 0.0)
+        # self.franka_pose_world.r = gymapi.Quat(0.0, 0.0, 0.0, 1.0)
+        # self.target_pose_world = self.target_pose_franka * self.franka_pose_world
+        # self.world_pose_franka = self.franka_pose_world.inverse() #convert from world to franka
+
+        # compute aggregate size
+        max_agg_bodies = self.num_franka_bodies + 1 + 1 # franka + table + ball
+        max_agg_shapes = self.num_franka_shapes + 1 + 1 # franka + table + ball
+
+        # self.tables = []
+        self.frankas = []
+        self.envs = []
+
         for i in range(self.num_envs):
-            target_pose_franka = torch.tensor([0.5, 0.0, 0.5, 0.0, 0.707, 0.707, 0.0], device=self.device, dtype=torch.float) 
-            self.target_poses.append(target_pose_franka)
-        self.target_poses = torch.cat(self.target_poses, dim=-1).view(self.num_envs, 7)
+            # create env instance
+            env_ptr = self.gym.create_env(
+                self.sim, lower, upper, num_per_row
+            )
+
+            if self.aggregate_mode >= 3:
+                self.gym.begin_aggregate(env_ptr, max_agg_bodies, max_agg_shapes, True)
+            franka_actor = self.gym.create_actor(env_ptr, franka_asset, self.franka_pose_world, "franka", i, 0, 0)
+            self.gym.set_actor_dof_properties(env_ptr, franka_actor, franka_dof_props)
+            if self.aggregate_mode == 2:
+                self.gym.begin_aggregate(env_ptr, max_agg_bodies, max_agg_shapes, True)            
+            table_actor = self.gym.create_actor(env_ptr, table_asset, table_pose_world, "table", i, 1, 0)
+            self.gym.set_rigid_body_color(env_ptr, table_actor, 0, gymapi.MESH_VISUAL_AND_COLLISION, table_color)
+
+            if self.aggregate_mode == 1:
+                self.gym.begin_aggregate(env_ptr, max_agg_bodies, max_agg_shapes, True)
+
+            self.ball_actor = self.gym.create_actor(env_ptr, ball_asset, self.ball_pose_world, "ball", i, 2, 0)
+            self.gym.set_rigid_body_color(env_ptr, self.ball_actor, 0, gymapi.MESH_VISUAL_AND_COLLISION, ball_color)
+
+            if self.aggregate_mode > 0:
+                self.gym.end_aggregate(env_ptr)
+
+            self.envs.append(env_ptr)
+            self.frankas.append(franka_actor)
+        
+        self.ee_handle = self.gym.find_actor_rigid_body_handle(env_ptr, franka_actor, "ee_link")
+        self.init_data()
+
+
+    def init_data(self):
+        super().init_data()
+        self.ball_body_handle = self.gym.find_actor_rigid_body_handle(self.envs[0], self.ball_actor, "box")
+        self.ball_state = self.root_state[:,self.ball_actor,:]
+        self.ball_pos = self.ball_state[:, 0:3]
+        self.ball_pose_franka =   #convert from franka to world frame
+
+        target_pose_franka = torch.tensor([0.5, 0.0, 0.5, 0.0, 0.707, 0.707, 0.0], device=self.device, dtype=torch.float) 
+        self.target_poses = target_pose_franka.unsqueeze(0).repeat(self.num_envs,1)
+
+    def load_ball_asset(self):
+        #load table asset 
+        ball_radius =  0.03
+        ball_asset_options = gymapi.AssetOptions()
+        # ball_asset_options.armature = 0.001
+        # table_asset_options.fix_base_link = True
+        # table_asset_options.thickness = 0.002
+        table_asset = self.gym.create_sphere(self.sim, ball_radius, ball_asset_options)
+        ball_color = gymapi.Vec3(0.0, 0.0, 1.0)
+        return table_asset, ball_color
+    
 
     def compute_reward(self):
         # st=time.time()

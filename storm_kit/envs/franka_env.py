@@ -46,44 +46,8 @@ class FrankaEnv(VecTask):
             virtual_screen_capture=virtual_screen_capture, 
             force_render=force_render)
 
-        # get gym GPU state tensors
-        actor_root_state_tensor = self.gym.acquire_actor_root_state_tensor(self.sim)
-        dof_state_tensor = self.gym.acquire_dof_state_tensor(self.sim)
-        rigid_body_tensor = self.gym.acquire_rigid_body_state_tensor(self.sim)
-        jacobian_tensor = self.gym.acquire_jacobian_tensor(self.sim, "franka")
-
-
-        self.gym.refresh_actor_root_state_tensor(self.sim)
-        self.gym.refresh_dof_state_tensor(self.sim)
-        self.gym.refresh_rigid_body_state_tensor(self.sim)
-        self.gym.refresh_jacobian_tensors(self.sim)
-
-        # create some wrapper tensors for different slices
-        # self.franka_default_dof_pos = to_torch([1.157, -1.066, -0.155, -2.239, -1.841, 1.003, 0.469], device=self.device)
-        self.franka_default_dof_pos = to_torch([0.0, -0.7853, 0.0, -2.3561, 0.0, 1.5707, 0.7853], device=self.device)
-        self.dof_state = gymtorch.wrap_tensor(dof_state_tensor)
-        self.franka_dof_state = self.dof_state.view(self.num_envs, -1, 2)[:, :self.num_franka_dofs]
-        self.franka_dof_pos = self.franka_dof_state[..., 0]
-        self.franka_dof_vel = self.franka_dof_state[..., 1]
-        self.franka_dof_acc = torch.zeros_like(self.franka_dof_vel)
-        self.tstep = torch.ones(self.num_envs, 1, device=self.device)
-        self.franka_jacobian = gymtorch.wrap_tensor(jacobian_tensor)
-
-        #TODO: Figure out if 13 is right
-        self.rigid_body_states = gymtorch.wrap_tensor(rigid_body_tensor).view(self.num_envs, -1, 13)
-        self.num_bodies = self.rigid_body_states.shape[1]
-
-        self.root_state_tensor = gymtorch.wrap_tensor(actor_root_state_tensor).view(self.num_envs, -1, 13)
-
-        # if self.num_props > 0:
-            # self.prop_states = self.root_state_tensor[:, 2:]
-
-        self.num_dofs = self.gym.get_sim_dof_count(self.sim) // self.num_envs
-        self.franka_dof_targets = torch.zeros((self.num_envs, self.num_dofs), dtype=torch.float, device=self.device) 
-
-        # self.global_indices = torch.arange(self.num_envs * 3, dtype=torch.int32, device=self.device).view(self.num_envs, -1)
-        self.global_indices = torch.arange(self.num_envs * 1, dtype=torch.int32, device=self.device).view(self.num_envs, -1)
         self.reset_idx(torch.arange(self.num_envs, device=self.device))
+        self._refresh()
 
     def set_viewer(self):
         """Create the viewer."""
@@ -140,6 +104,123 @@ class FrankaEnv(VecTask):
         lower = gymapi.Vec3(-spacing, -spacing, 0.0)
         upper = gymapi.Vec3(spacing, spacing, spacing)
 
+        franka_asset, franka_dof_props = self.load_franka_asset()
+        table_asset, table_dims, table_color = self.load_table_asset()
+
+        temp = self.world_model["coll_objs"]["cube"]["table"]["pose"]
+        table_pose_world = gymapi.Transform()
+        table_pose_world.p = gymapi.Vec3(temp[0], temp[1], temp[2] + table_dims.z)
+        table_pose_world.r = gymapi.Quat(0., 0., 0., 1.)
+        franka_start_pose_table = gymapi.Transform()
+        franka_start_pose_table.p = gymapi.Vec3(-table_dims.x/2.0 + 0.2, 0.0, table_dims.z/2.0)
+        franka_start_pose_table.r = gymapi.Quat(0.0, 0.0, 0.0, 1.0)
+
+        self.franka_pose_world =  table_pose_world * franka_start_pose_table #convert from franka to world frame
+        
+        # self.franka_pose_world = gymapi.Transform()
+        # self.franka_pose_world.p = gymapi.Vec3(0.0, 0.0, 0.0)
+        # self.franka_pose_world.r = gymapi.Quat(0.0, 0.0, 0.0, 1.0)
+        # self.target_pose_world = self.target_pose_franka * self.franka_pose_world
+        # self.world_pose_franka = self.franka_pose_world.inverse() #convert from world to franka
+
+        # compute aggregate size
+        max_agg_bodies = self.num_franka_bodies + 1 # #+ self.num_props * num_prop_bodies
+        max_agg_shapes = self.num_franka_shapes + 1 #+ num_target_shapes #+ self.num_props * num_prop_shapes
+
+        # self.tables = []
+        self.frankas = []
+        self.envs = []
+
+        for i in range(self.num_envs):
+            # create env instance
+            env_ptr = self.gym.create_env(
+                self.sim, lower, upper, num_per_row
+            )
+
+            if self.aggregate_mode >= 3:
+                self.gym.begin_aggregate(env_ptr, max_agg_bodies, max_agg_shapes, True)
+            franka_actor = self.gym.create_actor(env_ptr, franka_asset, self.franka_pose_world, "franka", i, 1, 0)
+            self.gym.set_actor_dof_properties(env_ptr, franka_actor, franka_dof_props)
+            if self.aggregate_mode == 2:
+                self.gym.begin_aggregate(env_ptr, max_agg_bodies, max_agg_shapes, True)            
+            table_actor = self.gym.create_actor(env_ptr, table_asset, table_pose_world, "table", i, 1, 0)
+            self.gym.set_rigid_body_color(env_ptr, table_actor, 0, gymapi.MESH_VISUAL_AND_COLLISION, table_color)
+
+            if self.aggregate_mode == 1:
+                self.gym.begin_aggregate(env_ptr, max_agg_bodies, max_agg_shapes, True)
+    
+            if self.aggregate_mode > 0:
+                self.gym.end_aggregate(env_ptr)
+
+            self.envs.append(env_ptr)
+            self.frankas.append(franka_actor)
+        
+        self.init_data()
+    
+    def init_data(self):
+        
+        self.ee_handle = self.gym.find_actor_rigid_body_handle(self.envs[0], self.frankas[0], "ee_link")
+
+
+        #  get gym GPU state tensors
+        actor_root_state_tensor = self.gym.acquire_actor_root_state_tensor(self.sim)
+        dof_state_tensor = self.gym.acquire_dof_state_tensor(self.sim)
+        rigid_body_tensor = self.gym.acquire_rigid_body_state_tensor(self.sim)
+        jacobian_tensor = self.gym.acquire_jacobian_tensor(self.sim, "franka")
+
+        self.root_state = gymtorch.wrap_tensor(actor_root_state_tensor).view(self.num_envs, -1, 13)
+        self.dof_state = gymtorch.wrap_tensor(dof_state_tensor).view(self.num_envs, -1, 2)
+        self.rigid_body_states = gymtorch.wrap_tensor(rigid_body_tensor).view(self.num_envs, -1, 13)
+        self.franka_jacobian = gymtorch.wrap_tensor(jacobian_tensor)
+
+
+        # self.gym.refresh_actor_root_state_tensor(self.sim)
+        # self.gym.refresh_dof_state_tensor(self.sim)
+        # self.gym.refresh_rigid_body_state_tensor(self.sim)
+        # self.gym.refresh_jacobian_tensors(self.sim)
+
+        # create some wrapper tensors for different slices
+        # self.franka_default_dof_pos = to_torch([1.157, -1.066, -0.155, -2.239, -1.841, 1.003, 0.469], device=self.device)
+        self.franka_default_dof_pos = to_torch([0.0, -0.7853, 0.0, -2.3561, 0.0, 1.5707, 0.7853], device=self.device)
+
+        self.franka_dof_state = self.dof_state[:, :self.num_franka_dofs]
+        self.franka_dof_pos = self.franka_dof_state[..., 0]
+        self.franka_dof_vel = self.franka_dof_state[..., 1]
+        self.franka_dof_acc = torch.zeros_like(self.franka_dof_vel)
+        self.tstep = torch.ones(self.num_envs, 1, device=self.device)
+
+        #TODO: Figure out if 13 is right
+        self.num_bodies = self.rigid_body_states.shape[1]
+
+
+        self.num_dofs = self.gym.get_sim_dof_count(self.sim) // self.num_envs
+        self.franka_dof_targets = torch.zeros((self.num_envs, self.num_dofs), dtype=torch.float, device=self.device) 
+
+        # self.global_indices = torch.arange(self.num_envs * 3, dtype=torch.int32, device=self.device).view(self.num_envs, -1)
+        self.global_indices = torch.arange(self.num_envs * 1, dtype=torch.int32, device=self.device).view(self.num_envs, -1)
+
+
+    def _update_states(self):
+        pass
+
+    def _refresh(self):
+        self.gym.refresh_actor_root_state_tensor(self.sim)
+        self.gym.refresh_dof_state_tensor(self.sim)
+        self.gym.refresh_rigid_body_state_tensor(self.sim)
+        self.gym.refresh_jacobian_tensors(self.sim)
+        self.gym.refresh_mass_matrix_tensors(self.sim)
+
+        # Refresh states
+        self._update_states()
+
+
+        # for env_ptr, franka_ptr, obj_ptr in zip(self.envs, self.frankas, self.objects):
+        #     ee_handle = self.gym.find_actor_rigid_body_handle(env_ptr, franka_ptr, "ee_link")
+        #     ee_pose = self.gym.get_rigid_transform(env_ptr, ee_handle)
+        #     obj_body_ptr = self.gym.get_actor_rigid_body_handle(env_ptr, obj_ptr, 0)
+        #     self.gym.set_rigid_transform(env_ptr, obj_body_ptr, copy.deepcopy(ee_pose))
+
+    def load_franka_asset(self):
         asset_root = os.path.join(os.path.dirname(os.path.abspath(__file__)), "../../content/assets")
         franka_asset_file = "urdf/franka_description/franka_panda_no_gripper.urdf"
         # target_asset_file = "urdf/mug/movable_mug.urdf"
@@ -150,18 +231,6 @@ class FrankaEnv(VecTask):
             # target_asset_file = self.cfg["env"]["asset"].get("assetFileNameTarget", target_asset_file)
         
         # self.robot_model = DifferentiableRobotModel(os.path.join(asset_root, franka_asset_file), None, device=self.device) #, dtype=self.dtype)
-
-        #load table asset 
-        # table_dims = self.world_model["coll_objs"]["cube"]["table"]["dims"]
-        # table_dims=  gymapi.Vec3(table_dims[0], table_dims[1], table_dims[2])
-        # table_asset_options = gymapi.AssetOptions()
-        # table_asset_options.armature = 0.001
-        # table_asset_options.fix_base_link = True
-        # table_asset_options.thickness = 0.002
-        # table_asset = self.gym.create_box(self.sim, table_dims.x, table_dims.y, table_dims.z,
-        #                                   table_asset_options)
-        # table_color = gymapi.Vec3(0.6, 0.6, 0.6)
-
 
         # load franka asset
         asset_options = gymapi.AssetOptions()
@@ -174,22 +243,13 @@ class FrankaEnv(VecTask):
         asset_options.use_mesh_materials = True
         franka_asset = self.gym.load_asset(self.sim, asset_root, franka_asset_file, asset_options)
 
-        # #load target mug asset
-        # target_asset_options = gymapi.AssetOptions()
-        # target_asset_options.flip_visual_attachments = False
-        # target_asset_options.fix_base_link = True
-        # target_asset_options.collapse_fixed_joints = False
-        # target_asset_options.disable_gravity = True
-        # target_asset_options.default_dof_drive_mode = gymapi.DOF_MODE_NONE
-        # target_asset_options.armature = 0.001
-        # target_asset_options.use_mesh_materials = True
-        # target_asset = self.gym.load_asset(self.sim, asset_root, target_asset_file, target_asset_options)
-
         franka_dof_stiffness = to_torch([400, 400, 400, 400, 400, 400, 400, 1.0e6, 1.0e6], dtype=torch.float, device=self.device)
         franka_dof_damping = to_torch([40, 40, 40, 40, 40, 40, 40, 1.0e2, 1.0e2], dtype=torch.float, device=self.device)
 
         self.num_franka_bodies = self.gym.get_asset_rigid_body_count(franka_asset)
         self.num_franka_dofs = self.gym.get_asset_dof_count(franka_asset)
+        self.num_franka_shapes = self.gym.get_asset_rigid_shape_count(franka_asset)
+
         # self.num_target_bodies = self.gym.get_asset_rigid_body_count(target_asset)
         # self.num_target_dofs = self.gym.get_asset_dof_count(target_asset)
 
@@ -226,97 +286,21 @@ class FrankaEnv(VecTask):
         self.franka_dof_upper_limits = to_torch(self.franka_dof_upper_limits, device=self.device)
         self.franka_dof_speed_scales = torch.ones_like(self.franka_dof_lower_limits)
 
-        # temp = self.world_model["coll_objs"]["cube"]["table"]["pose"]
-        # table_pose_world = gymapi.Transform()
-        # table_pose_world.p = gymapi.Vec3(temp[0], temp[1], temp[2] + table_dims.z)
-        # table_pose_world.r = gymapi.Quat(temp[3], temp[4], temp[5], temp[6])
+        return franka_asset, franka_dof_props
 
 
-
-        # franka_start_pose_table = gymapi.Transform()
-        # franka_start_pose_table.p = gymapi.Vec3(-table_dims.x/2.0, 0.0, table_dims.z/2.0)
-        # franka_start_pose_table.r = gymapi.Quat(0.0, 0.0, 0.0, 1.0)
-
-        # self.target_pose_franka = gymapi.Transform()
-        # self.target_pose_franka.p = gymapi.Vec3(0.5, 0.0, 0.5)
-        # self.target_pose_franka.r = gymapi.Quat(0.0, 0.0, 0.0, 1.0)
-
-        # self.franka_pose_world =  table_pose_world * franka_start_pose_table #convert from franka to world frame
-        
-        self.franka_pose_world = gymapi.Transform()
-        self.franka_pose_world.p = gymapi.Vec3(0.0, 0.0, 0.0)
-        self.franka_pose_world.r = gymapi.Quat(0.0, 0.0, 0.0, 1.0)
-        # self.target_pose_world = self.target_pose_franka * self.franka_pose_world
-        # self.world_pose_franka = self.franka_pose_world.inverse() #convert from world to franka
-
-        # compute aggregate size
-        # num_franka_bodies = self.gym.get_asset_rigid_body_count(franka_asset)
-        # num_franka_shapes = self.gym.get_asset_rigid_shape_count(franka_asset)
-        # num_obj_shapes = self.gym.get_asset_rigid_shape_count(object_asset)
-        # num_target_shapes = self.gym.get_asset_rigid_shape_count(target_asset)
-        # max_agg_bodies = self.num_franka_bodies # + self.num_target_bodies #+ self.num_props * num_prop_bodies
-        
-        # max_agg_shapes = num_franka_shapes #+ num_target_shapes #+ self.num_props * num_prop_shapes
-
-        # self.tables = []
-        self.frankas = []
-        self.envs = []
-        # self.target_poses = []
-
-        for i in range(self.num_envs):
-            # create env instance
-            env_ptr = self.gym.create_env(
-                self.sim, lower, upper, num_per_row
-            )
-
-            # if self.aggregate_mode >= 3:
-            # self.gym.begin_aggregate(env_ptr, max_agg_bodies, max_agg_shapes, True)
-            # table_actor = self.gym.create_actor(env_ptr, table_asset, table_pose_world, "table", i, 1, 0)
-            # self.gym.set_rigid_body_color(env_ptr, table_actor, 0, gymapi.MESH_VISUAL_AND_COLLISION, table_color)
-
-            franka_actor = self.gym.create_actor(env_ptr, franka_asset, self.franka_pose_world, "franka", i, 1, 0)
-            self.gym.set_actor_dof_properties(env_ptr, franka_actor, franka_dof_props)
-            # target_actor = self.gym.create_actor(env_ptr, target_asset, self.target_pose_world, "target", i, 1, 0)
-            # target_pose_franka = torch.tensor([0.5, 0.0, 0.5, 0.0, 0.707, 0.707, 0.0], device=self.device, dtype=torch.float) 
-            # self.target_poses.append(target_pose_franka)
-            # if self.aggregate_mode == 2:
-            #     self.gym.begin_aggregate(env_ptr, max_agg_bodies, max_agg_shapes, True)            
-
-            # if self.aggregate_mode == 1:
-            #     self.gym.begin_aggregate(env_ptr, max_agg_bodies, max_agg_shapes, True)
-    
-            # if self.aggregate_mode > 0:
-            # self.gym.end_aggregate(env_ptr)
-
-            self.envs.append(env_ptr)
-            # self.tables.append(table_actor)
-            self.frankas.append(franka_actor)
-            # self.targets.append(target_actor)
-        
-        self.ee_handle = self.gym.find_actor_rigid_body_handle(env_ptr, franka_actor, "ee_link")
-
-        # self.target_poses = torch.cat(self.target_poses, dim=-1).view(self.num_envs, 7)
-
-        # ee_pose = self.gym.get_rigid_transform(env_ptr, self.ee_handle)
-        # self.target_pose_world.r = ee_pose.r
-        # self.target_pose_franka = self.franka_pose_world.inverse() * self.target_pose_world
-
-
-
-        # self.ee_pose = self.gym.get_rigid_transform(env_ptr, self.ee_handle)
-
-        # self.target_base_handle = self.gym.find_actor_rigid_body_handle(env_ptr, target_actor, "base")
-        # self.target_body_handle = self.gym.find_actor_rigid_body_handle(env_ptr, target_actor, "mug")
-
-        # self.init_data()
-    
-    # def init_data(self):
-    #     pass
-        # for env_ptr, franka_ptr, obj_ptr in zip(self.envs, self.frankas, self.objects):
-        #     ee_handle = self.gym.find_actor_rigid_body_handle(env_ptr, franka_ptr, "ee_link")
-        #     ee_pose = self.gym.get_rigid_transform(env_ptr, ee_handle)
-        #     obj_body_ptr = self.gym.get_actor_rigid_body_handle(env_ptr, obj_ptr, 0)
-        #     self.gym.set_rigid_transform(env_ptr, obj_body_ptr, copy.deepcopy(ee_pose))
+    def load_table_asset(self):
+        #load table asset 
+        table_dims = self.world_model["coll_objs"]["cube"]["table"]["dims"]
+        table_dims=  gymapi.Vec3(table_dims[0], table_dims[1], table_dims[2])
+        table_asset_options = gymapi.AssetOptions()
+        # table_asset_options.armature = 0.001
+        table_asset_options.fix_base_link = True
+        # table_asset_options.thickness = 0.002
+        table_asset = self.gym.create_box(self.sim, table_dims.x, table_dims.y, table_dims.z,
+                                          table_asset_options)
+        table_color = gymapi.Vec3(0.6, 0.6, 0.6)
+        return table_asset, table_dims, table_color
 
     def world_to_franka(self, transform_world):
         transform_franka = self.world_pose_franka * transform_world

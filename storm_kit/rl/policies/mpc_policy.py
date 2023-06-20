@@ -95,7 +95,7 @@ class MPCPolicy(Policy):
             command = q_des
         elif self.env_control_space == 'vel':
             command = qd_des
-        elif self.env_control_space == 'vel2':
+        elif self.env_control_space == 'vel_2':
             command = qd_des
         elif self.env_control_space == 'acc':
             command = qdd_des
