@@ -1,0 +1,71 @@
+topic_camera: "/camera/color/image_raw"
+topic_camera_info: "/camera/color/camera_info"
+topic_pointcloud: "/camera/depth/color/points"
+topic_depth_image: "/camera/aligned_depth_to_color/image_raw"
+publish_freq: 60
+cam_publish_freq: 60
+topic_publishing: "object_pose"
+# blob_frame_id: "object"
+frame_id_base: "object"
+# input_is_rectified: True   # Whether the input image is rectified (strongly suggested!)
+# downscale_height: 400      # if the input image is larger than this, scale it down to this pixel height
+
+detector_params:
+  num_largest_detections: 1
+  # h_nominal: 85.0 #green
+  # # hsv_thresh: [[10, 30, 10]] #green
+  # hsv_thresh: [10, 20, 10] #green
+  # lower: [86, 31, 4]
+  # upper: [220, 88, 50]
+
+  # lower: [202,95,36]
+  lower: [15, 95, 36]
+  upper: [35, 255, 255]
+
+  # h_nominal: 25 #30 #10 #blue_tape is 10
+  # hsv_thresh: [10, 20, 50] #blue
+  # h_nominal: 90 #yellow
+  # hsv_thresh: [10, 20, 50] #yellow
+  # h_nominal: 140 #pink
+  # hsv_thresh: [10, 20, 50] #pink
+  # h_nominal: 80 #yelloe
+  # hsv_thresh: [10, 20, 50] #yellow
+  # h_nominal: 155 #pink
+  # h_nominal: [25, 126, 155] #blue, red, pink
+  # h_nominal: [160] #purple
+  # hsv_thresh: [[10,50,20]] #purple
+  # hsv_thresh: [[20, 5, 30],[5,5,30], [20,5,30]]
+  # # hsv_thresh: [5, 5, 30] #red
+
+  # Change thresholds
+  minThreshold: 40
+  maxThreshold: 255
+
+  # Min Dist between blobs
+  minDistBetweenBlobs: 300
+
+  # Filter by Color
+  filterByColor: False
+  blobColor: 255
+
+  # Filter by Area.
+  filterByArea: True
+  minArea: 500
+  maxArea: 5000
+
+  # Filter by Circularity
+  filterByCircularity: True
+  minCircularity: 0.6
+  maxCircularity: 1.0
+
+  # Filter by Convexity
+  filterByConvexity: False
+  minConvexity: 0.9
+
+  # Filter by Inertia
+  filterByInertia: False
+  minInertiaRatio: 0.8 #0.01
+  maxInertiaRatio: 1.0
+
+  # alpha_smooth: 0.75
+  # state_filter_coeff: {'position': 0.3, 'velocity': 0.05, 'acceleration': 0.0}
