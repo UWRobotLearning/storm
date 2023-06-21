@@ -99,6 +99,12 @@ class MPCPolicy(Policy):
             command = qd_des
         elif self.env_control_space == 'acc':
             command = qdd_des
+        elif self.env_control_space == 'joint_impedance':
+            command = {
+                'q_des': q_des,
+                'qd_des': qd_des,
+                'qdd_des': qdd_des
+            }
 
         self.prev_qdd_des = qdd_des #.clone()
         return command

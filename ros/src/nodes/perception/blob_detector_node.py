@@ -13,6 +13,7 @@ import tf.transformations
 from cv_bridge import CvBridge
 from geometry_msgs.msg import Pose, PoseStamped, PoseArray, TransformStamped, Twist
 from sensor_msgs.msg import CameraInfo, Image as ImageSensor_msg
+import tf2_ros
 
 from blob_detector import BlobDetector
 
@@ -26,9 +27,11 @@ class BlobDetectorNode():
         self.rate = rospy.Rate(self.publish_freq)
         self.camera_freq = rospy.get_param('~cam_publish_freq', 30)
         self.cam_dt = float(1.0 / self.camera_freq)
-
         self.detector_params = rospy.get_param('~detector_params')
         
+        self.br = tf2_ros.TransformBroadcaster()
+
+
         self.image_msg = None
         self.img = None
         self.camera_info = None
@@ -117,12 +120,36 @@ class BlobDetectorNode():
                     detections, im_with_keypoints, masked_im = self.detector.get_detections(
                         self.img, self.depth_image, self.camera_info)
 
-                    print(detections)
+                    # print(detections)
+                    transform_msg = TransformStamped()
+                    transform_msg.header.stamp = rospy.Time().now()#self.image_msg.header.stamp
+                    transform_msg.header.frame_id = self.image_msg.header.frame_id
+                    transform_msg.child_frame_id = "object"
+                    transform_msg.transform.translation.x = detections[0]
+                    transform_msg.transform.translation.y = detections[1]
+                    transform_msg.transform.translation.z = detections[2]
+
+                    transform_msg.transform.rotation.x = 0.707
+                    transform_msg.transform.rotation.y = 0.0
+                    transform_msg.transform.rotation.z = 0.0
+                    transform_msg.transform.rotation.w = 0.707
+                    self.br.sendTransform(transform_msg)
+
+                    # self.curr_pose.header = self.image_msg.header
+                    # self.curr_pose.pose.position.x = detections[0]
+                    # self.curr_pose.pose.position.y = detections[1]
+                    # self.curr_pose.pose.position.z = detections[2]
+                    # self.curr_pose.pose.orientation.x = 0.
+                    # self.curr_pose.pose.orientation.y = 0.
+                    # self.curr_pose.pose.orientation.z = 0.
+                    # self.curr_pose.pose.orientation.w = 1.
 
                     im_with_keypoints_msg = self.cv_bridge.cv2_to_imgmsg(im_with_keypoints, encoding="passthrough")
                     im_with_keypoints_msg.header = self.image_msg.header
                     im_with_keypoints_msg.header.stamp = rospy.Time.now() 
                     # im_with_keypoints_msg.header.frame_id =  self.image_msg.header.frame_id
+
+                    # self.pub_pose.publish(self.curr_pose)
                     self.pub_detection.publish(im_with_keypoints_msg)
                     self.pub_mask.publish(self.cv_bridge.cv2_to_imgmsg(masked_im, encoding="passthrough"))
                     self.pub_camera_info.publish(self.camera_info)

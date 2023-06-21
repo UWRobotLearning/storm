@@ -138,7 +138,6 @@ class BlobDetector():
                 if depth_img is not None and camera_info is not None:
                     z = depth_img[int(y_cam), int(x_cam)]
                     z /= 1000.0
-
                     P = np.array(camera_info.P).reshape(3,4)
                     cam_coords = np.linalg.pinv(P) @ np.array([x_cam,y_cam,1.0])
                     x = z * cam_coords[0]; y = z * cam_coords[1]

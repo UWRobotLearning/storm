@@ -3,6 +3,8 @@
 #General imports
 import os
 import numpy as np
+from hydra import compose, initialize
+from omegaconf import OmegaConf
 import torch
 torch.multiprocessing.set_start_method('spawn',force=True)
 torch.set_num_threads(8)
@@ -19,7 +21,8 @@ import rospkg
 # from std_msgs.msg import String, Header
 
 #STORM imports
-from storm_kit.mpc.task.reacher_task import ReacherTask
+# from storm_kit.mpc.task.reacher_task import ReacherTask
+from storm_kit.rl.policies import MPCPolicy
 
 
 class MPCReacherNode():
@@ -39,10 +42,16 @@ class MPCReacherNode():
         self.joint_names = rospy.get_param('~robot_joint_names', None)
         
         self.device = torch.device('cuda', 0)
-        self.tensor_args = {'device': self.device, 'dtype': torch.float32}
+
+        initialize(config_path="../../../content/configs/gym", job_name="mpc")
+        self.config = compose(config_name="config", overrides=["task=FrankaReacherRealRobot"])
 
         #STORM Initialization
-        self.policy = ReacherTask(self.mpc_config, self.robot_coll_description, self.world_description, self.tensor_args)
+        # self.policy = ReacherTask(self.mpc_config, self.robot_coll_description, self.world_description, self.tensor_args)
+        obs_dim = 1
+        act_dim = 1
+        self.policy = MPCPolicy(obs_dim=obs_dim, act_dim=act_dim, config=self.config.mpc, device=self.device)
+
 
         #buffers for different messages
         self.mpc_command = JointState()

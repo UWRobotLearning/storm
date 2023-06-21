@@ -3,7 +3,17 @@
   <!-- <param name="panda_tray" textfile="$(find franka_mpc_utils)/content/assets/franka_panda_description/robots/panda_arm_tray.urdf"/> -->
   <!-- <param name="panda_tray" textfile="/home/mohak/workspace/storm_rl/content/assets/urdfs/panda/panda_arm_tray_robot.urdf"/> -->
   <!-- <include file="$(find franka_mpc_utils)/launch/static_transform_publisher_panda_2.launch" pass_all_args="true"/> -->
-    
+  <arg name="namespace_prefix" default="panda_eob_calib"/>
+
+  <!-- <include file="$(find realsense2_camera)/launch/rs_camera.launch"> </include>      -->
+
+  <!-- (publish tf after the calibration) -->
+  <include file="$(find easy_handeye)/launch/publish.launch">
+      <arg name="eye_on_hand" value="false"/>
+      <arg name="namespace_prefix" value="$(arg namespace_prefix)"/>
+  </include>
+
+
   <node name="blob_detector" pkg="storm_ros" type="blob_detector_node.py" output="screen" clear_params="true">
     <rosparam file="$(arg config)"/>
   </node>
