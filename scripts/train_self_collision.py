@@ -21,6 +21,8 @@
 # FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 # DEALINGS IN THE SOFTWARE.#
 
+from hydra import compose, initialize
+from omegaconf import open_dict
 import torch
 import torch.nn.functional as F
 import numpy as np
@@ -31,8 +33,10 @@ from storm_kit.mpc.control.control_utils import generate_halton_samples
 from storm_kit.geom.nn_model.robot_self_collision import RobotSelfCollisionNet
 import os
 import matplotlib.pyplot as plt
+
+
 class RobotDataset(torch.utils.data.Dataset):
-    def __init__(self, x,y,y_gt):
+    def __init__(self, x, y, y_gt):
         self.x = x
         self.y = y
         self.y_gt = y_gt
@@ -41,6 +45,7 @@ class RobotDataset(torch.utils.data.Dataset):
     def __getitem__(self, idx):
         sample = {'x': self.x[idx,:], 'y': self.y[idx,:], 'y_gt': self.y_gt[idx,:]}
         return sample
+    
 def create_dataset(robot_name):
     checkpoints_dir = get_weights_path()+'/robot_self'
     num_particles = 50000 #15000
@@ -49,16 +54,28 @@ def create_dataset(robot_name):
     # load robot model:
     device = torch.device('cuda', 0) 
     tensor_args = {'device':device, 'dtype':torch.float32}
-    mpc_yml_file = join_path(get_mpc_configs_path(), task_file)
+    # mpc_yml_file = join_path(get_mpc_configs_path(), task_file)
 
-    with open(mpc_yml_file) as file:
-        exp_params = yaml.load(file, Loader=yaml.FullLoader)
-    exp_params['robot_params'] = exp_params['model'] #robot_params
-    exp_params['cost']['primitive_collision']['weight'] = 0.0
-    exp_params['control_space'] = 'pos'
-    exp_params['mppi']['horizon'] = 2
-    exp_params['mppi']['num_particles'] = num_particles
-    rollout_fn = ArmBase(exp_params, tensor_args, world_params=None)
+    # with open(mpc_yml_file) as file:
+    #     exp_params = yaml.load(file, Loader=yaml.FullLoader)
+    # exp_params['robot_params'] = exp_params['model'] #robot_params
+    # exp_params['cost']['primitive_collision']['weight'] = 0.0
+    # exp_params['control_space'] = 'pos'
+    # exp_params['mppi']['horizon'] = 2
+    # exp_params['mppi']['num_particles'] = num_particles
+    # exp_params['num_instances'] = 1
+    initialize(config_path="../content/configs/gym", job_name="train_self_collision")
+    config = compose(config_name="config", overrides=["task=FrankaReacherRealRobot"])    
+    mpc_config = config.mpc
+    rollout_params = mpc_config.rollout
+    with open_dict(rollout_params):
+        rollout_params['num_instances'] = 1
+        rollout_params['horizon'] = 2
+        rollout_params['num_particles'] = num_particles
+        rollout_params['cost']['primitive_collision']['weight'] = 0.0
+
+
+    rollout_fn = ArmBase(rollout_params, world_params=None, device=device, dtype=torch.float32)
     
     # sample joint angles
     dof = rollout_fn.dynamics_model.d_action
@@ -75,7 +92,7 @@ def create_dataset(robot_name):
     q_samples = q_samples.view(num_particles,2,dof)
 
     
-    start_state = torch.zeros((rollout_fn.dynamics_model.d_state), **tensor_args)
+    start_state = torch.zeros((rollout_fn.dynamics_model.d_state), **tensor_args).unsqueeze(0)
 
     state_dict = rollout_fn.dynamics_model.rollout_open_loop(start_state, q_samples)
     
@@ -233,4 +250,4 @@ def create_dataset(robot_name):
         print(loss.item())
             
 if __name__=='__main__':
-    create_dataset('franka_real_robot_tray')
+    create_dataset('franka_real_robot')

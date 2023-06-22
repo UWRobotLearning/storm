@@ -152,8 +152,10 @@ n_dofs: 7
 #   retract_weight: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0,0.0]
 
 rollout: ${task.rollout}
+world: ${task.world}
   
 mppi:
+  num_instances     : ${task.env.numEnvs}
   horizon           : 30
   init_cov          : 0.005 #.5 #.5
   gamma             : 0.98
@@ -171,7 +173,6 @@ mppi:
   base_action       : 'repeat'
   squash_fn         : 'clamp'
   hotstart          : True
-  num_instances     : ${resolve_default:4096,${task.env.numEnvs}}
   visual_traj       : 'ee_pos_seq'
   sample_params:
     type: 'halton'
@@ -180,5 +181,5 @@ mppi:
     seed: 0
     filter_coeffs: null #[0.3, 0.3, 0.4]
     knot_scale: 4
+    bspline_degree: 3
 
-world: null

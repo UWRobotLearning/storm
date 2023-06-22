@@ -70,7 +70,7 @@ class SampleLib:
     def filter_smooth(self, samples):
 
         # scale by stomp matrix:
-        if(samples.shape[0] == 0):
+        if samples.shape[0] == 0:
             return samples
 
 
@@ -134,7 +134,7 @@ def bspline(c_arr, t_arr=None, n=100, degree=3):
 
 
 class KnotSampleLib(object):
-    def __init__(self, horizon=0, d_action=0, n_knots=0, degree=3, seed=0, tensor_args={'device': "cpu", 'dtype': torch.float32}, sample_method='halton',
+    def __init__(self, num_instances=1, horizon=0, d_action=0, n_knots=0, degree=3, seed=0, tensor_args={'device': "cpu", 'dtype': torch.float32}, sample_method='halton',
                  covariance_matrix=None, **kwargs):
         self.ndims = n_knots * d_action
         self.n_knots = n_knots
@@ -145,7 +145,7 @@ class KnotSampleLib(object):
         self.degree = degree
         self.sample_method = sample_method
         self.Z = torch.zeros(self.ndims, **tensor_args)
-        if(covariance_matrix is None):
+        if covariance_matrix is None:
             self.cov_matrix = torch.eye(self.ndims, **tensor_args)
         self.scale_tril = torch.cholesky(
             self.cov_matrix.to(dtype=torch.float32)).to(**tensor_args)

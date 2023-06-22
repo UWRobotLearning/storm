@@ -61,13 +61,15 @@ class MPCReacherNode():
         # self.robot_state = JointState()
         self.command_header = None
         self.gripper_state = {
-            'position': np.zeros(2),
-            'velocity': np.zeros(2),
-            'acceleration': np.zeros(2)}
+            'position': torch.zeros(2),
+            'velocity': torch.zeros(2),
+            'acceleration': torch.zeros(2)}
         self.robot_state = {
-            'position': np.zeros(7),
-            'velocity': np.zeros(7),
-            'acceleration': np.zeros(7)}
+            'position': torch.zeros(7),
+            'velocity': torch.zeros(7),
+            'acceleration': torch.zeros(7)}
+        self.obs_dict = {}
+        self.robot_state_tensor = None
         self.ee_goal_pos = None
         self.ee_goal_quat = None
 
@@ -101,24 +103,28 @@ class MPCReacherNode():
         # self.robot_state.position = msg.position[2:]
         # self.robot_state.velocity = msg.velocity[2:]
         # self.robot_state.effort = msg.effort[2:]
-        self.robot_state['position'] = np.array(msg.position)
-        self.robot_state['velocity'] = np.array(msg.velocity)
-        self.robot_state['acceleration'] = np.zeros_like(self.robot_state['velocity'])
-
+        self.robot_state['position'] = torch.tensor(msg.position)
+        self.robot_state['velocity'] = torch.tensor(msg.velocity)
+        self.robot_state['acceleration'] = torch.zeros_like(self.robot_state['velocity'])
+        self.robot_state_tensor = torch.cat((
+            self.robot_state['position'],
+            self.robot_state['velocity'],
+            self.robot_state['acceleration']
+        )).unsqueeze(0)
+        self.obs_dict = {'states':self.robot_state_tensor}
 
     def ee_goal_callback(self, msg):
         self.goal_sub_on = True
         self.new_ee_goal = True
-        self.ee_goal_pos = np.array([
+        self.ee_goal_pos = torch.tensor([
             msg.pose.position.x,
             msg.pose.position.y,
             msg.pose.position.z])
-        self.ee_goal_quat = np.array([
+        self.ee_goal_quat = torch.tensor([
             msg.pose.orientation.w,
             msg.pose.orientation.x,
             msg.pose.orientation.y,
             msg.pose.orientation.z])
-
 
     def control_loop(self):
         while not rospy.is_shutdown():
@@ -126,20 +132,30 @@ class MPCReacherNode():
             if self.state_sub_on and self.goal_sub_on:
                 #check if goal was updated
                 if self.new_ee_goal:
-                    self.policy.update_params(goal_ee_pos = self.ee_goal_pos,
-                        goal_ee_quat = self.ee_goal_quat)
+                    # self.policy.update_params(goal_ee_pos = self.ee_goal_pos,
+                    #     goal_ee_quat = self.ee_goal_quat)
+                    goal = torch.cat((self.ee_goal_pos, self.ee_goal_quat), dim=-1).unsqueeze(0)
+                    self.policy.update_goal(goal)
                     self.new_ee_goal = False
 
+                self.obs_dict['states'] = torch.cat(
+                    (self.obs_dict['states'],
+                     torch.as_tensor([self.tstep]).unsqueeze(0)),
+                     dim=-1                  
+                    )
+
                 #get mpc command
-                command = self.policy.get_command(
-                    self.tstep, self.robot_state, control_dt=self.control_dt, WAIT=True)
+                command = self.policy.get_action(obs_dict=self.obs_dict) #, control_dt=self.control_dt, WAIT=True)
 
                 #publish mpc command
                 self.mpc_command.header = self.command_header
                 self.mpc_command.header.stamp = rospy.Time.now()
-                self.mpc_command.position = command['position']
-                self.mpc_command.velocity = command['velocity']
-                self.mpc_command.effort =  command['acceleration']
+                self.mpc_command.position = command['q_des'][0].cpu().numpy()
+                self.mpc_command.velocity = command['qd_des'][0].cpu().numpy()
+                self.mpc_command.effort =  command['qdd_des'][0].cpu().numpy()
+
+                print(self.mpc_command)
+
                 self.command_pub.publish(self.mpc_command)
 
                 #update tstep
@@ -165,6 +181,7 @@ class MPCReacherNode():
 
 if __name__ == "__main__":
     rospy.init_node("mpc_reacher_node", anonymous=True, disable_signals=True)    
+    torch.set_default_dtype(torch.float32)
 
     mpc_node = MPCReacherNode()
 

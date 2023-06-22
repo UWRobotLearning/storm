@@ -20,7 +20,7 @@ class InteractiveMarkerGoalPub():
         rospack = rospkg.RosPack()
         self.pkg_path = rospack.get_path('storm_ros')
         self.storm_path = os.path.dirname(self.pkg_path)
-
+        self.device = torch.device('cpu')
 
         self.joint_states_topic = rospy.get_param('~joint_states_topic', 'joint_states')
         self.ee_goal_topic = rospy.get_param('~ee_goal_topic', 'ee_goal')
@@ -39,9 +39,8 @@ class InteractiveMarkerGoalPub():
         self.state_sub = rospy.Subscriber(self.joint_states_topic, JointState, self.robot_state_callback, queue_size=1)
 
         #STORM Related
-        self.tensor_args = {'device': 'cpu', 'dtype': torch.float32}
         self.robot_model = DifferentiableRobotModel(self.robot_urdf, None, 
-                            tensor_args=self.tensor_args)
+                            device=self.device)
             
         #Buffers
 
@@ -188,8 +187,8 @@ class InteractiveMarkerGoalPub():
 
 
     def update_ee_goal_to_current(self):
-        q_robot = torch.as_tensor(self.robot_state.position, **self.tensor_args).unsqueeze(0)
-        qd_robot = torch.as_tensor(self.robot_state.velocity, **self.tensor_args).unsqueeze(0)
+        q_robot = torch.as_tensor(self.robot_state.position, device=self.device).unsqueeze(0)
+        qd_robot = torch.as_tensor(self.robot_state.velocity, device=self.device).unsqueeze(0)
         # q_gripper = torch.as_tensor(self.gripper_state.position, **self.tensor_args).unsqueeze(0)
         # qd_gripper = torch.as_tensor(self.gripper_state.velocity, **self.tensor_args).unsqueeze(0)
         # q = torch.cat((q_robot, q_gripper), dim=-1)
@@ -218,6 +217,7 @@ class InteractiveMarkerGoalPub():
 
 if __name__ == "__main__":
     rospy.init_node("interactive_marker_goal_node", anonymous=True, disable_signals=True)    
+    torch.set_default_dtype(torch.float32)
 
     goal_node = InteractiveMarkerGoalPub()
 

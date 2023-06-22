@@ -1,8 +1,6 @@
-import os
-import yaml
 from omegaconf import open_dict
 import torch
-import torch.nn as nn
+
 from torch.profiler import profile, record_function, ProfilerActivity
 
 
@@ -73,6 +71,7 @@ class MPCPolicy(Policy):
     def get_action(self, obs_dict, deterministic=False):
 
         states = obs_dict['states']
+        states = states.to(self.device)
         self.state_filter.predict_internal_state(self.prev_qdd_des)
 
         # if(self.state_filter.cmd_joint_state is None):
