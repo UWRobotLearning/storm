@@ -7,7 +7,7 @@ import torch
 
 from storm_kit.mpc.cost import PoseCostQuaternion
 from storm_kit.mpc.rollout import ArmReacher
-from storm_kit.differentiable_robot_model.coordinate_transform import quaternion_to_matrix, matrix_to_quaternion, rpy_angles_to_matrix
+from storm_kit.differentiable_robot_model.coordinate_transform import CoordinateTransform, quaternion_to_matrix, matrix_to_quaternion, rpy_angles_to_matrix, transform_point
 
 class FrankaPusher(FrankaEnv):
     def __init__(self, cfg, rl_device, sim_device, graphics_device_id, headless, virtual_screen_capture, force_render):
@@ -17,9 +17,9 @@ class FrankaPusher(FrankaEnv):
         self.ee_link_name = cfg['rollout']['model']['ee_link_name']
         self.rollout_fn = ArmReacher(
             cfg['rollout'],
+            world_params=cfg['world'],
             device=rl_device
         )
-        self.state_dict = None
 
         num_obs = 41
         num_states = 22
@@ -30,8 +30,6 @@ class FrankaPusher(FrankaEnv):
         cfg["env"]["numActions"] = num_acts
 
         super().__init__(cfg, rl_device, sim_device, graphics_device_id, headless, virtual_screen_capture, force_render)
-        print(self.ball_state)
-        exit()
 
         #TODO: Add world definition as well
 
@@ -69,8 +67,24 @@ class FrankaPusher(FrankaEnv):
         ball_start_pose_table.p = gymapi.Vec3(-table_dims.x/2.0 + 0.5, 0.0, table_dims.z/2.0)
         ball_start_pose_table.r = gymapi.Quat(0.0, 0.0, 0.0, 1.0)
 
-        self.ball_pose_world =  table_pose_world * ball_start_pose_table #convert from franka to world frame
-        print(self.ball_pose_world.p, ball_start_pose_table.p)
+        self.ball_start_pose_world =  table_pose_world * ball_start_pose_table #convert from franka to world frame
+
+        trans = torch.tensor([
+            self.franka_pose_world.p.x,
+            self.franka_pose_world.p.y,
+            self.franka_pose_world.p.z,
+        ], device=self.device).unsqueeze(0)
+        quat = torch.tensor([
+            self.franka_pose_world.r.w,
+            self.franka_pose_world.r.x,
+            self.franka_pose_world.r.y,
+            self.franka_pose_world.r.z,
+        ], device=self.device).unsqueeze(0)
+        rot = quaternion_to_matrix(quat)
+
+        temp = CoordinateTransform(rot = rot, trans=trans, device=self.device)
+        self.world_pose_franka = temp.inverse() #convert from world frame to franka
+
 
         # self.franka_pose_world = gymapi.Transform()
         # self.franka_pose_world.p = gymapi.Vec3(0.0, 0.0, 0.0)
@@ -104,7 +118,7 @@ class FrankaPusher(FrankaEnv):
             if self.aggregate_mode == 1:
                 self.gym.begin_aggregate(env_ptr, max_agg_bodies, max_agg_shapes, True)
 
-            self.ball_actor = self.gym.create_actor(env_ptr, ball_asset, self.ball_pose_world, "ball", i, 2, 0)
+            self.ball_actor = self.gym.create_actor(env_ptr, ball_asset, self.ball_start_pose_world, "ball", i, 2, 0)
             self.gym.set_rigid_body_color(env_ptr, self.ball_actor, 0, gymapi.MESH_VISUAL_AND_COLLISION, ball_color)
 
             if self.aggregate_mode > 0:
@@ -117,15 +131,19 @@ class FrankaPusher(FrankaEnv):
         self.init_data()
 
 
-    def init_data(self):
-        super().init_data()
-        self.ball_body_handle = self.gym.find_actor_rigid_body_handle(self.envs[0], self.ball_actor, "box")
-        self.ball_state = self.root_state[:,self.ball_actor,:]
-        self.ball_pos = self.ball_state[:, 0:3]
-        self.ball_pose_franka =   #convert from franka to world frame
+    # def init_data(self):
+    #     super().init_data()
+    #     self.ball_body_handle = self.gym.find_actor_rigid_body_handle(self.envs[0], self.ball_actor, "box")
+    #     self.ball_state = self.root_state[:,self.ball_actor,:]
+    #     self.ball_pos = self.ball_state[:, 0:3]
+    #     # self.ball_pose_franka =   #convert from franka to world frame
+    #     # print(self.ball_pos, self.ball_pos.device, self.world_pose_franka.device, self.device, self.rl_device)
+    #     # print(self.world_pose_franka.transform_point(self.ball_pos))
+    #     # exit()
 
-        target_pose_franka = torch.tensor([0.5, 0.0, 0.5, 0.0, 0.707, 0.707, 0.0], device=self.device, dtype=torch.float) 
-        self.target_poses = target_pose_franka.unsqueeze(0).repeat(self.num_envs,1)
+
+    #     target_pose_franka = torch.tensor([0.5, 0.0, 0.5, 0.0, 0.707, 0.707, 0.0], device=self.device, dtype=torch.float) 
+    #     self.target_poses = target_pose_franka.unsqueeze(0).repeat(self.num_envs,1)
 
     def load_ball_asset(self):
         #load table asset 
@@ -286,12 +304,22 @@ class FrankaPusher(FrankaEnv):
 
     def reset_idx(self, env_ids):
         super().reset_idx(env_ids)
+        self._refresh()
+
+        self.ball_body_handle = self.gym.find_actor_rigid_body_handle(self.envs[0], self.ball_actor, "box")
+        self.ball_state = self.root_state[:,self.ball_actor,:]
+        ball_pos_world = self.ball_state[:, 0:3]
+        ball_pos_franka = self.world_pose_franka.transform_point(ball_pos_world).squeeze(1)
+
+        ball_quat_franka = torch.tensor([1.0, 0., 0., 0.0], device=self.device, dtype=torch.float).unsqueeze(0).repeat(self.num_envs,1)
+        
+        self.target_poses = torch.cat((ball_pos_franka, ball_quat_franka), dim=-1)
 
         #reset EE target 
         if self.target_randomize_mode == "fixed_target":
             pass
 
-        if self.target_randomize_mode in ["randomize_position", "randomize_full_pose"]:
+        if self.target_randomize_mode == "randomize_position":
             #randomize position
             self.target_poses[env_ids, 0] = 0.2 + 0.4 * torch.rand(
                 size=(env_ids.shape[0],), device=self.device, dtype=torch.float32) #x from [0.2, 0.6)
@@ -299,18 +327,7 @@ class FrankaPusher(FrankaEnv):
                 size=(env_ids.shape[0],), device=self.device, dtype=torch.float32) #y from [-0.3, 0.3)
             self.target_poses[env_ids, 2] = 0.2 + 0.3 * torch.rand(
                 size=(env_ids.shape[0],), device=self.device, dtype=torch.float32) #z from [0.2, 0.5)
-        
-        if self.target_randomize_mode == "randomize_full_pose":
-            #randomize orientation
-            roll = -torch.pi + 2*torch.pi * torch.rand(
-                size=(env_ids.shape[0],1), device=self.device, dtype=torch.float32) #roll from [-pi, pi)
-            pitch = -torch.pi + 2*torch.pi * torch.rand(
-                size=(env_ids.shape[0],1), device=self.device, dtype=torch.float32) #pitch from [-pi, pi)
-            yaw = -torch.pi + 2*torch.pi * torch.rand(
-                size=(env_ids.shape[0],1), device=self.device, dtype=torch.float32) #yaw from [-pi, pi)
-            quat = matrix_to_quaternion(rpy_angles_to_matrix(torch.cat([roll, pitch, yaw], dim=-1)))
-            self.target_poses[env_ids, 3:7] = quat
-        
+                
         #Update rollout function (task) with the new goals
         self.rollout_fn.update_params(self.target_poses)
 

@@ -17,6 +17,7 @@ class FrankaReacher(FrankaEnv):
         self.ee_link_name = cfg['rollout']['model']['ee_link_name']
         self.rollout_fn = ArmReacher(
             cfg['rollout'],
+            world_params = cfg["world"],
             device=rl_device
         )
         self.state_dict = None
@@ -50,7 +51,7 @@ class FrankaReacher(FrankaEnv):
         super()._create_envs(num_envs, spacing, num_per_row)
         self.target_poses = []
         for i in range(self.num_envs):
-            target_pose_franka = torch.tensor([0.5, 0.0, 0.5, 0.0, 0.707, 0.707, 0.0], device=self.device, dtype=torch.float) 
+            target_pose_franka = torch.tensor([0.2, 0.0, 0.5, 0.0, 0.707, 0.707, 0.0], device=self.device, dtype=torch.float) 
             self.target_poses.append(target_pose_franka)
         self.target_poses = torch.cat(self.target_poses, dim=-1).view(self.num_envs, 7)
 
@@ -95,8 +96,6 @@ class FrankaReacher(FrankaEnv):
         cost, _ = self.rollout_fn.compute_cost(state_dict=self.state_dict, action_batch=self.actions, no_coll=True, horizon_cost=False)
         cost = cost.squeeze(1).squeeze(1)
         reward = -1.0 * cost #1.0 / (1.0 + cost) #-1.0 * cost
-        # print(cost, reward)
-
 
         self.rew_buf[:] = reward
         self.reset_buf[:] = torch.where(self.progress_buf >= self.max_episode_length - 1, torch.ones_like(self.reset_buf), self.reset_buf)

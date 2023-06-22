@@ -13,7 +13,7 @@ import yaml
 from hydra.utils import instantiate
 
 # from storm_kit.differentiable_robot_model import DifferentiableRobotModel
-from storm_kit.differentiable_robot_model.coordinate_transform import quaternion_to_matrix, matrix_to_quaternion, rpy_angles_to_matrix
+from storm_kit.differentiable_robot_model.coordinate_transform import CoordinateTransform, quaternion_to_matrix, matrix_to_quaternion, rpy_angles_to_matrix
 
 
 class FrankaEnv(VecTask):
@@ -117,11 +117,27 @@ class FrankaEnv(VecTask):
 
         self.franka_pose_world =  table_pose_world * franka_start_pose_table #convert from franka to world frame
         
+        trans = torch.tensor([
+            self.franka_pose_world.p.x,
+            self.franka_pose_world.p.y,
+            self.franka_pose_world.p.z,
+        ], device=self.rl_device).unsqueeze(0)
+        quat = torch.tensor([
+            self.franka_pose_world.r.w,
+            self.franka_pose_world.r.x,
+            self.franka_pose_world.r.y,
+            self.franka_pose_world.r.z,
+        ], device=self.rl_device).unsqueeze(0)
+        rot = quaternion_to_matrix(quat)
+
+        temp = CoordinateTransform(rot = rot, trans=trans)
+        self.world_pose_franka = temp.inverse() #convert from world frame to franka
+
         # self.franka_pose_world = gymapi.Transform()
         # self.franka_pose_world.p = gymapi.Vec3(0.0, 0.0, 0.0)
         # self.franka_pose_world.r = gymapi.Quat(0.0, 0.0, 0.0, 1.0)
         # self.target_pose_world = self.target_pose_franka * self.franka_pose_world
-        # self.world_pose_franka = self.franka_pose_world.inverse() #convert from world to franka
+        # self.world_pose_franka = self.franka_pose_world.inverse() 
 
         # compute aggregate size
         max_agg_bodies = self.num_franka_bodies + 1 # #+ self.num_props * num_prop_bodies

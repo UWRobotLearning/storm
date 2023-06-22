@@ -41,7 +41,7 @@ class MPCPolicy(Policy):
         states = obs_dict['states']
         self.state_filter.predict_internal_state(self.prev_qdd_des)
 
-        # if(self.state_filter.cmd_joint_state is None):
+        # if self.state_filter.cmd_joint_state is None:
         #     state_dict['velocity'] *= 0.0
         
         planning_state = self.state_filter.filter_joint_state(states)
@@ -132,13 +132,8 @@ class MPCPolicy(Policy):
             self.cfg['rollout']['horizon'] = self.cfg['mppi']['horizon']
             self.cfg['rollout']['num_particles'] = self.cfg['mppi']['num_particles']
 
-        # with open_dict(self.cfg):
-        #     self.cfg.robot_params = self.cfg.rollout.model #robot_params
-        
-
-
-        # rollout_fn = self.get_rollout_fn(exp_params=self.cfg, device=self.tensor_args['device'], dtype=self.tensor_args['dtype'], world_params=world_params)
-        rollout_fn = self.get_rollout_fn(cfg=self.cfg['rollout'], device=self.device, world_params=world_params)        
+        rollout_fn = self.get_rollout_fn(
+            cfg=self.cfg['rollout'], device=self.device, world_params=world_params)        
         mppi_params = self.cfg.mppi
         dynamics_model = rollout_fn.dynamics_model
         with open_dict(mppi_params):
@@ -154,15 +149,13 @@ class MPCPolicy(Policy):
             init_mean = init_action * 0.0 # device=device)
         elif self.cfg.control_space == 'pos':
             init_mean = init_action
-            
-            # mppi_params.rollout_fn = rollout_fn
-            # mppi_params.tensor_args = self.tensor_args
 
         controller = MPPI(
             **mppi_params, 
             init_mean=init_mean,
             rollout_fn=rollout_fn,
             tensor_args=self.tensor_args)
+        
         return controller
 
     def get_rollout_fn(self, **kwargs):

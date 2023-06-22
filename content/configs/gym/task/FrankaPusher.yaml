@@ -7,7 +7,7 @@ physics_engine: ${..physics_engine}
 env:
   numEnvs: ${resolve_default:512,${...num_envs}}
   envSpacing: 1.5
-  episodeLength: 500
+  episodeLength: 2000
   enableDebugVis: False
   controlSpace: "vel_2"
   targetRandomizeMode: "fixed_target"

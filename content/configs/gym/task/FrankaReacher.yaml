@@ -7,7 +7,7 @@ physics_engine: ${..physics_engine}
 env:
   numEnvs: ${resolve_default:512,${...num_envs}}
   envSpacing: 1.5
-  episodeLength: 500
+  episodeLength: 1000
   enableDebugVis: False
   controlSpace: "vel_2"
   targetRandomizeMode: "fixed_target"
@@ -116,7 +116,7 @@ rollout:
       gaussian_params: {'n':0, 'c':0.5, 's':0, 'r':5.0}
       
     primitive_collision:
-      weight: 0.0 #5000.0
+      weight: 5000.0
       distance_threshold: 0.05
       gaussian_params: {'n':0, 'c':0.0, 's':0, 'r':10.0}
 
@@ -196,4 +196,7 @@ sim:
 
 task:
   randomize: False
+
+defaults:
+  - world: FrankaReacherWorld
 
