@@ -308,8 +308,8 @@ class RobotSphereCollision:
         # load nn collision model:
         dof = robot_collision_params['dof']
         
-        self.robot_nn = RobotSelfCollisionNet(n_joints=dof)
-        self.robot_nn.load_weights(robot_collision_params['self_collision_weights'], tensor_args)
+        # self.robot_nn = RobotSelfCollisionNet(n_joints=dof)
+        # self.robot_nn.load_weights(robot_collision_params['self_collision_weights'], tensor_args)
     
     def load_robot_collision_model(self, robot_collision_params):
         """Load robot collision model, called from constructor
@@ -320,7 +320,6 @@ class RobotSphereCollision:
         robot_links = robot_collision_params['link_objs']
 
         # load collision file:
-        print(robot_collision_params)
         coll_yml = join_path(get_mpc_configs_path(), robot_collision_params['collision_spheres'])
         with open(coll_yml) as file:
             coll_params = yaml.load(file, Loader=yaml.FullLoader)
@@ -329,7 +328,6 @@ class RobotSphereCollision:
 
         self._link_spheres = []
 
-        
         # we store as [n_link, 7]
         self._link_collision_trans = torch.empty((len(robot_links), 3), **self.tensor_args)
         self._link_collision_rot = torch.empty((len(robot_links), 3, 3), **self.tensor_args)
@@ -345,6 +343,7 @@ class RobotSphereCollision:
             self._link_spheres.append(link_spheres)
             
         self._w_link_spheres = self._link_spheres
+        
     def build_batch_features(self, clone_objs=False, clone_pose=True, batch_size=None):
         """clones poses/object instances for computing across batch. Use this once per batch size change to avoid re-initialization over repeated calls.
 

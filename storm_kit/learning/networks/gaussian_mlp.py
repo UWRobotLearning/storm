@@ -6,7 +6,7 @@ from torch.distributions import Normal
 import torch.nn.functional as F
 from omegaconf import OmegaConf
 
-from storm_kit.rl.networks.utils import mlp
+from storm_kit.learning.networks.utils import mlp
 
 
 

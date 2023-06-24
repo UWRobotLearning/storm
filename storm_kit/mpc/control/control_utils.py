@@ -228,7 +228,7 @@ def generate_van_der_corput_samples_batch(idx_batch, base):
     
 #     return r
 
-def generate_halton_samples(num_samples, ndims, bases=None, use_ghalton=True, seed_val=123, device=torch.device('cpu'), float_dtype=torch.float64):
+def generate_halton_samples(num_samples, ndims, bases=None, use_ghalton=True, seed_val=123, device=torch.device('cpu'), float_dtype=torch.float32):
     if not use_ghalton:
         samples = torch.zeros(num_samples, ndims, device=device, dtype=float_dtype)
         if not bases:

@@ -436,7 +436,6 @@ def multiply_inv_transform(l_rot_w: torch.Tensor, l_trans_w: torch.Tensor, l_rot
 def transform_point(point: torch.Tensor, rot: torch.Tensor, trans: torch.Tensor)->torch.Tensor:
     #new_point = (rot @ (point).unsqueeze(-1)).squeeze(-1) + trans
     new_point = (point @ rot.transpose(-1,-2)) + trans
-    print(point.shape, rot.shape, trans.shape, new_point.shape)
     return new_point
 
 

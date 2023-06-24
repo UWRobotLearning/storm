@@ -13,7 +13,6 @@ class Squeeze(nn.Module):
     def forward(self, x):
         return x.squeeze(dim=self.dim)
 
-
 def mlp(layer_sizes:List, activation:str='torch.nn.ReLU', output_activation:Optional[str]=None, dropout_prob:int=0.0, layer_norm:bool=False, squeeze_output=False):
     num_layers = len(layer_sizes)
     assert num_layers >= 2, 'MLP requires at least two dims (input and output)'
@@ -33,10 +32,6 @@ def mlp(layer_sizes:List, activation:str='torch.nn.ReLU', output_activation:Opti
     net = nn.Sequential(*layers)
     # net.to(dtype=torch.float32)
     return net
-
-
-
-
 
 if __name__ == "__main__":
     layer_sizes = [32, 256, 256, 1]
