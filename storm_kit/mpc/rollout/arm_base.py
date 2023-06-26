@@ -70,7 +70,7 @@ class ArmBase(RolloutBase):
         #                                          device=self.device,
         #                                          dtype=self.dtype))
 
-        self.dynamics_model = URDFKinematicModel(join_path(assets_path,cfg['model']['urdf_path']),
+        self.dynamics_model = torch.jit.script(URDFKinematicModel(join_path(assets_path,cfg['model']['urdf_path']),
                                                  dt=cfg['model']['dt'],
                                                  batch_size=cfg['num_particles'],
                                                  horizon=dynamics_horizon,
@@ -82,7 +82,7 @@ class ArmBase(RolloutBase):
                                                  control_space=cfg['control_space'],
                                                  vel_scale=cfg['model']['vel_scale'],
                                                  device=self.device,
-                                                 dtype=self.dtype)
+                                                 dtype=self.dtype))
 
         self.dt = self.dynamics_model.dt
         self.n_dofs = self.dynamics_model.n_dofs
@@ -102,12 +102,12 @@ class ArmBase(RolloutBase):
         #                                   float_dtype=float_dtype,
         #                                   retract_weight=cfg['cost']['retract_weight'])
         
-        self.null_cost = ProjectedDistCost(ndofs=self.n_dofs, device=device, float_dtype=dtype,
-                                           **cfg['cost']['null_space'])
+        self.null_cost = torch.jit.script(ProjectedDistCost(ndofs=self.n_dofs, device=device, float_dtype=dtype,
+                                           **cfg['cost']['null_space']))
         
-        self.manipulability_cost = ManipulabilityCost(ndofs=self.n_dofs, device=device,
+        self.manipulability_cost = torch.jit.script(ManipulabilityCost(ndofs=self.n_dofs, device=device,
                                                       float_dtype=dtype,
-                                                      **cfg['cost']['manipulability'])
+                                                      **cfg['cost']['manipulability']))
 
         self.zero_vel_cost = ZeroCost(device=device, float_dtype=dtype, **cfg['cost']['zero_vel'])
 
@@ -115,13 +115,13 @@ class ArmBase(RolloutBase):
 
         tensor_args = {'device': self.device, 'dtype': self.dtype}
         
-        self.stop_cost = StopCost(**cfg['cost']['stop_cost'],
+        self.stop_cost = torch.jit.script(StopCost(**cfg['cost']['stop_cost'],
                                   tensor_args=tensor_args,
-                                  traj_dt=self.traj_dt)
+                                  traj_dt=self.traj_dt))
         
-        self.stop_cost_acc = StopCost(**cfg['cost']['stop_cost_acc'],
+        self.stop_cost_acc = torch.hit.script(StopCost(**cfg['cost']['stop_cost_acc'],
                                       tensor_args=tensor_args,
-                                      traj_dt=self.traj_dt)
+                                      traj_dt=self.traj_dt))
 
         self.retract_state = torch.tensor([self.cfg['cost']['retract_state']], device=device, dtype=dtype)
 
@@ -141,7 +141,7 @@ class ArmBase(RolloutBase):
             self.primitive_collision_cost = PrimitiveCollisionCost(world_params=world_params, robot_params=robot_params, tensor_args=tensor_args, **self.cfg['cost']['primitive_collision'])
 
         if cfg['cost']['robot_self_collision']['weight'] > 0.0:
-            self.robot_self_collision_cost = RobotSelfCollisionCost(robot_params=robot_params, tensor_args=tensor_args, **self.cfg['cost']['robot_self_collision'])
+            self.robot_self_collision_cost = RobotSelfCollisionCost(config=model_params['robot_collision_params'], device=self.device, **self.cfg['cost']['robot_self_collision'])
 
         self.ee_vel_cost = EEVelCost(ndofs=self.n_dofs,device=device, float_dtype=dtype,**cfg['cost']['ee_vel'])
 

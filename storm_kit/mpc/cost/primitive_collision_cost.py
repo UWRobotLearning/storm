@@ -58,15 +58,14 @@ class PrimitiveCollisionCost(nn.Module):
         horizon = link_pos_seq.shape[1]
         n_links = link_pos_seq.shape[2]
 
-        if(self.batch_size != batch_size):
+        if self.batch_size != batch_size:
             self.batch_size = batch_size
             self.robot_world_coll.build_batch_features(self.batch_size * horizon, clone_pose=True, clone_points=True)
 
         link_pos_batch = link_pos_seq.view(batch_size * horizon, n_links, 3)
         link_rot_batch = link_rot_seq.view(batch_size * horizon, n_links, 3, 3)
         with record_function("primitive_collision_cost:check_sphere_collision"):
-            dist = self.robot_world_coll.check_robot_sphere_collisions(link_pos_batch,
-                                                                    link_rot_batch)
+            dist = self.robot_world_coll.check_robot_sphere_collisions(link_pos_batch, link_rot_batch)
         dist = dist.view(batch_size, horizon, n_links)#, self.n_world_objs)
         # cost only when dist is less
         dist += self.distance_threshold

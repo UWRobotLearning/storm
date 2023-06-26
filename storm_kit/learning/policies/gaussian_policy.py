@@ -3,8 +3,8 @@ import torch
 from torch.distributions import Normal, TransformedDistribution
 from torch.distributions.transforms import TanhTransform
 
-from storm_kit.rl.policies import Policy
-from storm_kit.rl.networks import GaussianMLP
+from storm_kit.learning.policies import Policy
+from storm_kit.learning.networks import GaussianMLP
 
 
 class GaussianPolicy(Policy):

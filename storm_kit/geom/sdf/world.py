@@ -224,13 +224,13 @@ class WorldPrimitiveCollision(WorldGridCollision):
             
             r = sphere_objs[j]['radius']
             
-            self._world_spheres[:, j_idx,:] = tensor_sphere(position, r, tensor_args=self.tensor_args).unsqueeze(0).repeat(self.batch_size, 1)
+            self._world_spheres[:, j_idx,:] = tensor_sphere(position, r, device=self.tensor_args['device']).unsqueeze(0).repeat(self.batch_size, 1)
         
         for j_idx, j in enumerate(cube_objs):
             pose = cube_objs[j]['pose']
             pose_fixed = [pose[0], pose[1], pose[2], pose[6], pose[3], pose[4], pose[5]]
             dims = cube_objs[j]['dims']
-            cube = tensor_cube(pose_fixed, dims, tensor_args=self.tensor_args)
+            cube = tensor_cube(pose_fixed, dims, device=self.tensor_args['device'])
             self._world_cubes.append(cube)
 
             

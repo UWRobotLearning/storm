@@ -1,4 +1,5 @@
 import csv, json, random, string, sys
+import copy
 from datetime import datetime
 from pathlib import Path
 from omegaconf import OmegaConf
@@ -69,16 +70,15 @@ class Log:
         if self.csv_file is not None:
             self.csv_file.close()
 
-
 def fit_mlp(
-    net, 
-    x_train, y_train,
-    x_val, y_val, 
+    net:torch.nn.Module, 
+    x_train:torch.Tensor, y_train:torch.Tensor,
+    x_val:torch.Tensor, y_val:torch.Tensor, 
     optimizer, loss_fn, 
-    num_epochs, batch_size, 
+    num_epochs:int, batch_size:int, 
     x_train_aux=None, y_train_aux=None,
     x_val_aux=None, y_val_aux=None,
-    device=torch.device('cpu')):
+    device:torch.device=torch.device('cpu')):
 
     net.to(device)
     x_val = x_val.to(device)
@@ -86,6 +86,15 @@ def fit_mlp(
 
     pbar = tqdm(range(int(num_epochs)) , unit="epoch", mininterval=0, disable=False, desc='train')
     num_batches = x_train.shape[0] // batch_size #throw away last incomplete batch
+
+    train_losses = []
+    validation_losses = []
+    train_accuracies = []
+    validation_accuracies = []
+
+    best_validation_loss = torch.inf
+    best_validation_acc = torch.inf
+    best_net = copy.deepcopy(net)
 
     for i in pbar:
         #random permutation of data
@@ -109,14 +118,25 @@ def fit_mlp(
             acc = (torch.sigmoid(y_pred).round() == y_batch).float().mean().cpu()
             avg_loss += loss.item()
             avg_acc += acc.item()
+        
         avg_loss /= num_batches*1.0
         avg_acc /= num_batches*1.0
+        train_losses.append(avg_loss)
+        train_accuracies.append(avg_acc)
         #run validation
         net.eval()
         with torch.no_grad():
             y_pred_val = net.forward(x_val)
             loss_val = loss_fn(y_pred_val, y_val)
             acc_val = (torch.sigmoid(y_pred_val).round() == y_val).float().mean().cpu()
+            validation_losses.append(loss_val.item())
+            validation_accuracies.append(acc_val.item())
+        
+        if loss_val.item() <= best_validation_loss:
+            print('Best model so far. Val Loss: {}'.format(loss_val.item()))
+            best_validation_loss = loss_val
+            best_net = copy.deepcopy(net)
+        
         net.train()
 
         pbar.set_postfix(
@@ -125,3 +145,39 @@ def fit_mlp(
             avg_loss_val = float(loss_val.item()),
             avg_acc_val = float(acc_val.item())
         )
+
+    return best_net, train_losses, train_accuracies, validation_losses, validation_accuracies
+    
+
+
+
+def scale_to_net(data, norm_dict, key):
+    """Scale the tensor network range
+
+    Args:
+        data (tensor): input tensor to scale
+        norm_dict (Dict): normalization dictionary of the form dict={key:{'mean':,'std':}}
+        key (str): key of the data
+
+    Returns:
+        tensor : output scaled tensor
+    """    
+    
+    scaled_data = torch.div(data - norm_dict[key]['mean'], norm_dict[key]['std'] + 1e-6)
+    scaled_data[scaled_data != scaled_data] = 0.0
+    return scaled_data
+
+
+def scale_to_base(data, norm_dict, key):
+    """Scale the tensor back to the orginal units.  
+
+    Args:
+        data (tensor): input tensor to scale
+        norm_dict (Dict): normalization dictionary of the form dict={key:{'mean':,'std':}}
+        key (str): key of the data
+
+    Returns:
+        tensor : output scaled tensor
+    """    
+    scaled_data = torch.mul(data, norm_dict[key]['std']) + norm_dict[key]['mean']
+    return scaled_data

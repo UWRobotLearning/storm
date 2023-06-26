@@ -31,8 +31,8 @@ import trimesh
 from ...differentiable_robot_model.coordinate_transform import CoordinateTransform, rpy_angles_to_matrix, multiply_transform, transform_point
 from ...differentiable_robot_model.urdf_utils import URDFRobotModel
 from ...geom.geom_types import tensor_capsule, tensor_sphere
-from ...util_file import join_path, get_mpc_configs_path
-from ...geom.nn_model.robot_self_collision import RobotSelfCollisionNet
+from ...util_file import join_path, get_configs_path
+# from ..nn_model.robot_self_collision_net import RobotSelfCollisionNet
 from typing import List
 
 class RobotCapsuleCollision:
@@ -206,6 +206,7 @@ class RobotMeshCollision:
         if(clone_pose):
             self._batch_link_collision_trans = self._link_collision_trans.unsqueeze(0).repeat(self.batch_size, 1, 1).clone()
             self._batch_link_collision_rot = self._link_collision_rot.unsqueeze(0).repeat(self.batch_size, 1, 1, 1).clone()
+    
     def update_batch_robot_collision_pose(self, links_pos, links_rot):
         """
         Update link collision poses
@@ -265,7 +266,8 @@ class RobotSphereCollision:
         All points are stored in the world reference frame, obtained by using update_pose calls.
     """
     
-    def __init__(self, robot_collision_params, batch_size=1, tensor_args={'device':"cpu", 'dtype':torch.float32}):
+    # def __init__(self, robot_collision_params, batch_size=1, tensor_args={'device':"cpu", 'dtype':torch.float32}):
+    def __init__(self, robot_collision_params, batch_size=1, device=torch.device("cpu")):
         """ Initialize with robot collision parameters, look at franka_reacher.py for an example.
 
         Args:
@@ -275,7 +277,8 @@ class RobotSphereCollision:
         """        
         # read capsules
         self.batch_size = batch_size
-        self.tensor_args = tensor_args
+        # self.tensor_args = tensor_args
+        self.device = device
 
         
         # keep track of their pose in world frame
@@ -299,14 +302,14 @@ class RobotSphereCollision:
         self.w_link_points = None
         self.w_batch_link_spheres = None
         
-        self.l_T_c = CoordinateTransform(device=self.tensor_args['device'])
+        self.l_T_c = CoordinateTransform(device=self.device)
         self.robot_collision_params = robot_collision_params
         self.load_robot_collision_model(robot_collision_params)
         
         self.dist = None
 
         # load nn collision model:
-        dof = robot_collision_params['dof']
+        # dof = robot_collision_params['dof']
         
         # self.robot_nn = RobotSelfCollisionNet(n_joints=dof)
         # self.robot_nn.load_weights(robot_collision_params['self_collision_weights'], tensor_args)
@@ -317,10 +320,12 @@ class RobotSphereCollision:
         Args:
             robot_collision_params (Dict): loaded from yml file
         """        
-        robot_links = robot_collision_params['link_objs']
+        robot_links = robot_collision_params['link_names']
 
         # load collision file:
-        coll_yml = join_path(get_mpc_configs_path(), robot_collision_params['collision_spheres'])
+        # coll_yml = join_path(get_mpc_configs_path(), robot_collision_params['collision_spheres'])
+        coll_yml = join_path(get_configs_path(), robot_collision_params['collision_spheres'])
+
         with open(coll_yml) as file:
             coll_params = yaml.load(file, Loader=yaml.FullLoader)
 
@@ -329,17 +334,20 @@ class RobotSphereCollision:
         self._link_spheres = []
 
         # we store as [n_link, 7]
-        self._link_collision_trans = torch.empty((len(robot_links), 3), **self.tensor_args)
-        self._link_collision_rot = torch.empty((len(robot_links), 3, 3), **self.tensor_args)
+        # self._link_collision_trans = torch.empty((len(robot_links), 3), **self.tensor_args)
+        # self._link_collision_rot = torch.empty((len(robot_links), 3, 3), **self.tensor_args)
+        self._link_collision_trans = torch.empty((len(robot_links), 3), device=self.device)
+        self._link_collision_rot = torch.empty((len(robot_links), 3, 3), device=self.device)
+
 
         for j_idx, j in enumerate(robot_links):
             
             n_spheres = len(coll_params[j])
-            link_spheres = torch.zeros((n_spheres, 4), **self.tensor_args)
+            # link_spheres = torch.zeros((n_spheres, 4), **self.tensor_args)
+            link_spheres = torch.zeros((n_spheres, 4), device=self.device)
 
             for i in range(n_spheres):
-                
-                link_spheres[i,:] = tensor_sphere(coll_params[j][i]['center'], coll_params[j][i]['radius'], tensor_args=self.tensor_args, tensor=link_spheres[i,:])
+                link_spheres[i,:] = tensor_sphere(coll_params[j][i]['center'], coll_params[j][i]['radius'], device=self.device, tensor=link_spheres[i,:])
             self._link_spheres.append(link_spheres)
             
         self._w_link_spheres = self._link_spheres
@@ -352,9 +360,9 @@ class RobotSphereCollision:
             clone_pose (bool, optional): clones pose. Defaults to True.
             batch_size ([type], optional): batch_size to clone. Defaults to None.
         """        
-        if(batch_size is not None):
+        if batch_size is not None:
             self.batch_size = batch_size
-        if(clone_objs):
+        if clone_objs:
             self._batch_link_spheres = []
             for i in range(len(self._link_spheres)):
                 self._batch_link_spheres.append(self._link_spheres[i].unsqueeze(0).repeat(self.batch_size, 1, 1).clone())
@@ -422,17 +430,17 @@ class RobotSphereCollision:
             self.w_batch_link_spheres[i][:,:,:3] = transform_point(
                 self._batch_link_spheres[i][:,:,:3], links_rot[:,i,:,:], links_pos[:,i,:].unsqueeze(-2))
 
-    def check_self_collisions_nn(self, q):
-        """compute signed distance using NN, uses an instance of :class:`.nn_model.robot_self_collision.RobotSelfCollisionNet`
+    # def check_self_collisions_nn(self, q):
+    #     """compute signed distance using NN, uses an instance of :class:`.nn_model.robot_self_collision.RobotSelfCollisionNet`
 
-        Args:
-            q ([type]): [description]
+    #     Args:
+    #         q ([type]): [description]
 
-        Returns:
-            [type]: [description]
-        """        
-        dist = self.robot_nn.compute_signed_distance(q)
-        return dist
+    #     Returns:
+    #         [type]: [description]
+    #     """        
+    #     dist = self.robot_nn.compute_signed_distance(q)
+    #     return dist
 
 
     def check_self_collisions(self, link_trans, link_rot):
@@ -449,11 +457,12 @@ class RobotSphereCollision:
         b, _, _ = link_trans.shape
         if self.dist is None or b != self.dist.shape[0]:
             self.update_batch_robot_collision_objs(link_trans, link_rot)
-            self.dist = torch.zeros((b,n_links,n_links), **self.tensor_args) - 100.0
+            self.dist = torch.zeros((b,n_links,n_links), device=self.device) - 100.0
         dist = self.dist
         dist = find_link_distance(self.w_batch_link_spheres, dist)
         
         return dist
+    
     def get_robot_link_objs(self):
         raise NotImplementedError
 

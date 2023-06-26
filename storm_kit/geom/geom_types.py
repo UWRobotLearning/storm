@@ -24,33 +24,47 @@ import torch
 
 from ..differentiable_robot_model.coordinate_transform import CoordinateTransform
 
-def tensor_circle(pt, radius, tensor=None, tensor_args={'device':"cpu", 'dtype':torch.float32}):
-    if(tensor is None):
-        tensor = torch.empty(3, **tensor_args)
-    tensor[:2] = torch.as_tensor(pt, **tensor_args)
+# def tensor_circle(pt, radius, tensor=None, tensor_args={'device':"cpu", 'dtype':torch.float32}):
+def tensor_circle(pt, radius, tensor=None, device=torch.device('cpu')):
+
+    if tensor is None:
+        # tensor = torch.empty(3, **tensor_args)
+        tensor = torch.empty(3, device=device)
+
+    # tensor[:2] = torch.as_tensor(pt, **tensor_args)
+    tensor[:2] = torch.as_tensor(pt, device=torch.device)
     tensor[2] = radius
     return tensor
 
-def tensor_sphere(pt, radius, tensor=None, tensor_args={'device':"cpu", 'dtype':torch.float32}):
-    if(tensor is None):
-        tensor = torch.empty(4, **tensor_args)
-    tensor[:3] = torch.as_tensor(pt, **tensor_args)
+# def tensor_sphere(pt, radius, tensor=None, tensor_args={'device':"cpu", 'dtype':torch.float32}):
+def tensor_sphere(pt, radius, tensor=None, device=torch.device('cpu')):
+    if tensor is None:
+        # tensor = torch.empty(4, **tensor_args)
+        tensor = torch.empty(4, device=device)
+    # tensor[:3] = torch.as_tensor(pt, **tensor_args)
+    tensor[:3] = torch.as_tensor(pt, device=device)
     tensor[3] = radius
     return tensor
 
-def tensor_capsule(base, tip, radius, tensor=None, tensor_args={'device':"cpu", 'dtype':torch.float32}):
-    if(tensor is None):
-        tensor = torch.empty(7, **tensor_args)
-    tensor[:3] = torch.as_tensor(base, **tensor_args)
-    tensor[3:6] = torch.as_tensor(tip, **tensor_args)
+# def tensor_capsule(base, tip, radius, tensor=None, tensor_args={'device':"cpu", 'dtype':torch.float32}):
+def tensor_capsule(base, tip, radius, tensor=None, device=torch.device("cpu")):
+    if tensor is None:
+        # tensor = torch.empty(7, **tensor_args)
+        tensor = torch.empty(7, device=device)
+    # tensor[:3] = torch.as_tensor(base, **tensor_args)
+    # tensor[3:6] = torch.as_tensor(tip, **tensor_args)
+    tensor[:3] = torch.as_tensor(base, device=device)
+    tensor[3:6] = torch.as_tensor(tip, device=device)
+
     tensor[6] = radius
     return tensor
 
 
-def tensor_cube(pose, dims, tensor_args={'device':"cpu", 'dtype':torch.float32}):
-    w_T_b = CoordinateTransform(pose=pose, device=tensor_args['device'])
+# def tensor_cube(pose, dims, tensor_args={'device':"cpu", 'dtype':torch.float32}):
+def tensor_cube(pose, dims, device=torch.device("cpu")):
+    w_T_b = CoordinateTransform(pose=pose, device=device)
     b_T_w = w_T_b.inverse()
-    dims_t = torch.tensor([dims[0], dims[1], dims[2]], **tensor_args)
+    dims_t = torch.tensor([dims[0], dims[1], dims[2]], device=device)
     cube = {'trans': w_T_b.translation(), 'rot': w_T_b.rotation(),
             'inv_trans': b_T_w.translation(), 'inv_rot': b_T_w.rotation(),
             'dims':dims_t}

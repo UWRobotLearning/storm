@@ -1,37 +1,36 @@
+import hydra
+from omegaconf import DictConfig
 import torch
 import torch.nn.functional as F
 import torch.optim as optim
 import torch.nn as nn
 
 from storm_kit.mpc.control.control_utils import generate_halton_samples
-from storm_kit.learning.util import fit_mlp
-from storm_kit.learning.networks.utils import mlp
+from storm_kit.learning.learning_utils import fit_mlp
+# from storm_kit.learning.networks.utils import mlp
+from storm_kit.geom.nn_model.robot_self_collision_net import RobotSelfCollisionNet
 from storm_kit.mpc.cost.robot_self_collision_cost import RobotSelfCollisionCost
 from storm_kit.differentiable_robot_model import DifferentiableRobotModel
+from storm_kit.util_file import join_path, get_weights_path, get_configs_path, get_assets_path
 
 
 device = torch.device('cuda', 0) 
-n_dofs = 7
-d_state = 3 * n_dofs
-vel_scale = 0.5
-urdf_path = '../../../content/assets/urdf/franka_description/franka_panda_no_gripper.urdf'
-link_names = ['panda_link1', 'panda_link2','panda_link3','panda_link4','panda_link5', 'panda_link6','panda_hand']
-ee_link_name = 'ee_link'
-robot_collision_params = {
-    'urdf': "urdf/franka_description/franka_panda_no_gripper.urdf",
-    'sample_points': 100,
-    'link_objs': ['panda_link1', 'panda_link2', 'panda_link3','panda_link4','panda_link5', 'panda_link6','panda_hand'],
-    'threshold': 0.35,
-    'bounds': [[-0.5, -0.8, 0.0],[0.5,0.8,1.0]],
-    'collision_spheres': '../robot/franka.yml',
-    'dof': 7,
-  }
-robot_params = {'robot_collision_params': robot_collision_params}
-distance_threshold = 0.05
 
-def generate_dataset(num_data_points, val_ratio=0.2):
+def generate_dataset(
+        config,
+        num_data_points, 
+        val_ratio=0.2):
+    
+    robot_collision_config = config.robot_collision_params
+    ee_link_name = config.ee_link_name
+    n_dofs = robot_collision_config.n_dofs
+    urdf_path = join_path(get_assets_path(), robot_collision_config['urdf_path'])
+    link_names = robot_collision_config['link_names']
+    distance_threshold = 0.05
+
+
     robot_model = DifferentiableRobotModel(urdf_path, device=device)
-    self_collision_cost = RobotSelfCollisionCost(weight=1.0, robot_params=robot_params, device=device) 
+    self_collision_cost = RobotSelfCollisionCost(weight=1.0, config=robot_collision_config, device=device) 
 
     joint_lim_dicts = robot_model.get_joint_limits()
     q_pos_uppper = torch.zeros(n_dofs, device=device)
@@ -50,7 +49,7 @@ def generate_dataset(num_data_points, val_ratio=0.2):
     q_pos_samples = q_pos_samples.view(num_data_points, n_dofs)
     q_vel_samples = torch.zeros_like(q_pos_samples)
 
-    ee_pos, ee_rot, lin_jac, ang_jac_seq = robot_model.compute_fk_and_jacobian(
+    _,_,_,_ = robot_model.compute_fk_and_jacobian(
         q_pos_samples, q_vel_samples, link_name= ee_link_name)
     link_pos_seq, link_rot_seq = [], []
 
@@ -92,39 +91,65 @@ def generate_dataset(num_data_points, val_ratio=0.2):
 
     return x_train, y_train, x_val, y_val, x_coll_train, y_coll_train, x_coll_val, y_coll_val
 
-
-def train_network():
-    num_data_points = 50000
+@hydra.main(config_name="config", config_path=get_configs_path()+"/gym")
+def train_network(cfg:DictConfig):
+    checkpoint_dir = get_weights_path() + "/robot_self"
+    robot_name = cfg.task.rollout.model.name
+    plot = True
+    num_data_points = 1000000
     val_ratio = 0.1
     num_epochs = 100
-    batch_size = 128
+    batch_size = 256
+    lr = 1e-3
+    n_dofs = cfg.task.rollout.n_dofs
 
-    mlp_params = {
-        'hidden_layers': [256, 256, 256],
-        'activation': 'torch.nn.ReLU', 
-        'output_activation': None,
-        'dropout_prob': 0.0,
-        'layer_norm': False,
-    }
-    in_dim = n_dofs
-    out_dim = 1
-    layer_sizes = [in_dim] + mlp_params['hidden_layers'] + [out_dim]
-
-    net = mlp(
-        layer_sizes=layer_sizes, 
-        activation=mlp_params['activation'],
-        output_activation=mlp_params['output_activation'],
-        dropout_prob=mlp_params['dropout_prob'],
-        layer_norm=mlp_params['layer_norm'])
-
-    data = generate_dataset(num_data_points, val_ratio)
+    data = generate_dataset(cfg.task.rollout.model, num_data_points, val_ratio)
     x_train, y_train, x_val, y_val, x_aux_train, y_aux_train, x_aux_val, y_aux_val = data
-    optimizer = optim.Adam(net.parameters(), lr=1e-3)
+
+    # net = mlp(
+    #     layer_sizes=layer_sizes, 
+    #     activation=mlp_params['activation'],
+    #     output_activation=mlp_params['output_activation'],
+    #     dropout_prob=mlp_params['dropout_prob'],
+    #     layer_norm=mlp_params['layer_norm'])
+
+    net = RobotSelfCollisionNet(
+        n_joints = n_dofs,
+        norm_dict = None,
+        device = device
+    )
+
+    optimizer = optim.Adam(net.parameters(), lr=lr)
     
     loss_fn = nn.BCEWithLogitsLoss()
-    fit_mlp(net, x_train, y_train, x_val, y_val, optimizer, loss_fn, num_epochs, batch_size, device=device)
+    best_net, train_losses, train_accuracies, validation_losses, validation_accuracies = \
+        fit_mlp(net, x_train, y_train, x_val, y_val, optimizer, loss_fn, num_epochs, batch_size, device=device)
+    
+    #Save the best found network weights
+    print('saving model')
+    torch.save(
+        {
+            'model_state_dict': best_net.state_dict(),
+            'optimizer_state_dict': optimizer.state_dict(),
+            # 'norm':{'x':{'mean':mean_x, 'std':std_x},
+            #         'y':{'mean':mean_y, 'std':std_y}}
+        },
+        join_path(checkpoint_dir, robot_name +'_self_collision_weights.pt')
+        )
+    
+    if plot:
+        import matplotlib.pyplot as plt 
+        fig, ax = plt.subplots(2,1)
+        ax[0].plot(train_losses, label='train')
+        ax[0].plot(validation_losses, label='validation')
+        ax[1].plot(train_accuracies, label='train')
+        ax[1].plot(validation_accuracies, label='validation')
+        ax[0].legend()
+        ax[0].set_title('Loss')
+        ax[1].set_title('Accuracy')
+        plt.show()
 
-
+    
 
 if __name__ == "__main__":
     torch.set_default_dtype(torch.float32)

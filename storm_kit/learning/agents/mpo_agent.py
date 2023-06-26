@@ -6,8 +6,8 @@ import torch.nn.functional as F
 import torch.nn as nn
 from torch.nn.utils import clip_grad_norm_
 from tqdm import tqdm
-from storm_kit.rl.agents import Agent
-from storm_kit.rl.util import logmeanexp
+from storm_kit.learning.agents import Agent
+from storm_kit.learning.learning_utils import logmeanexp
 
 
 class MPOAgent(Agent):

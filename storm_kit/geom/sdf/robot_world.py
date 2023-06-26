@@ -32,7 +32,7 @@ from .world import WorldPointCloudCollision, WorldPrimitiveCollision
 
 class RobotWorldCollision:
     def __init__(self, robot_collision, world_collision):
-        self.tensor_args = robot_collision.tensor_args
+        # self.tensor_args = robot_collision.tensor_args
         self.robot_coll = robot_collision
         self.world_coll = world_collision
     def update_robot_link_poses(self, links_pos, links_rot):
@@ -44,7 +44,8 @@ class RobotWorldCollision:
 class RobotWorldCollisionCapsule(RobotWorldCollision):
     """Collision checking between capsule robot and sphere world"""    
     def __init__(self, robot_collision_params, world_collision_params, robot_batch_size=1,
-                 world_batch_size=1,tensor_args={'device':"cpu", 'dtype':torch.float32}):
+                 world_batch_size=1, tensor_args={'device':"cpu", 'dtype':torch.float32}):
+        
         robot_collision = RobotCapsuleCollision(robot_collision_params, tensor_args=tensor_args, batch_size=robot_batch_size)
         world_collision = WorldPrimitiveCollision(world_collision_params, tensor_args=tensor_args, batch_size=world_batch_size)
         super().__init__(robot_collision, world_collision)
@@ -54,7 +55,7 @@ class RobotWorldCollisionCapsule(RobotWorldCollision):
 
         link_capsules = self.robot_coll.get_robot_link_objs()
         world_spheres = self.world_coll.get_objs()
-        if(self.dist is None or self.dist.shape[0] != link_capsules.shape[0]):
+        if self.dist is None or self.dist.shape[0] != link_capsules.shape[0]:
             self.dist = torch.empty((link_capsules.shape[0],link_capsules.shape[1],world_spheres.shape[1]), **self.tensor_args)
         dist = self.dist
         for i in range(world_spheres.shape[1]):
@@ -70,9 +71,8 @@ class RobotWorldCollisionPrimitive(RobotWorldCollision):
     def __init__(self, robot_collision_params, world_collision_params, robot_batch_size=1,
                  world_batch_size=1,tensor_args={'device':"cpu", 'dtype':torch.float32},
                  bounds=None, grid_resolution=None):
-        robot_collision = RobotSphereCollision(robot_collision_params, robot_batch_size, tensor_args)
-
-        
+        self.device = tensor_args['device']
+        robot_collision = RobotSphereCollision(robot_collision_params, robot_batch_size, device=tensor_args['device'])
         world_collision = WorldPrimitiveCollision(world_collision_params, tensor_args=tensor_args, batch_size=world_batch_size, bounds=bounds, grid_resolution=grid_resolution)
         self.robot_batch_size = robot_batch_size
 
@@ -95,7 +95,7 @@ class RobotWorldCollisionPrimitive(RobotWorldCollision):
         """        
         batch_size = link_trans.shape[0]
         # update link pose:
-        if(self.robot_batch_size != batch_size):
+        if self.robot_batch_size != batch_size:
             self.robot_batch_size = batch_size
             self.build_batch_features(self.robot_batch_size, clone_pose=True, clone_points=True)
 
@@ -105,12 +105,10 @@ class RobotWorldCollisionPrimitive(RobotWorldCollision):
         with record_function('robot_world:get_batch_robot_link_spheres'):
             w_link_spheres = self.robot_coll.get_batch_robot_link_spheres()
         
-                
-        
         n_links = len(w_link_spheres)
 
         if self.dist is None or self.dist.shape[0] != n_links:
-            self.dist = torch.zeros((batch_size, n_links), **self.tensor_args)
+            self.dist = torch.zeros((batch_size, n_links), device=self.device)
         dist = self.dist
         for i in range(n_links):
             spheres = w_link_spheres[i]
@@ -125,9 +123,6 @@ class RobotWorldCollisionPrimitive(RobotWorldCollision):
  
         return dist
 
-
-
-        
     def get_robot_env_sdf(self, link_trans, link_rot):
         """Compute signed distance via analytic functino
 
@@ -156,9 +151,6 @@ class RobotWorldCollisionPrimitive(RobotWorldCollision):
             self.dist = torch.empty((batch_size, n_links), **self.tensor_args)
         dist = self.dist
 
-        
-
-        
         for i in range(n_links):
             spheres = w_link_spheres[i]
             #b, n, _ = spheres.shape

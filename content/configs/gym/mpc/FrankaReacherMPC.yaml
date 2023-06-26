@@ -156,7 +156,7 @@ world: ${task.world}
   
 mppi:
   num_instances     : ${task.env.numEnvs}
-  horizon           : 30
+  horizon           : 40
   init_cov          : 0.005 #.5 #.5
   gamma             : 0.98
   n_iters           : 1
@@ -164,7 +164,7 @@ mppi:
   step_size_cov     : 0.7
   beta              : 1.0
   alpha             : 1
-  num_particles     : 500 #10000
+  num_particles     : 1000 #10000
   update_cov        : False
   cov_type          : 'diag_AxA' # 
   kappa             : 0.005

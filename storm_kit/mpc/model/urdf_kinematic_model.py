@@ -20,7 +20,8 @@
 # LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
 # FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 # DEALINGS IN THE SOFTWARE.#
-from typing import List, Tuple, Dict, Optional, Any
+
+from typing import List, Dict, Optional
 import torch
 import torch.nn as nn
 from torch.profiler import record_function
@@ -157,7 +158,7 @@ class URDFKinematicModel(nn.Module):
             curr_state[:, :self.n_dofs] = curr_state[:, :self.n_dofs] + curr_state[:, self.n_dofs:2*self.n_dofs] * dt
         elif self.control_space == 'vel':
             curr_state[:, 2 * self.n_dofs:3 * self.n_dofs] = 0.0
-            curr_state[:, self.n_dofs:2*self.n_dofs] = act * dt
+            curr_state[:, self.n_dofs:2*self.n_dofs] = act #* dt
             curr_state[:, :self.n_dofs] = curr_state[:, :self.n_dofs] + curr_state[:, self.n_dofs:2*self.n_dofs] * dt
         elif self.control_space == 'pos':
             curr_state[:, 2 * self.n_dofs:3 * self.n_dofs] = 0.0
@@ -177,7 +178,8 @@ class URDFKinematicModel(nn.Module):
         state = state.to(self.device, dtype=self.dtype)
         act = act.to(self.device, dtype=self.dtype)
         nth_act_seq = self.integrate_action(act)
-        state_seq = self.step_fn(state, nth_act_seq, state_seq, self._dt_h, self._integrate_matrix, self.n_dofs, self.num_instances, batch_size, horizon) #, self._fd_matrix)
+        state_seq = self.step_fn(state, nth_act_seq, state_seq, self._dt_h, self._integrate_matrix, self._fd_matrix, self.n_dofs, self.num_instances, batch_size, horizon) #, self._fd_matrix)
+
         #state_seq = self.enforce_bounds(state_seq)
         state_seq[:, :,:, -1] = self._traj_tstep # timestep array
         return state_seq

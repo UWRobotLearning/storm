@@ -1,6 +1,6 @@
 from typing import Optional
 import torch
-from storm_kit.rl.agents import Agent
+from storm_kit.learning.agents import Agent
 
 class MPCAgent(Agent):
     def __init__(

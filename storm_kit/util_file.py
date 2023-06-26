@@ -40,6 +40,7 @@ def get_configs_path():
     content_path = get_content_path()
     path = os.path.join(content_path,'configs')
     return path
+
 def get_assets_path():
     content_path = get_content_path()
     path = os.path.join(content_path,'assets')
@@ -73,3 +74,4 @@ def get_mpc_configs_path():
     config_path = get_configs_path()
     path = os.path.join(config_path, 'mpc')
     return path
+

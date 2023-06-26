@@ -3,7 +3,7 @@ import os
 import torch
 import torch.optim as optim
 import torch.nn.functional as F
-from storm_kit.rl.agents import Agent
+from storm_kit.learning.agents import Agent
 import time
 from tqdm import tqdm
 

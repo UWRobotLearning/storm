@@ -51,7 +51,7 @@ class FrankaReacher(FrankaEnv):
         super()._create_envs(num_envs, spacing, num_per_row)
         self.target_poses = []
         for i in range(self.num_envs):
-            target_pose_franka = torch.tensor([0.2, 0.0, 0.5, 0.0, 0.707, 0.707, 0.0], device=self.device, dtype=torch.float) 
+            target_pose_franka = torch.tensor([0.3, 0.0, 0.1, 0.0, 0.707, 0.707, 0.0], device=self.device, dtype=torch.float) 
             self.target_poses.append(target_pose_franka)
         self.target_poses = torch.cat(self.target_poses, dim=-1).view(self.num_envs, 7)
 

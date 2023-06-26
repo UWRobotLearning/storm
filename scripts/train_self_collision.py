@@ -30,7 +30,7 @@ from storm_kit.mpc.rollout.arm_base import ArmBase
 from storm_kit.util_file import get_configs_path, get_gym_configs_path, join_path, load_yaml, get_assets_path, get_mpc_configs_path, get_weights_path
 import yaml
 from storm_kit.mpc.control.control_utils import generate_halton_samples
-from storm_kit.geom.nn_model.robot_self_collision import RobotSelfCollisionNet
+from storm_kit.geom.nn_model.robot_self_collision_net import RobotSelfCollisionNet
 import os
 import matplotlib.pyplot as plt
 

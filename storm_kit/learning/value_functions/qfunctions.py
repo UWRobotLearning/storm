@@ -2,7 +2,7 @@ from omegaconf import OmegaConf
 import torch
 import torch.nn as nn
 from typing import Dict
-from storm_kit.rl.networks.utils import mlp
+from storm_kit.learning.networks.utils import mlp
 
 class QFunction(nn.Module):
     def __init__(

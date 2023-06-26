@@ -39,10 +39,10 @@ env:
 rollout:
 
   control_dt: 0.02 #0.0166 #0.02
-  run_open_loop: False
+  run_open_loop: False #check
   control_space: 'acc'
-  env_control_space: ${resolve_default:'pos',${task.env.numEnvs}}
-  float_dtype: 'float32'
+  env_control_space: ${resolve_default:'pos',${task.env.numEnvs}} #remove the need, just return entire command?
+  float_dtype: 'float32' #check
   state_filter_coeff: {'position':0.1, 'velocity':0.0, 'acceleration':0.0}
   # cmd_filter_coeff: {'position':1.0, 'velocity':1.0, 'acceleration':0.0}
   n_dofs: 7
@@ -53,36 +53,34 @@ rollout:
     learnable_rigid_body_config:
       learnable_links: []
     name: "franka_panda"
-    max_acc: 5.0 
-    dt: 0.02
+    max_acc: 10.0 
+    dt: 0.02 #check
     dt_traj_params:
       base_dt:  0.02 #0.0166 #0.01 #0.02
       base_ratio: 0.5
       max_dt: 0.2
     ee_link_name: "ee_link"
-    init_state: [0.8, 0.3, 0.0, -1.57, 0.0, 1.86, 0.]
+    init_state: [0.8, 0.3, 0.0, -1.57, 0.0, 1.86, 0.] #check
     link_names: ['panda_link1', 'panda_link2','panda_link3','panda_link4','panda_link5', 'panda_link6','panda_hand']
     vel_scale: 1.0
     collision_spheres: '../robot/franka.yml'
     
     robot_collision_params:
-      urdf: "urdf/franka_description/franka_panda_no_gripper.urdf"
+      urdf_path: ${task.rollout.model.urdf_path}
       sample_points: 100
-      link_objs: ['panda_link1', 'panda_link2', 'panda_link3','panda_link4','panda_link5', 'panda_link6','panda_hand']
-      #link_objs: ['panda_link6']
+      link_names: ${task.rollout.model.link_names}
       threshold: 0.35
       bounds: [[-0.5, -0.8, 0.0],[0.5,0.8,1.0]]
-      collision_spheres: '../robot/franka.yml'
-      self_collision_weights: 'robot_self/franka_self_sdf.pt'
-      dof: 7
+      collision_spheres: 'robot/franka.yml'
+      self_collision_weights: 'robot_self/franka_self_collision_weights.pt'
+      n_dofs: ${task.rollout.n_dofs} #check
 
     world_collision_params:
-      model_path: 'scene_coll_nn/'
-      label_map: {'robot':2, 'ground':0}
-      bounds: [[-1.0, -1.0, -0.2],[1.0,1.0,1.0]]
+      model_path: 'scene_coll_nn/' #check
+      label_map: {'robot':2, 'ground':0} #check
+      bounds: [[-1.0, -1.0, -0.2],[1.0,1.0,1.0]] #check
       #bounds: [[-0.5, -0.8, 0.0],[0.5,0.8,1.0]]
-      grid_resolution: 0.05
-
+      grid_resolution: 0.05 #check
 
   cost:
     # goal_pose:
@@ -95,7 +93,7 @@ rollout:
 
     goal_pose:
       vec_weight: [1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
-      weight: [15.0, 100.0] #[15.0, 100.0]
+      weight: [15.0, 200.0] #[15.0, 100.0]
       position_gaussian_params: {'n':0, 'c':0.0, 's':0.0, 'r':10.0}
       orientation_gaussian_params: {'n':0, 'c':0.0, 's':0.0, 'r':10.0}
       hinge_val: -1
@@ -170,8 +168,8 @@ rollout:
       gaussian_params: {'n':0, 'c':0.0, 's':0, 'r':10.0}
       bound_thresh: 0.05
 
-    retract_state : [0.00, 0.0, 0.00, -1.5, 0.00, 2.0, 0.0]
-    retract_weight: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0,0.0]
+    retract_state : [0.00, 0.0, 0.00, -1.5, 0.00, 2.0, 0.0] #check
+    retract_weight: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0,0.0] #check
 
 sim:
   dt: 0.0166 # 1/60

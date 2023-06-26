@@ -6,12 +6,12 @@ from omegaconf import DictConfig, OmegaConf
 import torch
 from torch.utils.tensorboard import SummaryWriter
 from datetime import datetime
-from storm_kit.rl.agents import BCAgent, SACAgent, MPCAgent, MPOAgent, MPQAgent
-from storm_kit.rl.policies import MPCPolicy, GaussianPolicy
-from storm_kit.rl.value_functions import QFunction, TwinQFunction
-from storm_kit.rl.world_models import GaussianWorldModel
-from storm_kit.rl.replay_buffer import ReplayBuffer
-from storm_kit.rl.util import Log
+from storm_kit.learning.agents import BCAgent, SACAgent, MPCAgent, MPOAgent, MPQAgent
+from storm_kit.learning.policies import MPCPolicy, GaussianPolicy
+from storm_kit.learning.value_functions import QFunction, TwinQFunction
+from storm_kit.learning.world_models import GaussianWorldModel
+from storm_kit.learning.replay_buffer import ReplayBuffer
+from storm_kit.learning.learning_utils import Log
 
 
 @hydra.main(config_name="config", config_path="../content/configs/gym")

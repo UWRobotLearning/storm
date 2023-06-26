@@ -135,6 +135,7 @@ class MLPRegression(nn.Module):
             inp = x
         y = self.mlp_layers(inp)
         return y
+    
     def reset_parameters(self):
         """Use this function to initialize weights. Doesn't help much for mlp.
         """        
@@ -151,7 +152,7 @@ def scale_to_base(data, norm_dict, key):
     Returns:
         tensor : output scaled tensor
     """    
-    scaled_data = torch.mul(data,norm_dict[key]['std']) + norm_dict[key]['mean']
+    scaled_data = torch.mul(data, norm_dict[key]['std']) + norm_dict[key]['mean']
     return scaled_data
     
 def scale_to_net(data, norm_dict, key):
@@ -166,6 +167,6 @@ def scale_to_net(data, norm_dict, key):
         tensor : output scaled tensor
     """    
     
-    scaled_data = torch.div(data - norm_dict[key]['mean'],norm_dict[key]['std'])
+    scaled_data = torch.div(data - norm_dict[key]['mean'], norm_dict[key]['std'])
     scaled_data[scaled_data != scaled_data] = 0.0
     return scaled_data

@@ -5,7 +5,7 @@ from typing import Optional, Any
 import torch
 import torch.nn as nn
 import numpy as np
-from storm_kit.rl.util import Log
+from storm_kit.learning.learning_utils import Log
 
 
 class Agent(nn.Module):

@@ -49,7 +49,7 @@ class StopCost(nn.Module):
             delta_vel = torch.ones_like(self.traj_dt) * max_limit
             self.max_vel = ((sum_matrix @ delta_vel).unsqueeze(-1))
         
-    def forward(self, vels):
+    def forward(self, vels:torch.Tensor):
         inp_device = vels.device
 
         

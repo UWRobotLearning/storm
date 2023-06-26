@@ -117,6 +117,7 @@ def tensor_step_acc(
     state_seq: torch.Tensor, 
     dt_h: torch.Tensor, 
     integrate_matrix: torch.Tensor, 
+    fd_matrix: torch.Tensor,
     n_dofs: int, 
     num_instances:int, 
     batch_size:int, 
@@ -149,21 +150,37 @@ def tensor_step_acc(
     
     return state_seq
 
-#@torch.jit.script
-def tensor_step_vel(state, act, state_seq, dt_h, n_dofs, integrate_matrix, fd_matrix):
-    # type: (Tensor, Tensor, Tensor, Tensor, int, Tensor, Tensor) -> Tensor
-    
+@torch.jit.script
+def tensor_step_vel(
+    state:torch.Tensor, 
+    act:torch.Tensor, 
+    state_seq:torch.Tensor, 
+    dt_h: torch.Tensor, 
+    integrate_matrix: torch.Tensor,
+    fd_matrix: torch.Tensor,
+    n_dofs: int, 
+    num_instances: int,
+    batch_size: int,
+    horizon: int):
     
     # This is batch,n_dof
     q = state[:,:n_dofs]
-    qd_new = act
-    # integrate velocities:
+    qd_new = act.view(num_instances*batch_size, horizon, -1)
+    diag_dt = torch.diag(dt_h)
 
-    q_new = q + torch.matmul(integrate_matrix, torch.matmul(torch.diag(dt_h),qd_new))
+    q_new = q + torch.matmul(
+        integrate_matrix, torch.matmul(diag_dt, qd_new))
+    q_new = q_new.view(num_instances, batch_size, horizon, -1)
+    q_new += q.unsqueeze(1)
+
+    qdd_new = torch.matmul(torch.diag(dt_h), torch.matmul(fd_matrix, qd_new))
+    qdd_new = qdd_new.view(num_instances, batch_size, horizon, -1)
+
+    qd_new = qd_new.view(num_instances, batch_size, horizon, -1)
+
     state_seq[:,:, :n_dofs] = q_new
     state_seq[:,:, n_dofs: n_dofs * 2] = qd_new
-    state_seq[:,:, n_dofs * 2: n_dofs * 3] = torch.matmul(torch.diag(dt_h),
-                                                          torch.matmul(fd_matrix, qd_new))
+    state_seq[:,:, n_dofs * 2: n_dofs * 3] = qdd_new
 
     
     return state_seq

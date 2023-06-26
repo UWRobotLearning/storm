@@ -5,7 +5,7 @@ import torch.optim as optim
 import torch.nn.functional as F
 import torch.nn as nn
 from tqdm import tqdm
-from storm_kit.rl.agents import Agent
+from storm_kit.learning.agents import Agent
 
 
 class SACAgent(Agent):

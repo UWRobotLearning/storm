@@ -32,7 +32,7 @@ from ...differentiable_robot_model.coordinate_transform import CoordinateTransfo
 from ...differentiable_robot_model.urdf_utils import URDFRobotModel
 from ...geom.geom_types import tensor_capsule, tensor_sphere
 from ...util_file import join_path, get_mpc_configs_path
-from ...geom.nn_model.robot_self_collision import RobotSelfCollisionNet
+# from ..nn_model.robot_self_collision_net import RobotSelfCollisionNet
 from typing import List
 
 class RobotCapsuleCollision:

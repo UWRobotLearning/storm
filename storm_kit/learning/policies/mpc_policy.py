@@ -1,10 +1,11 @@
 from omegaconf import open_dict
 import torch
+import time
 
 from torch.profiler import profile, record_function, ProfilerActivity
 
 
-from storm_kit.rl.policies import Policy
+from storm_kit.learning.policies import Policy
 from storm_kit.mpc.control import MPPI
 from storm_kit.mpc.rollout.arm_reacher import ArmReacher
 from storm_kit.mpc.utils.state_filter import JointStateFilter
@@ -69,7 +70,7 @@ class MPCPolicy(Policy):
 
 
     def get_action(self, obs_dict, deterministic=False):
-
+        st = time.time()
         states = obs_dict['states']
         states = states.to(self.device)
         self.state_filter.predict_internal_state(self.prev_qdd_des)
@@ -106,6 +107,7 @@ class MPCPolicy(Policy):
             }
 
         self.prev_qdd_des = qdd_des #.clone()
+        print(time.time()-st)
         return command
 
     def init_controller(self):

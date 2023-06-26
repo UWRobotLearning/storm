@@ -11,9 +11,9 @@ from torch.profiler import profile, record_function, ProfilerActivity
 import time
 
 
-from storm_kit.rl.policies import MPCPolicy
-from storm_kit.rl.agents import MPCAgent
-from storm_kit.rl.replay_buffer import ReplayBuffer
+from storm_kit.learning.policies import MPCPolicy
+from storm_kit.learning.agents import MPCAgent
+from storm_kit.learning.replay_buffer import ReplayBuffer
 
 
 @hydra.main(config_name="config", config_path="../content/configs/gym")

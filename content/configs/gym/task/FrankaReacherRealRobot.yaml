@@ -8,10 +8,10 @@ env:
 rollout:
 
   control_dt: 0.02 #0.0166 #0.02
-  run_open_loop: False
+  run_open_loop: False #check
   control_space: 'acc'
-  env_control_space: 'joint_impedance'
-  float_dtype: 'float32'
+  env_control_space: ${resolve_default:'pos',${task.env.numEnvs}} #remove the need, just return entire command?
+  float_dtype: 'float32' #check
   state_filter_coeff: {'position':0.1, 'velocity':0.0, 'acceleration':0.0}
   # cmd_filter_coeff: {'position':1.0, 'velocity':1.0, 'acceleration':0.0}
   n_dofs: 7
@@ -35,15 +35,14 @@ rollout:
     collision_spheres: '../robot/franka_real_robot.yml'
     
     robot_collision_params:
-      urdf: "urdf/franka_description/franka_panda_no_gripper.urdf"
+      urdf_path: ${task.rollout.model.urdf_path}
       sample_points: 100
-      link_objs: ['panda_link1', 'panda_link2', 'panda_link3','panda_link4','panda_link5', 'panda_link6','panda_hand']
-      #link_objs: ['panda_link6']
+      link_names: ${task.rollout.model.link_names}
       threshold: 0.35
       bounds: [[-0.5, -0.8, 0.0],[0.5,0.8,1.0]]
-      collision_spheres: '../robot/franka.yml'
-      self_collision_weights: 'robot_self/franka_self_sdf.pt'
-      dof: 7
+      collision_spheres: 'robot/franka_real_robot.yml'
+      self_collision_weights: 'robot_self/franka_self_collision_weights.pt'
+      n_dofs: ${task.rollout.n_dofs} #check
 
     world_collision_params:
       model_path: 'scene_coll_nn/'
