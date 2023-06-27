@@ -1,0 +1,32 @@
+<launch>
+    <arg name="goal_pub_config" default="$(find storm_ros)/config/config_object_goal_tracking.yaml" doc="Path to parameter config file"/>
+    <arg name="blob_detector_config" default="$(find storm_ros)/config/blob_detector.yaml" doc="Path to parameter config file"/>
+    <arg name="namespace_prefix" default="panda_eob_calib"/>
+
+
+    <!-- (publish tf after the calibration) -->
+    <include file="$(find easy_handeye)/launch/publish.launch">
+        <arg name="eye_on_hand" value="false"/>
+        <arg name="namespace_prefix" value="$(arg namespace_prefix)"/>
+    </include>
+
+    <!-- launch blob detector -->
+    <node name="blob_detector" pkg="storm_ros" type="blob_detector_node.py" output="screen" clear_params="true">
+    <rosparam file="$(arg blob_detector_config)"/>
+    </node>
+
+    <!-- launch goal publisher -->
+    <node name="object_goal_pub" pkg="storm_ros" type="object_goal_publisher.py" output="screen" clear_params="true">
+        <rosparam file="$(arg goal_pub_config)" />
+    </node>
+
+    <!-- launch reacher node -->
+    <node name="reacher_node" pkg="storm_ros" type="reacher_node.py" output="screen" clear_params="true">
+        <rosparam file="$(arg goal_pub_config)"/>
+    </node>
+
+    <!-- launch RVIZ -->
+    <node type="rviz" name="rviz" pkg="rviz" args="-d $(find franka_mpc_utils)/content/blob_detector.rviz" />
+
+
+</launch>

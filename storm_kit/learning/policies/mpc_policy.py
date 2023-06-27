@@ -70,19 +70,19 @@ class MPCPolicy(Policy):
 
 
     def get_action(self, obs_dict, deterministic=False):
-        st = time.time()
+        # st = time.time()
         states = obs_dict['states']
         states = states.to(self.device)
         self.state_filter.predict_internal_state(self.prev_qdd_des)
 
-        # if(self.state_filter.cmd_joint_state is None):
+        # if self.state_filter.cmd_joint_state is None:
         #     state_dict['velocity'] *= 0.0
         
         planning_state = self.state_filter.filter_joint_state(states)
 
         curr_action_seq, value, info = self.controller.forward(
             planning_state, calc_val=False, shift_steps=1)
-        
+
         qdd_des = curr_action_seq[:, 0]
         qd_des = planning_state[:, 7:14] + qdd_des * self.dt
         q_des = planning_state[:, :7] + qd_des * self.dt
@@ -106,8 +106,8 @@ class MPCPolicy(Policy):
                 'qdd_des': qdd_des
             }
 
-        self.prev_qdd_des = qdd_des #.clone()
-        print(time.time()-st)
+        self.prev_qdd_des = qdd_des.clone()
+        # print(time.time()-st)
         return command
 
     def init_controller(self):

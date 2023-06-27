@@ -304,7 +304,7 @@ class RobotSphereCollision:
         
         self.l_T_c = CoordinateTransform(device=self.device)
         self.robot_collision_params = robot_collision_params
-        self.load_robot_collision_model(robot_collision_params)
+        self.load_robot_collision_model()
         
         self.dist = None
 
@@ -314,17 +314,17 @@ class RobotSphereCollision:
         # self.robot_nn = RobotSelfCollisionNet(n_joints=dof)
         # self.robot_nn.load_weights(robot_collision_params['self_collision_weights'], tensor_args)
     
-    def load_robot_collision_model(self, robot_collision_params):
+    def load_robot_collision_model(self):
         """Load robot collision model, called from constructor
 
         Args:
             robot_collision_params (Dict): loaded from yml file
         """        
-        robot_links = robot_collision_params['link_names']
+        robot_links = self.robot_collision_params['link_names']
 
         # load collision file:
         # coll_yml = join_path(get_mpc_configs_path(), robot_collision_params['collision_spheres'])
-        coll_yml = join_path(get_configs_path(), robot_collision_params['collision_spheres'])
+        coll_yml = join_path(get_configs_path(), self.robot_collision_params['collision_spheres'])
 
         with open(coll_yml) as file:
             coll_params = yaml.load(file, Loader=yaml.FullLoader)
@@ -457,7 +457,7 @@ class RobotSphereCollision:
         b, _, _ = link_trans.shape
         if self.dist is None or b != self.dist.shape[0]:
             self.update_batch_robot_collision_objs(link_trans, link_rot)
-            self.dist = torch.zeros((b,n_links,n_links), device=self.device) - 100.0
+            self.dist = torch.zeros((b, n_links, n_links), device=self.device) - 100.0
         dist = self.dist
         dist = find_link_distance(self.w_batch_link_spheres, dist)
         

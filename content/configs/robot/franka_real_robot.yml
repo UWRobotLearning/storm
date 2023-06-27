@@ -26,7 +26,7 @@ collision_spheres:
     panda_link0:
         - "center": [-0.08, 0.0, 0.05]
           "radius": 0.06
-        - "center": [-0.0, 0.0, 0.05]
+        - "center": [0.0, 0.0, 0.05]
           "radius": 0.08
     panda_link1:
         - "center": [0.0, -0.08, 0.0]

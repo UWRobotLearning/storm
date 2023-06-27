@@ -96,7 +96,7 @@ def train_network(cfg:DictConfig):
     checkpoint_dir = get_weights_path() + "/robot_self"
     robot_name = cfg.task.rollout.model.name
     plot = True
-    num_data_points = 1000000
+    num_data_points = 100000
     val_ratio = 0.1
     num_epochs = 100
     batch_size = 256

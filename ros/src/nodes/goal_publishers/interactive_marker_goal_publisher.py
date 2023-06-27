@@ -26,7 +26,7 @@ class InteractiveMarkerGoalPub():
         self.ee_goal_topic = rospy.get_param('~ee_goal_topic', 'ee_goal')
         self.goal_pub_freq = rospy.get_param('~goal_pub_freq', 10)
         self.fixed_frame = rospy.get_param('~fixed_frame', 'base_link')
-        self.robot_urdf = os.path.join(self.storm_path, rospy.get_param('~robot_urdf', 'content/assets/urdf/franka_description/franka_panda_tray.urdf'))
+        self.robot_urdf = os.path.join(self.storm_path, rospy.get_param('~robot_urdf', 'content/assets/urdf/franka_description/franka_panda_no_gripper.urdf'))
         self.ee_frame = rospy.get_param('~ee_frame', 'tray_link')
         
 
@@ -52,9 +52,6 @@ class InteractiveMarkerGoalPub():
         self.update_ee_goal_to_current()
 
         self.setup_interactive_marker_server()
-
-
-
 
     def setup_interactive_marker_server(self):
         # create an interactive marker server on the topic namespace simple_marker

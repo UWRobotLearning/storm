@@ -102,12 +102,12 @@ class ArmBase(RolloutBase):
         #                                   float_dtype=float_dtype,
         #                                   retract_weight=cfg['cost']['retract_weight'])
         
-        self.null_cost = torch.jit.script(ProjectedDistCost(ndofs=self.n_dofs, device=device, float_dtype=dtype,
-                                           **cfg['cost']['null_space']))
+        self.null_cost = ProjectedDistCost(ndofs=self.n_dofs, device=device, float_dtype=dtype,
+                                           **cfg['cost']['null_space'])
         
-        self.manipulability_cost = torch.jit.script(ManipulabilityCost(ndofs=self.n_dofs, device=device,
+        self.manipulability_cost = ManipulabilityCost(ndofs=self.n_dofs, device=device,
                                                       float_dtype=dtype,
-                                                      **cfg['cost']['manipulability']))
+                                                      **cfg['cost']['manipulability'])
 
         self.zero_vel_cost = ZeroCost(device=device, float_dtype=dtype, **cfg['cost']['zero_vel'])
 
@@ -115,13 +115,13 @@ class ArmBase(RolloutBase):
 
         tensor_args = {'device': self.device, 'dtype': self.dtype}
         
-        self.stop_cost = torch.jit.script(StopCost(**cfg['cost']['stop_cost'],
+        self.stop_cost = StopCost(**cfg['cost']['stop_cost'],
                                   tensor_args=tensor_args,
-                                  traj_dt=self.traj_dt))
+                                  traj_dt=self.traj_dt)
         
-        self.stop_cost_acc = torch.hit.script(StopCost(**cfg['cost']['stop_cost_acc'],
+        self.stop_cost_acc = StopCost(**cfg['cost']['stop_cost_acc'],
                                       tensor_args=tensor_args,
-                                      traj_dt=self.traj_dt))
+                                      traj_dt=self.traj_dt)
 
         self.retract_state = torch.tensor([self.cfg['cost']['retract_state']], device=device, dtype=dtype)
 

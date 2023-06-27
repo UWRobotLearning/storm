@@ -186,11 +186,11 @@ class URDFKinematicModel(nn.Module):
         
         
     @torch.jit.export
-    def rollout_open_loop(self, start_state: torch.Tensor, act_seq: torch.Tensor,
-                          dt=None) -> Dict[str, torch.Tensor]:
+    def rollout_open_loop(self, start_state: torch.Tensor, act_seq: torch.Tensor) -> Dict[str, torch.Tensor]:
+        #dt=None
         # batch_size, horizon, d_act = act_seq.shape
-        curr_dt = self.dt if dt is None else dt
-        curr_horizon = self.horizon
+        # curr_dt = self.dt if dt is None else dt
+        # curr_horizon = self.horizon
         # get input device:
         inp_device = start_state.device
         start_state = start_state.to(self.device, dtype=self.dtype)
@@ -208,7 +208,7 @@ class URDFKinematicModel(nn.Module):
         state_seq = self.state_seq
         ee_pos_seq = self.ee_pos_seq
         ee_rot_seq = self.ee_rot_seq
-        curr_horizon = self.horizon
+        # curr_horizon = self.horizon
         curr_batch_size = self.batch_size
         num_traj_points = self.num_traj_points
         link_pos_seq = self.link_pos_seq
@@ -223,9 +223,10 @@ class URDFKinematicModel(nn.Module):
         
         shape_tup = (self.num_instances * curr_batch_size * num_traj_points, self.n_dofs)
         with record_function("fk + jacobian"):
-            ee_pos_seq, ee_rot_seq, lin_jac_seq, ang_jac_seq = self.robot_model.compute_fk_and_jacobian(state_seq[:,:,:,:self.n_dofs].view(shape_tup),
-                                                                                                    state_seq[:,:,:,self.n_dofs:2 * self.n_dofs].view(shape_tup),
-                                                                                                    link_name=self.ee_link_name)
+            ee_pos_seq, ee_rot_seq, lin_jac_seq, ang_jac_seq = self.robot_model.compute_fk_and_jacobian(
+                state_seq[:,:,:,:self.n_dofs].view(shape_tup),
+                state_seq[:,:,:,self.n_dofs:2 * self.n_dofs].view(shape_tup),
+                link_name=self.ee_link_name)
 
         # get link poses:
         for ki,k in enumerate(self.link_names):

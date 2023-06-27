@@ -88,7 +88,7 @@ class HaltonSampleLib(SampleLib):
 
     def get_samples(self, sample_shape, base_seed=None, filter_smooth=False, **kwargs):
         if(self.sample_shape != sample_shape or not self.fixed_samples):
-            if(len(sample_shape) > 1):
+            if len(sample_shape) > 1:
                 print('sample shape should be a single value')
                 raise ValueError
             seed = self.seed_val if base_seed is None else base_seed
@@ -136,6 +136,8 @@ def bspline(c_arr, t_arr=None, n=100, degree=3):
 class KnotSampleLib(object):
     def __init__(self, num_instances=1, horizon=0, d_action=0, n_knots=0, degree=3, seed=0, tensor_args={'device': "cpu", 'dtype': torch.float32}, sample_method='halton',
                  covariance_matrix=None, **kwargs):
+        
+        self.num_instances = num_instances
         self.ndims = n_knots * d_action
         self.n_knots = n_knots
         self.horizon = horizon
@@ -153,7 +155,7 @@ class KnotSampleLib(object):
 
     def get_samples(self, sample_shape, **kwargs):
         # sample shape is the number of particles to sample
-        if(self.sample_method == 'halton'):
+        if self.sample_method == 'halton':
             self.knot_points = generate_gaussian_halton_samples(
                 sample_shape[0],
                 self.ndims,
@@ -161,7 +163,7 @@ class KnotSampleLib(object):
                 seed_val=self.seed_val,
                 device=self.tensor_args['device'],
                 float_dtype=self.tensor_args['dtype'])
-        elif(self.sample_method == 'random'):
+        elif self.sample_method == 'random':
             self.knot_points = self.mvn.sample(sample_shape=sample_shape)
 
     # Sample splines from knot points:
@@ -175,13 +177,15 @@ class KnotSampleLib(object):
                 self.samples[i, :, j] = bspline(
                     knot_samples[i, j, :], n=self.horizon, degree=self.degree)
 
+        self.samples = self.samples.unsqueeze(0).repeat(self.num_instances, 1, 1, 1)
+
         return self.samples
 
 
 class RandomSampleLib(SampleLib):
-    def __init__(self, horizon=0, d_action=0, seed=0, mean=None, scale_tril=None, covariance_matrix=None,
+    def __init__(self, num_instances=1, horizon=0, d_action=0, seed=0, mean=None, scale_tril=None, covariance_matrix=None,
                  tensor_args={'device': "cpu", 'dtype': torch.float32}, fixed_samples=False, filter_coeffs=None, **kwargs):
-        super(RandomSampleLib, self).__init__(horizon=horizon, d_action=d_action, seed=seed, tensor_args=tensor_args,
+        super(RandomSampleLib, self).__init__(num_instances=num_instances, horizon=horizon, d_action=d_action, seed=seed, tensor_args=tensor_args,
                                               fixed_samples=fixed_samples, filter_coeffs=filter_coeffs)
 
         if(self.scale_tril is None):
@@ -294,30 +298,31 @@ class StompSampleLib(SampleLib):
 
 
 class MultipleSampleLib(SampleLib):
-    def __init__(self, horizon=0, d_action=0, seed=0, mean=None, covariance_matrix=None,
+    def __init__(self, num_instances:int=1, horizon:int=0, d_action=0, seed=0, mean=None, covariance_matrix=None,
                  tensor_args={'device': "cpu", 'dtype': torch.float32}, fixed_samples=False,
                  sample_ratio={'halton': 0.2, 'halton-knot': 0.2, 'random': 0.2, 'random-knot': 0.2}, 
                  knot_scale=10, bspline_degree=3, filter_coeffs=None, **kwargs):
 
         # sample from a mix of possibilities:
         # halton
-        self.halton_sample_lib = HaltonSampleLib(horizon=horizon, d_action=d_action, seed=seed,
+        self.halton_sample_lib = HaltonSampleLib(num_instances=num_instances, horizon=horizon, 
+                                                 d_action=d_action, seed=seed,
                                                  tensor_args=tensor_args,
                                                  fixed_samples=fixed_samples,
                                                  filter_coeffs=filter_coeffs)
 
         self.knot_halton_sample_lib = KnotSampleLib(
-            horizon=horizon, d_action=d_action, n_knots=horizon//knot_scale, degree=bspline_degree, sample_method='halton', tensor_args=tensor_args)
+            num_instances=num_instances, horizon=horizon, d_action=d_action, n_knots=horizon//knot_scale, degree=bspline_degree, sample_method='halton', tensor_args=tensor_args)
 
         #random
-        self.random_sample_lib = RandomSampleLib(horizon=horizon, d_action=d_action, seed=seed,
+        self.random_sample_lib = RandomSampleLib(num_instances=num_instances, horizon=horizon, 
+                                                 d_action=d_action, seed=seed,
                                                  tensor_args=tensor_args,
                                                  fixed_samples=fixed_samples,
                                                  filter_coeffs=filter_coeffs)
 
         self.knot_random_sample_lib = KnotSampleLib(
-            horizon=horizon, d_action=d_action, n_knots=horizon//knot_scale, degree=bspline_degree, sample_method='random', covariance_matrix=covariance_matrix, tensor_args=tensor_args)
-
+            num_instances=num_instances, horizon=horizon, d_action=d_action, n_knots=horizon//knot_scale, degree=bspline_degree, sample_method='random', covariance_matrix=covariance_matrix, tensor_args=tensor_args)
 
         self.sample_ratio = sample_ratio
         self.sample_fns = []
@@ -330,11 +335,11 @@ class MultipleSampleLib(SampleLib):
         self.samples = None
 
     def get_samples(self, sample_shape, base_seed=None, **kwargs):
-        if(self.fixed_samples and self.samples is None):
+        if self.fixed_samples and self.samples is None:
             cat_list = []
             sample_shape = list(sample_shape)
             for ki, k in enumerate(self.sample_ratio.keys()):
-                if(self.sample_ratio[k] == 0.0):
+                if self.sample_ratio[k] == 0.0:
                     continue
                 n_samples = round(sample_shape[0] * self.sample_ratio[k])
                 s_shape = torch.Size([n_samples])
@@ -343,7 +348,7 @@ class MultipleSampleLib(SampleLib):
                 #else:
                 #    samples = self.sample_fns[k](sample_shape=s_shape)
                 cat_list.append(samples)
-                samples = torch.cat(cat_list, dim=0)
+                samples = torch.cat(cat_list, dim=1) #cat along batch dim
                 self.samples = samples
         return self.samples
 

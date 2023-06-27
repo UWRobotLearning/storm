@@ -29,7 +29,7 @@ run_open_loop: False
 control_space: 'acc'
 env_control_space: 'joint_impedance'
 float_dtype: 'float32'
-state_filter_coeff: {'position':0.1, 'velocity':0.0, 'acceleration':0.0}
+state_filter_coeff: {'position':0.2, 'velocity':0.0, 'acceleration':0.0}
 # cmd_filter_coeff: {'position':1.0, 'velocity':1.0, 'acceleration':0.0}
 n_dofs: 7
 
@@ -39,9 +39,9 @@ world: ${task.world}
 
 mppi:
   num_instances     : 1
-  horizon           : 30
-  init_cov          : 0.05 #.5 #.5
-  gamma             : 0.999
+  horizon           : 20
+  init_cov          : 0.005 #.5 #.5
+  gamma             : 0.99
   n_iters           : 1
   step_size_mean    : 0.98
   step_size_cov     : 0.01 #0.7
@@ -58,9 +58,9 @@ mppi:
   hotstart          : True
   visual_traj       : 'ee_pos_seq'
   sample_params:
-    type: 'halton'
+    type: 'multiple'
     fixed_samples: True
-    sample_ratio: {'halton':0.0, 'halton-knot':1.0, 'random':0.0, 'random-knot':0.0}
+    sample_ratio: {'halton':0.3, 'halton-knot':0.7, 'random':0.0, 'random-knot':0.0}
     seed: 0
     filter_coeffs: null #[0.3, 0.3, 0.4]
     knot_scale: 4

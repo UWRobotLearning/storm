@@ -1,0 +1,8 @@
+joint_states_topic: 'joint_states'
+joint_command_topic: 'franka_motion_control/joint_command'
+ee_goal_topic: 'ee_goal'
+fixed_frame: 'base_link'
+ee_frame: 'ee_link'
+object_frame: 'object'
+robot_joint_names: ['panda_joint1', 'panda_joint2', 'panda_joint3', 'panda_joint4', 'panda_joint5', 'panda_joint6', 'panda_joint7']
+z_offset: 0.02

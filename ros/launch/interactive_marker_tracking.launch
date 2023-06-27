@@ -1,5 +1,5 @@
 <launch>
-  <arg name="config" default="$(find storm_ros)/config/config_interactive_marker_tracking_tray.yaml" doc="Path to parameter config file"/>
+  <arg name="config" default="$(find storm_ros)/config/config_interactive_marker_tracking.yaml" doc="Path to parameter config file"/>
 
   <node name="interactive_marker_pub" pkg="storm_ros" type="interactive_marker_goal_publisher.py" output="screen" clear_params="true">
     <rosparam file="$(arg config)" />

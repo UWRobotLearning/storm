@@ -22,7 +22,7 @@ import rospkg
 
 #STORM imports
 # from storm_kit.mpc.task.reacher_task import ReacherTask
-from storm_kit.rl.policies import MPCPolicy
+from storm_kit.learning.policies import MPCPolicy
 
 
 class MPCReacherNode():
@@ -34,10 +34,10 @@ class MPCReacherNode():
         self.joint_states_topic = rospy.get_param('~joint_states_topic', 'joint_states')
         self.joint_command_topic = rospy.get_param('~joint_command_topic', 'franka_motion_control/joint_command')
         self.ee_goal_topic = rospy.get_param('~ee_goal_topic', 'ee_goal')
-        self.world_description = os.path.join(self.storm_path, rospy.get_param('~world_description', '../content/configs/gym/collision_wall_of_boxes.yml'))
-        self.robot_coll_description = os.path.join(self.storm_path, rospy.get_param('~robot_coll_description', '../content/configs/robot/franka_real_robot.yml'))
-        self.mpc_config = os.path.join(self.storm_path, rospy.get_param('~mpc_config', '../content/configs/mpc/franka_real_robot_reacher.yml'))
-        self.control_dt = rospy.get_param('~control_dt', 0.02)
+        # self.world_description = os.path.join(self.storm_path, rospy.get_param('~world_description', '../content/configs/gym/collision_wall_of_boxes.yml'))
+        # self.robot_coll_description = os.path.join(self.storm_path, rospy.get_param('~robot_coll_description', '../content/configs/robot/franka_real_robot.yml'))
+        # self.mpc_config = os.path.join(self.storm_path, rospy.get_param('~mpc_config', '../content/configs/mpc/franka_real_robot_reacher.yml'))
+        # self.control_dt = rospy.get_param('~control_dt', 0.02)
 
         self.joint_names = rospy.get_param('~robot_joint_names', None)
         
@@ -45,6 +45,7 @@ class MPCReacherNode():
 
         initialize(config_path="../../../content/configs/gym", job_name="mpc")
         self.config = compose(config_name="config", overrides=["task=FrankaReacherRealRobot"])
+        self.control_dt = self.config.task.rollout.control_dt
 
         #STORM Initialization
         # self.policy = ReacherTask(self.mpc_config, self.robot_coll_description, self.world_description, self.tensor_args)
@@ -154,7 +155,6 @@ class MPCReacherNode():
                 self.mpc_command.velocity = command['qd_des'][0].cpu().numpy()
                 self.mpc_command.effort =  command['qdd_des'][0].cpu().numpy()
 
-                print(self.mpc_command)
 
                 self.command_pub.publish(self.mpc_command)
 

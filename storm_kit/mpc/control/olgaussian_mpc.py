@@ -122,11 +122,11 @@ class OLGaussianMPC(Controller):
                                               **self.sample_params)
             self.sample_shape = torch.Size([self.num_nonzero_particles - 2])
         elif sample_params['type'] == 'random':
-            self.sample_lib = RandomSampleLib(self.horizon, self.d_action, tensor_args=self.tensor_args,
+            self.sample_lib = RandomSampleLib(self.num_instances, self.horizon, self.d_action, tensor_args=self.tensor_args,
                                               **self.sample_params)
             self.sample_shape = torch.Size([self.num_nonzero_particles - 2])
         elif sample_params['type'] == 'multiple':
-            self.sample_lib = MultipleSampleLib(self.horizon, self.d_action, tensor_args=self.tensor_args, **self.sample_params)
+            self.sample_lib = MultipleSampleLib(self.num_instances, self.horizon, self.d_action, tensor_args=self.tensor_args, **self.sample_params)
             self.sample_shape = torch.Size([self.num_nonzero_particles - 2])
 
         self.stomp_matrix = None #self.sample_lib.stomp_cov_matrix
