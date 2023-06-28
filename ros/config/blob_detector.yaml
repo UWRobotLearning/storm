@@ -50,12 +50,12 @@ detector_params:
 
   # Filter by Area.
   filterByArea: True
-  minArea: 500
+  minArea: 300
   maxArea: 5000
 
   # Filter by Circularity
-  filterByCircularity: True
-  minCircularity: 0.6
+  filterByCircularity: False
+  minCircularity: 0.5
   maxCircularity: 1.0
 
   # Filter by Convexity
