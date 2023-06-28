@@ -119,20 +119,29 @@ class BlobDetectorNode():
                 if self.img is not None and self.depth_image is not None and self.camera_info is not None:
                     detections, im_with_keypoints, masked_im = self.detector.get_detections(
                         self.img, self.depth_image, self.camera_info)
+                    
+                    transform_msg = TransformStamped()
+                    transform_msg.header.stamp = rospy.Time().now()#self.image_msg.header.stamp
+                    transform_msg.header.frame_id = self.image_msg.header.frame_id
+                    transform_msg.child_frame_id = "object"
+
+                    transform_msg.transform.rotation.x = 0.707
+                    transform_msg.transform.rotation.y = 0.0
+                    transform_msg.transform.rotation.z = 0.0
+                    transform_msg.transform.rotation.w = 0.707
+
+
                     if len(detections) > 0: 
-                        transform_msg = TransformStamped()
-                        transform_msg.header.stamp = rospy.Time().now()#self.image_msg.header.stamp
-                        transform_msg.header.frame_id = self.image_msg.header.frame_id
-                        transform_msg.child_frame_id = "object"
                         transform_msg.transform.translation.x = detections[0]
                         transform_msg.transform.translation.y = detections[1]
                         transform_msg.transform.translation.z = detections[2]
+                    else:
+                        #publish dummy detections if no blob detected
+                        transform_msg.transform.translation.x = -100.0
+                        transform_msg.transform.translation.y = -100.0
+                        transform_msg.transform.translation.z = -100.0
 
-                        transform_msg.transform.rotation.x = 0.707
-                        transform_msg.transform.rotation.y = 0.0
-                        transform_msg.transform.rotation.z = 0.0
-                        transform_msg.transform.rotation.w = 0.707
-                        self.br.sendTransform(transform_msg)
+                    self.br.sendTransform(transform_msg)
 
                     # self.curr_pose.header = self.image_msg.header
                     # self.curr_pose.pose.position.x = detections[0]
@@ -162,8 +171,22 @@ class BlobDetectorNode():
 
             except rospy.exceptions.ROSTimeMovedBackwardsException:
                 print('time moved backwards')
+                transform_msg = TransformStamped()
+                transform_msg.header.stamp = rospy.Time().now()
+                transform_msg.header.frame_id = self.image_msg.header.frame_id
+                transform_msg.child_frame_id = "object"
+                #publish dummy detections if exception occured
+                transform_msg.transform.translation.x = -100.0
+                transform_msg.transform.translation.y = -100.0
+                transform_msg.transform.translation.z = -100.0
+                transform_msg.transform.rotation.x = 0.707
+                transform_msg.transform.rotation.y = 0.0
+                transform_msg.transform.rotation.z = 0.0
+                transform_msg.transform.rotation.w = 0.707
+
                 continue
 
+    
 
     def close(self):
         print('Closing node')

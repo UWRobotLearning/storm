@@ -82,7 +82,7 @@ class Agent(nn.Module):
                 # if random_exploration:
                 #     action = self.action_space.sample()
                 # else:
-                action = policy.get_action(obs_dict).squeeze(0)
+                action = policy.get_action(obs_dict)
                 next_obs_dict, reward, done, info = self.envs.step(action)
             
             self.curr_rewards += reward
@@ -120,7 +120,8 @@ class Agent(nn.Module):
             done = done * (1-timeout.float())
 
             if update_buffer:
-                self.buffer.add(obs_dict['obs'], action, reward, next_obs_dict['obs'], done)
+                #TODO: Save full actions
+                self.buffer.add(obs_dict['obs'], self.envs.actions, reward, next_obs_dict['obs'], done)
 
 
             curr_num_steps = reward.shape[0]

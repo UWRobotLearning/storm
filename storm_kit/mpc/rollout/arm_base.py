@@ -169,8 +169,8 @@ class ArmBase(RolloutBase):
         ang_jac_batch = ang_jac_batch.view(num_instances*curr_batch_size, num_traj_points, 3, self.n_dofs)
 
         link_pos_batch, link_rot_batch = state_dict['link_pos_seq'], state_dict['link_rot_seq']
-        link_pos_batch = link_pos_batch.view(num_instances*curr_batch_size, num_traj_points, self.n_dofs, 3)
-        link_rot_batch = link_rot_batch.view(num_instances*curr_batch_size, num_traj_points, self.n_dofs, 3, 3)
+        link_pos_batch = link_pos_batch.view(num_instances*curr_batch_size, num_traj_points, self.num_links, 3)
+        link_rot_batch = link_rot_batch.view(num_instances*curr_batch_size, num_traj_points, self.num_links, 3, 3)
         prev_state = state_dict['prev_state_seq']
         prev_state = prev_state.view(num_instances*prev_state.shape[-2], prev_state.shape[-1])
         prev_state_tstep = state_dict['prev_state_seq'][:,-1]

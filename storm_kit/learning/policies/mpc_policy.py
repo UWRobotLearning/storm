@@ -22,7 +22,7 @@ class MPCPolicy(Policy):
             device=torch.device('cpu')):
         
         super().__init__(obs_dim, act_dim, config, device=device)
-        self.env_control_space = self.cfg['env_control_space']
+        # self.env_control_space = self.cfg['env_control_space']
         self.tensor_args = {'device': self.device, 'dtype' : torch.float32}
         self.controller = self.init_controller()
         self.dt = self.cfg.control_dt
@@ -91,20 +91,20 @@ class MPCPolicy(Policy):
         #     'qd_des': qd_des,
         #     'qdd_des': qdd_des
         # }
-        if self.env_control_space == 'pos':
-            command = q_des
-        elif self.env_control_space == 'vel':
-            command = qd_des
-        elif self.env_control_space == 'vel_2':
-            command = qd_des
-        elif self.env_control_space == 'acc':
-            command = qdd_des
-        elif self.env_control_space == 'joint_impedance':
-            command = {
-                'q_des': q_des,
-                'qd_des': qd_des,
-                'qdd_des': qdd_des
-            }
+        # if self.env_control_space == 'pos':
+        #     command = q_des
+        # elif self.env_control_space == 'vel':
+        #     command = qd_des
+        # elif self.env_control_space == 'vel_2':
+        #     command = qd_des
+        # elif self.env_control_space == 'acc':
+        #     command = qdd_des
+        # elif self.env_control_space == 'joint_impedance':
+        command = {
+            'q_des': q_des,
+            'qd_des': qd_des,
+            'qdd_des': qdd_des
+        }
 
         self.prev_qdd_des = qdd_des.clone()
         # print(time.time()-st)

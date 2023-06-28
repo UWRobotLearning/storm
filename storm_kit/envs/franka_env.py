@@ -1,3 +1,4 @@
+from typing import Tuple, Dict, Any
 import copy
 import numpy as np
 import os
@@ -228,8 +229,7 @@ class FrankaEnv(VecTask):
 
         # Refresh states
         self._update_states()
-
-
+        
         # for env_ptr, franka_ptr, obj_ptr in zip(self.envs, self.frankas, self.objects):
         #     ee_handle = self.gym.find_actor_rigid_body_handle(env_ptr, franka_ptr, "ee_link")
         #     ee_pose = self.gym.get_rigid_transform(env_ptr, ee_handle)
@@ -346,6 +346,17 @@ class FrankaEnv(VecTask):
         self.gym.set_dof_position_target_tensor(self.sim,
                                                 gymtorch.unwrap_tensor(self.franka_dof_targets))
 
+
+    def step(self, actions: torch.Tensor) -> Tuple[Dict[str, torch.Tensor], torch.Tensor, torch.Tensor, Dict[str, Any]]:
+        if self.control_space == "pos":
+            actions = actions['q_des'].clone().to(self.device)
+        elif self.control_space == "vel":
+            actions = actions['qd_des'].clone().to(self.device)
+        elif self.control_space == "vel_2":
+            actions = actions['qd_des'].clone().to(self.device)
+        elif self.control_space == "acc":
+            raise NotImplementedError
+        return super().step(actions)
 
 
     def post_physics_step(self):

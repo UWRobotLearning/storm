@@ -26,11 +26,7 @@ env:
 
   asset:
     assetRoot: "../../content/assets"
-    # assetFileNameFranka: "urdf/franka_description/franka_panda_mug.urdf"
     assetFileNameFranka: "urdf/franka_description/franka_panda_no_gripper.urdf"
-    # assetFileNameObject: "urdf/mug/mug.urdf"
-    assetFileNameTarget: "urdf/mug/movable_mug.urdf"
-    # assetFileNameCabinet: "urdf/sektion_cabinet_model/urdf/sektion_cabinet_2.urdf"
 
   # set to True if you use camera sensors in the environment
   enableCameraSensors: False
@@ -61,9 +57,9 @@ rollout:
       max_dt: 0.2
     ee_link_name: "ee_link"
     init_state: [0.8, 0.3, 0.0, -1.57, 0.0, 1.86, 0.] #check
-    link_names: ['panda_link1', 'panda_link2','panda_link3','panda_link4','panda_link5', 'panda_link6','panda_hand']
+    link_names: ['panda_link1', 'panda_link2','panda_link3','panda_link4','panda_link5', 'panda_link6','panda_hand', 'panda_leftfinger', 'panda_rightfinger']
     vel_scale: 1.0
-    collision_spheres: '../robot/franka.yml'
+    collision_spheres: '../robot/franka_real_robot.yml'
     
     robot_collision_params:
       urdf_path: ${task.rollout.model.urdf_path}
@@ -71,7 +67,7 @@ rollout:
       link_names: ${task.rollout.model.link_names}
       threshold: 0.35
       bounds: [[-0.5, -0.8, 0.0],[0.5,0.8,1.0]]
-      collision_spheres: 'robot/franka.yml'
+      collision_spheres: 'robot/franka_real_robot.yml'
       self_collision_weights: 'robot_self/franka_self_collision_weights.pt'
       n_dofs: ${task.rollout.n_dofs} #check
 

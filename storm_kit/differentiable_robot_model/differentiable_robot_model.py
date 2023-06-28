@@ -154,7 +154,6 @@ class DifferentiableRobotModel(torch.nn.Module):
         self._link_names = []
         for i in range(len(self._bodies)):
             self._link_names.append(self._bodies[i].name)
-
     
     def delete_lxml_objects(self):
         self._urdf_model = None

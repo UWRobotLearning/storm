@@ -59,14 +59,23 @@ class ObjectGoalPub():
         while not rospy.is_shutdown():
             try:
                 trans = self.tfBuffer.lookup_transform(self.fixed_frame, self.object_frame, rospy.Time(0))
-                self.ee_goal.pose.position.x = trans.transform.translation.x 
-                self.ee_goal.pose.position.y = trans.transform.translation.y
-                self.ee_goal.pose.position.z = trans.transform.translation.z
-                self.ee_goal.pose.orientation.x = 0.707
-                self.ee_goal.pose.orientation.y = 0.707
-                self.ee_goal.pose.orientation.z = 0.0
-                self.ee_goal.pose.orientation.w = 0.0 #0.707
-                print('Setting goal to object pose')
+                
+                if (trans.transform.translation.x == -100.0) or \
+                (trans.transform.translation.y == -100.0) or \
+                (trans.transform.translation.z == -100.0):
+                    #this is to handle dummy poses published when 
+                    #object is not detected
+                    print('Setting goal to current EE pose')
+                    self.update_ee_goal_to_current()
+                else:                
+                    self.ee_goal.pose.position.x = trans.transform.translation.x 
+                    self.ee_goal.pose.position.y = trans.transform.translation.y
+                    self.ee_goal.pose.position.z = trans.transform.translation.z
+                    self.ee_goal.pose.orientation.x = 0.707
+                    self.ee_goal.pose.orientation.y = 0.707
+                    self.ee_goal.pose.orientation.z = 0.0
+                    self.ee_goal.pose.orientation.w = 0.0 #0.707
+                    print('Setting goal to object pose')
     
             except Exception as e:
                 print(e)
