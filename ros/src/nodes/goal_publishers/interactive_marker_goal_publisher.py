@@ -27,7 +27,7 @@ class InteractiveMarkerGoalPub():
         self.goal_pub_freq = rospy.get_param('~goal_pub_freq', 10)
         self.fixed_frame = rospy.get_param('~fixed_frame', 'base_link')
         self.robot_urdf = os.path.join(self.storm_path, rospy.get_param('~robot_urdf', 'content/assets/urdf/franka_description/franka_panda_no_gripper.urdf'))
-        self.ee_frame = rospy.get_param('~ee_frame', 'tray_link')
+        self.ee_frame = rospy.get_param('~ee_frame', 'ee_link')
         
 
         #ROS Initialization
@@ -43,7 +43,6 @@ class InteractiveMarkerGoalPub():
                             device=self.device)
             
         #Buffers
-
         self.rate = rospy.Rate(self.goal_pub_freq)
         self.state_received = False
         while not self.state_received:
@@ -207,6 +206,7 @@ class InteractiveMarkerGoalPub():
         self.ee_goal.pose.orientation.x = curr_ee_quat[0][1].item() 
         self.ee_goal.pose.orientation.y = curr_ee_quat[0][2].item() 
         self.ee_goal.pose.orientation.z = curr_ee_quat[0][3].item()
+        print(self.ee_goal.pose)
     
     def close(self):
         self.ee_goal_pub.unregister()

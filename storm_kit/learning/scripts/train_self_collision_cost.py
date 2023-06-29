@@ -81,7 +81,7 @@ def generate_dataset(
 
     num_pos_examples = x_coll_train.shape[0]
     num_neg_examples = x_train.shape[0] - num_pos_examples
-
+    print(num_pos_examples, num_neg_examples)
 
     # #extract samples that are in collision 
     # x_coll_train = x_train[y_train[:,0]> -1.0*distance_threshold]#.cpu().numpy()

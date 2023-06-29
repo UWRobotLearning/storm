@@ -8,4 +8,8 @@
   <node name="reacher_node" pkg="storm_ros" type="reacher_node.py" output="screen" clear_params="true">
     <rosparam file="$(arg config)"/>
   </node>
+
+  <node type="rviz" name="rviz" pkg="rviz" args="-d $(find storm_ros)/rviz/interactive_marker_tracking.rviz" />
+
+
 </launch>

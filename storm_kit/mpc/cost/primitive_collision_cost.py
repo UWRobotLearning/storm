@@ -51,7 +51,6 @@ class PrimitiveCollisionCost(nn.Module):
         self.distance_threshold = distance_threshold
     
     def forward(self, link_pos_seq, link_rot_seq):
-
         
         inp_device = link_pos_seq.device
         batch_size = link_pos_seq.shape[0]

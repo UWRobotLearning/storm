@@ -8,6 +8,8 @@ Panels:
         - /Status1
         - /RobotModel1
         - /InteractiveMarkers1
+        - /TF1
+        - /TF1/Frames1
       Splitter Ratio: 0.5
     Tree Height: 839
   - Class: rviz/Selection
@@ -76,6 +78,12 @@ Visualization Manager:
           Alpha: 1
           Show Axes: false
           Show Trail: false
+          Value: true
+        panda_leftfinger:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
         panda_link0:
           Alpha: 1
           Show Axes: false
@@ -112,6 +120,11 @@ Visualization Manager:
           Show Trail: false
           Value: true
         panda_link7:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        panda_rightfinger:
           Alpha: 1
           Show Axes: false
           Show Trail: false
@@ -137,41 +150,33 @@ Visualization Manager:
       Filter (whitelist): ""
       Frame Timeout: 15
       Frames:
-        All Enabled: true
+        All Enabled: false
         base_link:
-          Value: true
-        camera_aligned_depth_to_color_frame:
-          Value: true
-        camera_color_frame:
-          Value: true
-        camera_color_optical_frame:
-          Value: true
-        camera_depth_frame:
-          Value: true
-        camera_depth_optical_frame:
-          Value: true
-        camera_link:
-          Value: true
+          Value: false
         ee_link:
           Value: true
         panda_hand:
-          Value: true
+          Value: false
+        panda_leftfinger:
+          Value: false
         panda_link0:
-          Value: true
+          Value: false
         panda_link1:
-          Value: true
+          Value: false
         panda_link2:
-          Value: true
+          Value: false
         panda_link3:
-          Value: true
+          Value: false
         panda_link4:
-          Value: true
+          Value: false
         panda_link5:
-          Value: true
+          Value: false
         panda_link6:
-          Value: true
+          Value: false
         panda_link7:
-          Value: true
+          Value: false
+        panda_rightfinger:
+          Value: false
       Marker Alpha: 1
       Marker Scale: 1
       Name: TF
@@ -191,15 +196,10 @@ Visualization Manager:
                           panda_hand:
                             ee_link:
                               {}
-        camera_link:
-          camera_aligned_depth_to_color_frame:
-            camera_color_optical_frame:
-              {}
-          camera_color_frame:
-            {}
-          camera_depth_frame:
-            camera_depth_optical_frame:
-              {}
+                            panda_leftfinger:
+                              {}
+                            panda_rightfinger:
+                              {}
       Update Interval: 0
       Value: true
   Enabled: true
@@ -246,9 +246,9 @@ Visualization Manager:
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.009999999776482582
-      Pitch: 0.3953983783721924
+      Pitch: 0.3103984594345093
       Target Frame: <Fixed Frame>
-      Yaw: 6.16858434677124
+      Yaw: 1.0553984642028809
     Saved: ~
 Window Geometry:
   Displays:
