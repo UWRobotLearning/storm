@@ -152,9 +152,9 @@ class FrankaPusher(FrankaEnv):
         # ball_asset_options.armature = 0.001
         # table_asset_options.fix_base_link = True
         # table_asset_options.thickness = 0.002
-        table_asset = self.gym.create_sphere(self.sim, ball_radius, ball_asset_options)
+        ball_asset = self.gym.create_sphere(self.sim, ball_radius, ball_asset_options)
         ball_color = gymapi.Vec3(0.0, 0.0, 1.0)
-        return table_asset, ball_color
+        return ball_asset, ball_color
     
 
     def compute_reward(self):
@@ -300,7 +300,6 @@ class FrankaPusher(FrankaEnv):
                 # gymutil.draw_lines(axes_geom, self.gym, self.viewer, self.envs[i], ee_pose_world)
                 # gymutil.draw_lines(sphere_geom, self.gym, self.viewer, self.envs[i], ee_pose_world)
         # print('draw time', time.time()-st)
-
 
     def reset_idx(self, env_ids):
         super().reset_idx(env_ids)

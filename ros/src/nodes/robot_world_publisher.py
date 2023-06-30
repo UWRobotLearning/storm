@@ -6,12 +6,25 @@ import rospy
 from sensor_msgs.msg import JointState
 import torch
 
+from storm_kit.util_file import get_configs_path, get_gym_configs_path, join_path, load_yaml, get_assets_path
+from storm_kit.differentiable_robot_model import DifferentiableRobotModel
+from storm_kit.differentiable_robot_model.coordinate_transform import quaternion_to_matrix, CoordinateTransform
+from storm_kit.geom.robot import RobotSphereCollision
+
 class RobotWorldPublisher():
     def __init__(self) -> None:
         pass
         self.rate = rospy.Rate(500)
         self.state_sub = rospy.Subscriber(self.joint_states_topic, JointState, self.robot_state_callback, queue_size=1)
         self.state_sub_on = False
+        self.urdf_path = join_path(get_assets_path(), robot_collision_config['urdf_path'])
+        self.link_names = robot_collision_config['link_names']
+
+        self.robot_model = DifferentiableRobotModel(urdf_path)
+        self.collision_model = RobotSphereCollision(robot_collision_config)
+        self.collision_model.build_batch_features(batch_size=1, clone_pose=True, clone_objs=True)
+
+        self.robot_state = None
 
     def robot_state_callback(self, msg):
         self.state_sub_on = True

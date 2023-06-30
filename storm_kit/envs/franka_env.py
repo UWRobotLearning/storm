@@ -108,9 +108,9 @@ class FrankaEnv(VecTask):
         franka_asset, franka_dof_props = self.load_franka_asset()
         table_asset, table_dims, table_color = self.load_table_asset()
 
-        temp = self.world_model["coll_objs"]["cube"]["table"]["pose"]
+        # temp = self.world_model["coll_objs"]["cube"]["table"]["pose"]
         table_pose_world = gymapi.Transform()
-        table_pose_world.p = gymapi.Vec3(temp[0], temp[1], temp[2] + table_dims.z)
+        table_pose_world.p = gymapi.Vec3(0, 0, 0 + table_dims.z)
         table_pose_world.r = gymapi.Quat(0., 0., 0., 1.)
         franka_start_pose_table = gymapi.Transform()
         franka_start_pose_table.p = gymapi.Vec3(-table_dims.x/2.0 + 0.2, 0.0, table_dims.z/2.0)
