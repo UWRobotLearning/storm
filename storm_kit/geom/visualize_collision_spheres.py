@@ -22,12 +22,9 @@ def visualize_collision_spheres(cfg: DictConfig):
     urdf_path = join_path(get_assets_path(), robot_collision_config['urdf_path'])
     link_names = robot_collision_config['link_names']
 
-    print("0")
     robot_model = DifferentiableRobotModel(urdf_path)
     collision_model = RobotSphereCollision(robot_collision_config)
-    # print("1")
     collision_model.build_batch_features(batch_size=1, clone_pose=True, clone_objs=True)
-    # print("2")
 
 
     q_pos = torch.tensor([0.0, -0.7853, 0.0, -2.3561, 0.0, 1.5707, 0.7853]).unsqueeze(0)

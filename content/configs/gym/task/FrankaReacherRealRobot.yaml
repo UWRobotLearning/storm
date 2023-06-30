@@ -30,14 +30,14 @@ rollout:
       max_dt: 0.2
     ee_link_name: "ee_link"
     init_state: [0.8, 0.3, 0.0, -1.57, 0.0, 1.86, 0.]
-    link_names: ['panda_link1', 'panda_link2','panda_link3','panda_link4','panda_link5', 'panda_link6', 'panda_link7', 'panda_hand', 'panda_leftfinger', 'panda_rightfinger']
+    link_names: ['panda_link1', 'panda_link2','panda_link3','panda_link4','panda_link5', 'panda_link6', 'panda_link7', 'panda_hand']
     vel_scale: 1.0
     collision_spheres: '../robot/franka_real_robot.yml'
     
     robot_collision_params:
       urdf_path: ${task.rollout.model.urdf_path}
       sample_points: 100
-      link_names: ['panda_link1', 'panda_link2','panda_link3','panda_link4','panda_link5', 'panda_link6', 'panda_link7', 'panda_hand', 'panda_leftfinger', 'panda_rightfinger']
+      link_names: ['panda_link1', 'panda_link2','panda_link3','panda_link4','panda_link5', 'panda_link6', 'panda_link7', 'panda_hand']
       threshold: 0.35
       bounds: [[-0.5, -0.8, 0.0],[0.5,0.8,1.0]]
       collision_spheres: 'robot/franka_real_robot.yml'
@@ -144,4 +144,4 @@ rollout:
 
 
 defaults:
-  - world: FrankaReacherWorld
+  - world: FrankaReacherWorldReal

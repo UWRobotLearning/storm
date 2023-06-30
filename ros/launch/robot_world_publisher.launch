@@ -1,0 +1,11 @@
+<launch>
+  <arg name="config" default="$(find storm_ros)/config/config_robot_world_publisher.yaml" doc="Path to parameter config file"/>
+
+  <node name="robot_world_pub" pkg="storm_ros" type="robot_world_publisher.py" output="screen" clear_params="true">
+    <rosparam file="$(arg config)" />
+  </node>
+
+  <node type="rviz" name="rviz" pkg="rviz" args="-d $(find storm_ros)/rviz/robot_world_visualizer.rviz" />
+
+
+</launch>
