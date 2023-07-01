@@ -25,14 +25,14 @@ class MPCPolicy(Policy):
         # self.env_control_space = self.cfg['env_control_space']
         self.tensor_args = {'device': self.device, 'dtype' : torch.float32}
         self.controller = self.init_controller()
-        self.dt = self.cfg.control_dt
+        self.dt = self.cfg.rollout.control_dt
         self.policy = policy
 
         self.state_filter = JointStateFilter(
             filter_coeff=self.cfg.state_filter_coeff, 
             device=self.device, #self.tensor_args['device'],
             n_dofs=self.cfg.n_dofs,
-            dt=self.cfg.control_dt)
+            dt=self.dt)
         
         self.prev_qdd_des = None
 
@@ -146,9 +146,9 @@ class MPCPolicy(Policy):
         init_q = torch.tensor(rollout_params.model.init_state, device=self.device)
         init_action = torch.zeros((mppi_params.num_instances, mppi_params.horizon, dynamics_model.d_action), **self.tensor_args)
         init_action[:,:,:] += init_q
-        if self.cfg.control_space == 'acc':
+        if rollout_params.control_space == 'acc':
             init_mean = init_action * 0.0 # device=device)
-        elif self.cfg.control_space == 'pos':
+        elif rollout_params.control_space == 'pos':
             init_mean = init_action
 
         controller = MPPI(

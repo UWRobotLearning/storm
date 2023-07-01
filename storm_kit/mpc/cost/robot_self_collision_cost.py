@@ -68,6 +68,7 @@ class RobotSelfCollisionCost(nn.Module):
         self.nn_collision_model = RobotSelfCollisionNet(
             n_joints=self.config['n_dofs'],
             norm_dict=None,
+            use_position_encoding=True,
             device=self.device
         )
         self.weights_loaded = False
@@ -112,6 +113,8 @@ class RobotSelfCollisionCost(nn.Module):
         if self.weights_loaded:
             res = self.nn_collision_model.get_collision_prob(q_pos)
             res = res.view(batch_size, horizon)
+            res[res >= 0.2] = 1.0
+            res[res < 0.2] = 0.0
         else:
             res = self.collision_model.check_self_collisions(q_pos)
             res = res.view(batch_size, horizon)

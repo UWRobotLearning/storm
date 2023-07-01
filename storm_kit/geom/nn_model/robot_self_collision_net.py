@@ -32,7 +32,11 @@ from storm_kit.learning.learning_utils import scale_to_base, scale_to_net
 class RobotSelfCollisionNet(nn.Module):
     """This class loads a network to predict the signed distance given a robot joint config."""
     
-    def __init__(self, n_joints, norm_dict=None, device=torch.device('cpu')):
+    def __init__(self, 
+            n_joints, 
+            norm_dict=None, 
+            use_position_encoding=False,
+            device=torch.device('cpu')):
         """initialize class
 
         Args:
@@ -55,7 +59,7 @@ class RobotSelfCollisionNet(nn.Module):
             'dropout_prob': 0.1,
             'layer_norm': False,
         }
-        self.use_position_encoding = False
+        self.use_position_encoding = use_position_encoding
         in_dim = 2*n_joints if self.use_position_encoding else n_joints 
         out_dim = 1
         layer_sizes = [in_dim] + self.mlp_params['hidden_layers'] + [out_dim]
@@ -77,11 +81,12 @@ class RobotSelfCollisionNet(nn.Module):
     def forward(self, q_pos:torch.Tensor):
         if self.norm_dict is not None:
             q_pos = scale_to_net(q_pos, self.norm_dict, 'x')
-        input = q_pos
-        if self.use_position_encoding:
-            input = torch.cat((torch.sin(q_pos), torch.cos(q_pos)), dim=-1)
 
-        score = self.net.forward(input)
+        inp = q_pos
+        if self.use_position_encoding:
+            inp = torch.cat((torch.sin(q_pos), torch.cos(q_pos)), dim=-1)
+
+        score = self.net.forward(inp)
         return score
             
     def compute_signed_distance(self, q_pos:torch.Tensor):
@@ -100,7 +105,8 @@ class RobotSelfCollisionNet(nn.Module):
             # dist = self.model.forward(q_scale)
             # dist_scale = scale_to_base(dist, self.norm_dict, 'y')
             dist = self.forward(q_pos)
-            dist_scale = scale_to_base(dist, self.norm_dict, 'y')
+            if self.norm_dict is not None:
+                dist_scale = scale_to_base(dist, self.norm_dict, 'y')
         return dist_scale
 
     def get_collision_prob(self, q_pos:torch.Tensor):
@@ -146,3 +152,9 @@ class RobotSelfCollisionNet(nn.Module):
         self.net = self.net.to(self.device)
         self.net.eval()
         return weights_loaded
+    
+    def set_norm_dict(self, norm_dict):
+        self.norm_dict = norm_dict
+        for k in self.norm_dict.keys():
+            self.norm_dict[k]['mean'] = self.norm_dict[k]['mean'].to(self.device)
+            self.norm_dict[k]['std'] = self.norm_dict[k]['std'].to(self.device)

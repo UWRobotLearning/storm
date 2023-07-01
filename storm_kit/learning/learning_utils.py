@@ -78,9 +78,24 @@ def fit_mlp(
     num_epochs:int, batch_size:int, 
     x_train_aux=None, y_train_aux=None,
     x_val_aux=None, y_val_aux=None,
+    normalize=False, is_classifier=False,
     device:torch.device=torch.device('cpu')):
 
     net.to(device)
+
+    norm_dict = None
+    if normalize:
+        norm_dict = {}
+        mean_x = torch.mean(x_train, dim=0)
+        std_x = torch.std(x_train, dim=0) 
+        mean_y = torch.mean(y_train, dim=0)
+        std_y = torch.std(y_train, dim=0)
+
+        norm_dict['x'] = {'mean':mean_x, 'std':std_x}
+        norm_dict['y'] = {'mean':mean_y, 'std':std_y}
+        net.set_norm_dict(norm_dict)
+
+
     x_val = x_val.to(device)
     y_val = y_val.to(device)
 
@@ -99,6 +114,7 @@ def fit_mlp(
     for i in pbar:
         #random permutation of data
         rand_idxs = torch.randperm(x_train.shape[0])
+        rand_idxs_aux = torch.randperm(x_train_aux.shape[0])
         avg_loss = 0.0
         avg_acc = 0.0
         
@@ -111,13 +127,29 @@ def fit_mlp(
             y_pred = net.forward(x_batch)
             loss = loss_fn(y_pred, y_batch)
 
+
+            batch_idxs_aux = rand_idxs_aux[batch_num*batch_size: (batch_num+1)*batch_size]
+
+
+            x_batch_aux = x_train_aux[batch_idxs_aux].to(device)
+            y_batch_aux = y_train_aux[batch_idxs_aux].to(device)
+
+            y_pred_aux = net.forward(x_batch_aux)
+            loss_aux = loss_fn(y_pred_aux, y_batch_aux)
+
+
+
+            loss += loss_aux
+
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
             
-            acc = (torch.sigmoid(y_pred).round() == y_batch).float().mean().cpu()
             avg_loss += loss.item()
-            avg_acc += acc.item()
+            if is_classifier:
+                acc = (torch.sigmoid(y_pred).round() == y_batch).float().mean().cpu()
+            
+                avg_acc += acc.item()
         
         avg_loss /= num_batches*1.0
         avg_acc /= num_batches*1.0
@@ -128,9 +160,11 @@ def fit_mlp(
         with torch.no_grad():
             y_pred_val = net.forward(x_val)
             loss_val = loss_fn(y_pred_val, y_val)
-            acc_val = (torch.sigmoid(y_pred_val).round() == y_val).float().mean().cpu()
             validation_losses.append(loss_val.item())
-            validation_accuracies.append(acc_val.item())
+            acc_val = torch.tensor([0.0])
+            if is_classifier:
+                acc_val = (torch.sigmoid(y_pred_val).round() == y_val).float().mean().cpu()
+                validation_accuracies.append(acc_val.item())
         
         if loss_val.item() <= best_validation_loss:
             print('Best model so far. Val Loss: {}'.format(loss_val.item()))
@@ -146,7 +180,7 @@ def fit_mlp(
             avg_acc_val = float(acc_val.item())
         )
 
-    return best_net, train_losses, train_accuracies, validation_losses, validation_accuracies
+    return best_net, train_losses, train_accuracies, validation_losses, validation_accuracies, norm_dict
     
 
 

@@ -24,12 +24,12 @@
 use_cuda: True
 cuda_device_num: 0
 
-control_dt: 0.02 #0.0166 #0.02
-run_open_loop: False
-control_space: 'acc'
-env_control_space: 'joint_impedance'
+# control_dt: 0.02 #0.0166 #0.02
+# run_open_loop: False
+# control_space: 'acc'
+# env_control_space: 'joint_impedance'
 float_dtype: 'float32'
-state_filter_coeff: {'position':0.2, 'velocity':0.0, 'acceleration':0.0}
+state_filter_coeff: {'position':0.1, 'velocity':0.0, 'acceleration':0.0}
 # cmd_filter_coeff: {'position':1.0, 'velocity':1.0, 'acceleration':0.0}
 n_dofs: 7
 

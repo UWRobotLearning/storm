@@ -48,7 +48,7 @@ model:
   #sim_freq: 100
   ee_link_name: "ee_link"
   init_state: [0.8, 0.3, 0.0, -1.57, 0.0, 1.86, 0.]
-  link_names: ['panda_link1', 'panda_link2','panda_link3','panda_link4','panda_link5', 'panda_link6','panda_hand']
+  link_names: ['panda_link1', 'panda_link2','panda_link3','panda_link4','panda_link5', 'panda_link6','panda_link7, 'panda_hand']
   #link_names: ['panda_link6']
   vel_scale: 1.0
   collision_spheres: '../robot/franka_real_robot.yml'
@@ -56,7 +56,7 @@ model:
   robot_collision_params:
     urdf: "urdf/franka_description/franka_panda_no_gripper.urdf"
     sample_points: 100
-    link_objs: ['panda_link1', 'panda_link2', 'panda_link3','panda_link4','panda_link5', 'panda_link6','panda_hand']
+    link_objs: ['panda_link1', 'panda_link2', 'panda_link3','panda_link4','panda_link5', 'panda_link6','panda_link7', 'panda_hand']
     #link_objs: ['panda_link6']
     threshold: 0.35
     bounds: [[-0.5, -0.8, 0.0],[0.5,0.8,1.0]]

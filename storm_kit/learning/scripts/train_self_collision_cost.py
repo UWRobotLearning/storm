@@ -21,12 +21,13 @@ def generate_dataset(
         num_data_points, 
         val_ratio=0.2):
     
+    print('Generating self collision data')
     robot_collision_config = config.robot_collision_params
     ee_link_name = config.ee_link_name
     n_dofs = robot_collision_config.n_dofs
     urdf_path = join_path(get_assets_path(), robot_collision_config['urdf_path'])
     link_names = robot_collision_config['link_names']
-    distance_threshold = 0.05
+    distance_threshold = 0.02
 
 
     robot_model = DifferentiableRobotModel(urdf_path, device=device)
@@ -65,7 +66,7 @@ def generate_dataset(
     #compute train-val-split
     num_val_points = int(val_ratio * num_data_points)    
     x_train = q_pos_samples[0:-num_val_points]
-    y_train = torch.zeros(x_train.shape[0],1, device=device)
+    y_train = torch.zeros(x_train.shape[0], 1, device=device)
     y_train[targets[:-num_val_points,0]>= -1.0*distance_threshold] = 1.0
 
     # y_train = targets[0:-num_val_points]
@@ -74,14 +75,16 @@ def generate_dataset(
     y_val[targets[-num_val_points:, 0] >= -1.0*distance_threshold] = 1.0
 
     # y_val = targets[-num_val_points:]
-    x_coll_train = x_train[y_train[:,0] > 0.]#.cpu().numpy()
-    y_coll_train = y_train[y_train[:,0] > 0.]#.cpu().numpy()
+    x_coll_train = x_train[y_train[:,0] > 0.].clone() #.cpu().numpy()
+    y_coll_train = y_train[y_train[:,0] > 0.].clone()#.cpu().numpy()
     x_coll_val = x_val[y_val[:,0]> 0.]#.cpu().numpy()
     y_coll_val = y_val[y_val[:,0]> 0.]#.cpu().numpy()
 
     num_pos_examples = x_coll_train.shape[0]
     num_neg_examples = x_train.shape[0] - num_pos_examples
-    print(num_pos_examples, num_neg_examples)
+    print('Num pos examples = {}, Num neg examples = {}'.format(num_pos_examples, num_neg_examples))
+    #calculate pos_weight to balance pos and neg examples
+    pos_weight = num_neg_examples / num_pos_examples 
 
     # #extract samples that are in collision 
     # x_coll_train = x_train[y_train[:,0]> -1.0*distance_threshold]#.cpu().numpy()
@@ -89,22 +92,22 @@ def generate_dataset(
     # x_coll_val = x_val[y_val[:,0]> -1.0*distance_threshold]#.cpu().numpy()
     # y_coll_val = y_val[y_val[:,0]> -1.0*distance_threshold]#.cpu().numpy()
 
-    return x_train, y_train, x_val, y_val, x_coll_train, y_coll_train, x_coll_val, y_coll_val
+    return x_train, y_train, x_val, y_val, x_coll_train, y_coll_train, x_coll_val, y_coll_val, pos_weight
 
 @hydra.main(config_name="config", config_path=get_configs_path()+"/gym")
 def train_network(cfg:DictConfig):
     checkpoint_dir = get_weights_path() + "/robot_self"
     robot_name = cfg.task.rollout.model.name
     plot = True
-    num_data_points = 100000
+    num_data_points = 500000
     val_ratio = 0.1
-    num_epochs = 100
+    num_epochs = 200
     batch_size = 256
     lr = 1e-3
     n_dofs = cfg.task.rollout.n_dofs
 
     data = generate_dataset(cfg.task.rollout.model, num_data_points, val_ratio)
-    x_train, y_train, x_val, y_val, x_aux_train, y_aux_train, x_aux_val, y_aux_val = data
+    x_train, y_train, x_val, y_val, x_train_aux, y_train_aux, x_aux_val, y_aux_val, pos_weight = data
 
     # net = mlp(
     #     layer_sizes=layer_sizes, 
@@ -116,26 +119,27 @@ def train_network(cfg:DictConfig):
     net = RobotSelfCollisionNet(
         n_joints = n_dofs,
         norm_dict = None,
+        use_position_encoding=True,
         device = device
     )
 
     optimizer = optim.Adam(net.parameters(), lr=lr)
-    
-    loss_fn = nn.BCEWithLogitsLoss()
-    best_net, train_losses, train_accuracies, validation_losses, validation_accuracies = \
-        fit_mlp(net, x_train, y_train, x_val, y_val, optimizer, loss_fn, num_epochs, batch_size, device=device)
+    loss_fn = nn.BCEWithLogitsLoss(pos_weight=torch.tensor(pos_weight))
+    best_net, train_losses, train_accuracies, validation_losses, validation_accuracies, norm_dict = \
+        fit_mlp(net, x_train, y_train, x_val, y_val,optimizer, loss_fn, num_epochs, batch_size,  x_train_aux= x_train_aux, y_train_aux=y_train_aux, normalize=True, device=device)
     
     #Save the best found network weights
-    print('saving model')
-    torch.save(
-        {
-            'model_state_dict': best_net.state_dict(),
-            'optimizer_state_dict': optimizer.state_dict(),
-            # 'norm':{'x':{'mean':mean_x, 'std':std_x},
-            #         'y':{'mean':mean_y, 'std':std_y}}
-        },
-        join_path(checkpoint_dir, robot_name +'_self_collision_weights.pt')
-        )
+    model_path = join_path(checkpoint_dir, robot_name +'_self_collision_weights.pt')
+    model_dict = {
+        'model_state_dict': best_net.state_dict(),
+        'optimizer_state_dict': optimizer.state_dict(),
+        }
+    if norm_dict is not None:
+        model_dict['norm'] = norm_dict
+   
+    print('saving model to {}'.format(model_path))
+    torch.save(model_dict, model_path)
+    print('model saved')
     
     if plot:
         import matplotlib.pyplot as plt 
