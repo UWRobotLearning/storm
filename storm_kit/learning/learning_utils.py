@@ -6,6 +6,7 @@ from omegaconf import OmegaConf
 import torch
 from tqdm import tqdm
 import time
+from torch.utils.data import TensorDataset, DataLoader
 
 
 
@@ -81,6 +82,16 @@ def fit_mlp(
     normalize=False, is_classifier=False,
     device:torch.device=torch.device('cpu')):
 
+
+    train_dataset = TensorDataset(x_train, y_train)
+    # val_dataset = TensorDataset(x_val, y_val)
+    trainloader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
+
+    auxtrainloader = None
+    if x_train_aux is not None:
+        aux_train_dataset = TensorDataset(x_train_aux, y_train_aux)
+        auxtrainloader = DataLoader(aux_train_dataset, batch_size=batch_size, shuffle=True)
+
     net.to(device)
 
     norm_dict = None
@@ -112,34 +123,49 @@ def fit_mlp(
     best_net = copy.deepcopy(net)
 
     for i in pbar:
+        net.train()
         #random permutation of data
-        rand_idxs = torch.randperm(x_train.shape[0])
-        rand_idxs_aux = torch.randperm(x_train_aux.shape[0])
+        # rand_idxs = torch.randperm(x_train.shape[0])
+
+        # rand_idxs_aux = torch.randperm(x_train_aux.shape[0])
         avg_loss = 0.0
         avg_acc = 0.0
         
-        for batch_num in range(0, num_batches):
-            batch_idxs = rand_idxs[batch_num*batch_size: (batch_num+1)*batch_size]
+        # for batch_num in range(0, num_batches):
+            # batch_idxs = rand_idxs[batch_num*batch_size: (batch_num+1)*batch_size]
             
-            x_batch = x_train[batch_idxs].to(device)
-            y_batch = y_train[batch_idxs].to(device)
+            # x_batch = x_train[batch_idxs].to(device)
+            # y_batch = y_train[batch_idxs].to(device)
 
+        for data in trainloader:
+            x_batch = data[0]
+            y_batch = data[1]
+            if auxtrainloader is not None:
+                aux_data = next(iter(auxtrainloader))
+                x_batch_aux = aux_data[0]
+                y_batch_aux = aux_data[1]
+                x_batch = torch.cat((x_batch, x_batch_aux), dim=0)
+                y_batch = torch.cat((y_batch, y_batch_aux), dim=0)
+
+            x_batch = x_batch.to(device)
+            y_batch = y_batch.to(device)
+            
             y_pred = net.forward(x_batch)
             loss = loss_fn(y_pred, y_batch)
 
 
-            batch_idxs_aux = rand_idxs_aux[batch_num*batch_size: (batch_num+1)*batch_size]
+            # batch_idxs_aux = rand_idxs_aux[batch_num*batch_size: (batch_num+1)*batch_size]
 
 
-            x_batch_aux = x_train_aux[batch_idxs_aux].to(device)
-            y_batch_aux = y_train_aux[batch_idxs_aux].to(device)
+            # x_batch_aux = x_train_aux[batch_idxs_aux].to(device)
+            # y_batch_aux = y_train_aux[batch_idxs_aux].to(device)
 
-            y_pred_aux = net.forward(x_batch_aux)
-            loss_aux = loss_fn(y_pred_aux, y_batch_aux)
+            # y_pred_aux = net.forward(x_batch_aux)
+            # loss_aux = loss_fn(y_pred_aux, y_batch_aux)
 
 
 
-            loss += loss_aux
+            # loss += loss_aux
 
             optimizer.zero_grad()
             loss.backward()
@@ -148,7 +174,6 @@ def fit_mlp(
             avg_loss += loss.item()
             if is_classifier:
                 acc = (torch.sigmoid(y_pred).round() == y_batch).float().mean().cpu()
-            
                 avg_acc += acc.item()
         
         avg_loss /= num_batches*1.0
