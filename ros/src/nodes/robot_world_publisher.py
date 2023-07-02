@@ -111,6 +111,10 @@ class RobotWorldPublisher():
         self.collision_model.update_batch_robot_collision_objs(link_pos_seq, link_rot_seq)
         spheres = self.collision_model.get_batch_robot_link_spheres()
         spheres = [s.numpy() for s in spheres]
+
+        # self.collision_model.update_batch_robot_collision_objs(link_pos_seq, link_rot_seq)
+        # res = self.collision_model.check_self_collisions(link_pos_seq, link_rot_seq)
+        # res = torch.max(res, dim=-1)[0]
         return spheres
 
     def get_sphere_marker_list(self, sphere_list):

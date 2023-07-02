@@ -33,7 +33,7 @@ from storm_kit.geom.nn_model.robot_self_collision_net import RobotSelfCollisionN
 
 class RobotSelfCollisionCost(nn.Module):
     def __init__(self, weight, config=None,
-                 gaussian_params={}, distance_threshold=-0.01, 
+                 gaussian_params={}, distance_threshold=0.01, 
                  batch_size=2, device=torch.device('cpu')):
                 #  tensor_args={'device':torch.device('cpu'), 'dtype':torch.float32}):
         super(RobotSelfCollisionCost, self).__init__()
@@ -44,7 +44,6 @@ class RobotSelfCollisionCost(nn.Module):
         self.tensor_args={'device':self.device, 'dtype':torch.float32}
         self.distance_threshold = distance_threshold
         self.weight = torch.as_tensor(weight, device=self.device)
-        
         # self.proj_gaussian = GaussianProjection(gaussian_params=gaussian_params)
 
 
@@ -74,6 +73,7 @@ class RobotSelfCollisionCost(nn.Module):
         self.weights_loaded = False
         try:
             self.weights_loaded = self.nn_collision_model.load_parameters(self.config['self_collision_weights'])
+            self.nn_collision_model.eval()
         except:
             pass
         self.res = None
@@ -100,7 +100,7 @@ class RobotSelfCollisionCost(nn.Module):
         res = torch.max(res, dim=-1)[0]
         return res
 
-    def forward(self, q_pos):
+    def forward(self, q_pos, link_pos_seq=None, link_rot_seq=None):
         """
             Calculate the collision cost
         """
@@ -111,12 +111,17 @@ class RobotSelfCollisionCost(nn.Module):
         # res = self.coll.check_self_collisions_nn(q)
         # res = self.coll.check_self_collisions_nn(q)
         if self.weights_loaded:
-            res = self.nn_collision_model.get_collision_prob(q_pos)
+            res = self.nn_collision_model.compute_signed_distance(q_pos)
             res = res.view(batch_size, horizon)
-            res[res >= 0.2] = 1.0
-            res[res < 0.2] = 0.0
+            res += self.distance_threshold
+            res[res <= 0.0] = 0.0
+            res[res > 0.0] = 1.0
+            # res[res >= 0.5] = 0.5
+            # rescale:
+            # res = res / 0.25
+            # res = res / 0.2
         else:
-            res = self.collision_model.check_self_collisions(q_pos)
+            res = self.distance(link_pos_seq, link_rot_seq)
             res = res.view(batch_size, horizon)
             res += self.distance_threshold
             res[res <= 0.0] = 0.0

@@ -79,14 +79,19 @@ class RobotSelfCollisionNet(nn.Module):
         self.norm_dict = None
     
     def forward(self, q_pos:torch.Tensor):
-        if self.norm_dict is not None:
-            q_pos = scale_to_net(q_pos, self.norm_dict, 'x')
+        # if self.norm_dict is not None:
+        #     q_pos = scale_to_net(q_pos, self.norm_dict, 'x')
 
         inp = q_pos
         if self.use_position_encoding:
             inp = torch.cat((torch.sin(q_pos), torch.cos(q_pos)), dim=-1)
 
         score = self.net.forward(inp)
+
+        # if self.norm_dict is not None:
+        #     score = scale_to_base(score, self.norm_dict, 'y')
+
+        
         return score
             
     def compute_signed_distance(self, q_pos:torch.Tensor):
@@ -104,10 +109,12 @@ class RobotSelfCollisionNet(nn.Module):
             # q_scale = scale_to_net(q, self.norm_dict,'x')
             # dist = self.model.forward(q_scale)
             # dist_scale = scale_to_base(dist, self.norm_dict, 'y')
+            if self.norm_dict is not None:
+                q_pos = scale_to_net(q_pos, self.norm_dict, 'x')
             dist = self.forward(q_pos)
             if self.norm_dict is not None:
-                dist_scale = scale_to_base(dist, self.norm_dict, 'y')
-        return dist_scale
+                dist = scale_to_base(dist, self.norm_dict, 'y')
+        return dist
 
     def get_collision_prob(self, q_pos:torch.Tensor):
         """Check collision given joint config. 

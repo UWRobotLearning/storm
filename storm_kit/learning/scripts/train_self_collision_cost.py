@@ -28,11 +28,10 @@ def generate_dataset(
     n_dofs = robot_collision_config.n_dofs
     urdf_path = join_path(get_assets_path(), robot_collision_config['urdf_path'])
     link_names = robot_collision_config['link_names']
-    distance_threshold = 0.02
-
+    distance_threshold = 0.05
 
     robot_model = DifferentiableRobotModel(urdf_path, device=device)
-    self_collision_cost = RobotSelfCollisionCost(weight=1.0, config=robot_collision_config, device=device) 
+    self_collision_cost = RobotSelfCollisionCost(weight=1.0, config=robot_collision_config, batch_size=num_data_points, device=device) 
 
     joint_lim_dicts = robot_model.get_joint_limits()
     q_pos_uppper = torch.zeros(n_dofs, device=device)
@@ -50,6 +49,10 @@ def generate_dataset(
         #Project samples into state limits
         q_pos_samples = q_pos_samples * range_b + q_pos_lower
         q_pos_samples = q_pos_samples.view(num_data_points, n_dofs)
+
+        #Randomly permute the samples
+        q_pos_samples = q_pos_samples[torch.randperm(q_pos_samples.shape[0])]
+
         q_vel_samples = torch.zeros_like(q_pos_samples)
 
         _,_,_,_ = robot_model.compute_fk_and_jacobian(
@@ -64,17 +67,19 @@ def generate_dataset(
         link_pos_seq = torch.cat(link_pos_seq, axis=1).unsqueeze(1)
         link_rot_seq = torch.cat(link_rot_seq, axis=1).unsqueeze(1)
         distances = self_collision_cost.distance(link_pos_seq, link_rot_seq)
-    
+        
+
+
     #compute train-val-split
     num_val_points = int(val_ratio * num_data_points)    
     x_train = q_pos_samples[0:-num_val_points]
     distances_train = distances[0:-num_val_points].squeeze(-1)
     y_train = distances_train.unsqueeze(-1)
+
     if is_classifier:
         y_train = torch.zeros(distances_train.shape[0], 1, device=device)
         y_train[distances_train >= -1.0*distance_threshold] = 1.0
 
-    # y_train = targets[0:-num_val_points]
     x_val = q_pos_samples[-num_val_points:]
     distances_val = distances[-num_val_points:].squeeze(-1)
     y_val = distances_val.unsqueeze(-1)
@@ -85,8 +90,8 @@ def generate_dataset(
     # y_val = targets[-num_val_points:]
     x_coll_train = x_train[distances_train >= -1.0*distance_threshold, :].clone() #.cpu().numpy()
     y_coll_train = y_train[distances_train >= -1.0*distance_threshold].clone()#.cpu().numpy()
-    x_coll_val = x_val[distances_val >= -1.0*distance_threshold]#.cpu().numpy()
-    y_coll_val = y_val[distances_val >= -1.0*distance_threshold]#.cpu().numpy()
+    x_coll_val = x_val[distances_val >= -1.0*distance_threshold].clone()#.cpu().numpy()
+    y_coll_val = y_val[distances_val >= -1.0*distance_threshold].clone()#.cpu().numpy()
 
     num_pos_examples = x_coll_train.shape[0]
     num_neg_examples = x_train.shape[0] - num_pos_examples
@@ -108,19 +113,22 @@ def train_network(cfg:DictConfig):
     plot = True
     train_classifier = False
     num_data_points = 100000
-    val_ratio = 0.2
+    normalize_data = True
+    use_position_encoding = True
+    val_ratio = 0.3
     num_epochs = 100
     batch_size = 256
+    aux_batch_size = 32
     lr = 1e-3
     n_dofs = cfg.task.rollout.n_dofs
 
-    data = generate_dataset(cfg.task.rollout.model, num_data_points, val_ratio)
+    data = generate_dataset(cfg.task.rollout.model, num_data_points, val_ratio, is_classifier=train_classifier)
     x_train, y_train, x_val, y_val, x_train_aux, y_train_aux, x_aux_val, y_aux_val, pos_weight = data
 
     net = RobotSelfCollisionNet(
         n_joints = n_dofs,
         norm_dict = None,
-        use_position_encoding=True,
+        use_position_encoding=use_position_encoding,
         device = device
     )
     optimizer = optim.Adam(net.parameters(), lr=lr)
@@ -139,8 +147,8 @@ def train_network(cfg:DictConfig):
                 optimizer, loss_fn, 
                 num_epochs, batch_size,  
                 x_train_aux= x_train_aux, y_train_aux=y_train_aux, 
-                normalize=True, is_classifier=train_classifier, 
-                device=device)
+                aux_batch_size=aux_batch_size, normalize=normalize_data, 
+                is_classifier=train_classifier, device=device)
     
     #Save the best found network weights
     model_path = join_path(checkpoint_dir, robot_name +'_self_collision_weights.pt')

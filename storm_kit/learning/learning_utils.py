@@ -79,8 +79,28 @@ def fit_mlp(
     num_epochs:int, batch_size:int, 
     x_train_aux=None, y_train_aux=None,
     x_val_aux=None, y_val_aux=None,
-    normalize=False, is_classifier=False,
-    device:torch.device=torch.device('cpu')):
+    aux_batch_size=1, normalize=False, 
+    is_classifier=False, device:torch.device=torch.device('cpu')):
+
+    norm_dict = None
+    if normalize:
+        norm_dict = {}
+        mean_x = torch.mean(x_train, dim=0)
+        std_x = torch.std(x_train, dim=0)
+        mean_y = torch.mean(y_train, dim=0)
+        std_y = torch.std(y_train, dim=0)
+
+        x_train = torch.div((x_train - mean_x), std_x + 1e-6)
+        x_val = torch.div((x_val - mean_x), std_x + 1e-6)
+        
+        if not is_classifier:
+            #normalize the targets
+            y_train = torch.div((y_train - mean_y), std_y + 1e-6)
+            y_val = torch.div((y_val - mean_y), std_y + 1e-6)
+
+
+        norm_dict['x'] = {'mean':mean_x, 'std':std_x}
+        norm_dict['y'] = {'mean':mean_y, 'std':std_y}
 
 
     train_dataset = TensorDataset(x_train, y_train)
@@ -89,23 +109,15 @@ def fit_mlp(
 
     auxtrainloader = None
     if x_train_aux is not None:
+        if normalize:
+            x_train_aux = torch.div((x_train_aux - mean_x), std_x + 1e-6)
+            if not is_classifier:
+                y_train_aux = torch.div((y_train_aux - mean_y), std_y + 1e-6)
+
         aux_train_dataset = TensorDataset(x_train_aux, y_train_aux)
-        auxtrainloader = DataLoader(aux_train_dataset, batch_size=batch_size, shuffle=True)
+        auxtrainloader = DataLoader(aux_train_dataset, batch_size=aux_batch_size, shuffle=True)
 
     net.to(device)
-
-    norm_dict = None
-    if normalize:
-        norm_dict = {}
-        mean_x = torch.mean(x_train, dim=0)
-        std_x = torch.std(x_train, dim=0) 
-        mean_y = torch.mean(y_train, dim=0)
-        std_y = torch.std(y_train, dim=0)
-
-        norm_dict['x'] = {'mean':mean_x, 'std':std_x}
-        norm_dict['y'] = {'mean':mean_y, 'std':std_y}
-        net.set_norm_dict(norm_dict)
-
 
     x_val = x_val.to(device)
     y_val = y_val.to(device)
@@ -148,23 +160,16 @@ def fit_mlp(
                 y_batch = torch.cat((y_batch, y_batch_aux), dim=0)
 
             x_batch = x_batch.to(device)
-            y_batch = y_batch.to(device)
-            
+            y_batch = y_batch.to(device)            
             y_pred = net.forward(x_batch)
             loss = loss_fn(y_pred, y_batch)
 
-
             # batch_idxs_aux = rand_idxs_aux[batch_num*batch_size: (batch_num+1)*batch_size]
-
-
             # x_batch_aux = x_train_aux[batch_idxs_aux].to(device)
             # y_batch_aux = y_train_aux[batch_idxs_aux].to(device)
 
             # y_pred_aux = net.forward(x_batch_aux)
             # loss_aux = loss_fn(y_pred_aux, y_batch_aux)
-
-
-
             # loss += loss_aux
 
             optimizer.zero_grad()
@@ -180,6 +185,7 @@ def fit_mlp(
         avg_acc /= num_batches*1.0
         train_losses.append(avg_loss)
         train_accuracies.append(avg_acc)
+        
         #run validation
         net.eval()
         with torch.no_grad():
@@ -191,12 +197,11 @@ def fit_mlp(
                 acc_val = (torch.sigmoid(y_pred_val).round() == y_val).float().mean().cpu()
                 validation_accuracies.append(acc_val.item())
         
-        if loss_val.item() <= best_validation_loss:
-            print('Best model so far. Val Loss: {}'.format(loss_val.item()))
-            best_validation_loss = loss_val
-            best_net = copy.deepcopy(net)
+            if loss_val.item() <= best_validation_loss:
+                print('Best model so far. Val Loss: {}'.format(loss_val.item()))
+                best_validation_loss = loss_val
+                best_net = copy.deepcopy(net)
         
-        net.train()
 
         pbar.set_postfix(
             avg_loss_train=float(avg_loss),
@@ -222,7 +227,7 @@ def scale_to_net(data, norm_dict, key):
         tensor : output scaled tensor
     """    
     
-    scaled_data = torch.div(data - norm_dict[key]['mean'], norm_dict[key]['std'] + 1e-6)
+    scaled_data = torch.div(data - norm_dict[key]['mean'], norm_dict[key]['std'])
     scaled_data[scaled_data != scaled_data] = 0.0
     return scaled_data
 
