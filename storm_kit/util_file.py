@@ -51,6 +51,11 @@ def get_weights_path():
     path = os.path.join(content_path,'weights')
     return path
 
+def get_data_path():
+    content_path = get_root_path()
+    path = os.path.join(content_path,'data')
+    return path
+
 def join_path(path1,path2):
     return os.path.join(path1,path2)
 

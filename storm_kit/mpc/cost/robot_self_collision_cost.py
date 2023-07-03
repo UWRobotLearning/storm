@@ -115,10 +115,10 @@ class RobotSelfCollisionCost(nn.Module):
             res = res.view(batch_size, horizon)
             res += self.distance_threshold
             res[res <= 0.0] = 0.0
-            res[res > 0.0] = 1.0
-            # res[res >= 0.5] = 0.5
+            # res[res > 0.0] = 1.0
+            res[res >= 0.5] = 0.5
             # rescale:
-            # res = res / 0.25
+            res = res / 0.25
             # res = res / 0.2
         else:
             res = self.distance(link_pos_seq, link_rot_seq)

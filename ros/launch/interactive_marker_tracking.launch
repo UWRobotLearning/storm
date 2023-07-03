@@ -1,5 +1,6 @@
 <launch>
   <arg name="config" default="$(find storm_ros)/config/config_interactive_marker_tracking.yaml" doc="Path to parameter config file"/>
+  <arg name="save_data" default="false" />
 
   <node name="interactive_marker_pub" pkg="storm_ros" type="interactive_marker_goal_publisher.py" output="screen" clear_params="true">
     <rosparam file="$(arg config)" />
@@ -7,6 +8,7 @@
 
   <node name="reacher_node" pkg="storm_ros" type="reacher_node.py" output="screen" clear_params="true">
     <rosparam file="$(arg config)"/>
+    <param name="save_data" value="$(arg save_data)"/>
   </node>
 
   <node name="robot_world_pub" pkg="storm_ros" type="robot_world_publisher.py" output="screen" clear_params="true">

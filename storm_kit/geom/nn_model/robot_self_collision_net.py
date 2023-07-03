@@ -152,7 +152,6 @@ class RobotSelfCollisionNet(nn.Module):
             weights_loaded = True
         except Exception as e:
             print(e)
-            
             weights_loaded = False
             print('WARNING: Weights not loaded')
         

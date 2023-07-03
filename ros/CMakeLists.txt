@@ -50,17 +50,17 @@ find_package(catkin REQUIRED COMPONENTS
 ##   * add every package in MSG_DEP_SET to generate_messages(DEPENDENCIES ...)
 
 ## Generate messages in the 'msg' folder
-#add_message_files(
-#   FILES
-#    Message1.msg
-#   Message2.msg
-# )
+add_message_files(
+   FILES
+   GoalMsg.msg
+   JointMsg.msg
+ )
 
 ## Generate services in the 'srv' folder
-#add_service_files(
-#    FILES
-#   Service2.srv
-#)
+add_service_files(
+    FILES
+    ReachGoal.srv
+)
 
 ## Generate actions in the 'action' folder
 # add_action_files(
@@ -109,7 +109,7 @@ generate_messages(
 catkin_package(
 #  INCLUDE_DIRS include
 #  LIBRARIES franka_mpc_utils
-   CATKIN_DEPENDS geometry_msgs roscpp rospy sensor_msgs std_msgs message_generation
+   CATKIN_DEPENDS geometry_msgs roscpp rospy sensor_msgs std_msgs message_generation message_runtime
 #  DEPENDS system_lib
 )
 
