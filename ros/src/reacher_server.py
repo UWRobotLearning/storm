@@ -34,7 +34,7 @@ class MPCReacherServer():
         self.joint_states_topic = rospy.get_param('~joint_states_topic', 'joint_states')
         self.joint_command_topic = rospy.get_param('~joint_command_topic', 'franka_motion_control/joint_command')
         self.ee_goal_topic = rospy.get_param('~ee_goal_topic', 'ee_goal')
-        self.joint_names = rospy.get_param('~robot_joint_names', [])
+        self.joint_names = rospy.get_param('~robot_joint_names', ['panda_joint1', 'panda_joint2', 'panda_joint3', 'panda_joint4', 'panda_joint5', 'panda_joint6', 'panda_joint7'])
         
         self.device = torch.device('cuda', 0)
 

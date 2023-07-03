@@ -16,7 +16,7 @@ def send_goal():
         mpc = rospy.ServiceProxy('mpc', ReachGoal)
         goal_msg = GoalMsg()
         goal_msg.MODE_FLAG = 0
-        goal_msg.ee_goal.position.x = 0.30675235390663147
+        goal_msg.ee_goal.position.x = 0.30675235390663147 + 0.1
         goal_msg.ee_goal.position.y = 0.004366477020084858
         goal_msg.ee_goal.position.z = 0.48579496145248413
         goal_msg.ee_goal.orientation.x =  0.7018908262252808
