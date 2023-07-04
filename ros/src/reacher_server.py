@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
 #General imports
+import copy
 import os
 import numpy as np
 from hydra import compose, initialize
@@ -47,6 +48,19 @@ class MPCReacherServer():
         obs_dim = 1
         act_dim = 1
         self.policy = MPCPolicy(obs_dim=obs_dim, act_dim=act_dim, config=self.config.mpc, device=self.device)
+
+        #Initialize reset policy
+        self.reset_mpc_config = copy.deepcopy(self.config)
+        self.reset_mpc_config.task.rollout.cost.goal_pose.weight = [0., 0.]
+        self.reset_mpc_config.task.rollout.cost.joint_l2.weight = 0.0
+        self.reset_policy = MPCPolicy(obs_dim=obs_dim, act_dim=act_dim, config=self.reset_mpc_config.mpc, device=self.device)
+
+
+        #STORM Initialization
+        obs_dim = 1
+        act_dim = 1
+        self.policy = MPCPolicy(obs_dim=obs_dim, act_dim=act_dim, config=self.config.mpc, device=self.device)
+      
 
 
         #buffers for different messages
@@ -123,9 +137,10 @@ class MPCReacherServer():
     #         msg.pose.orientation.z])
 
     def go_to_goal(self, goal_req):
-        print(goal_req)
+        self.tstep = 0
+        self.policy.reset_distribution()
+        self.reset_policy.reset_distribution()
         mode = goal_req.goal.MODE_FLAG
-        print(mode)
         if mode == 0:
             ee_goal = goal_req.goal.ee_goal
             ee_goal_pos = torch.tensor([
@@ -143,6 +158,11 @@ class MPCReacherServer():
             #     goal_ee_quat = self.ee_goal_quat)
             goal = torch.cat((ee_goal_pos, ee_goal_quat), dim=-1).unsqueeze(0)
             self.policy.update_goal(goal)
+        elif mode == 1:
+            joint_goal = goal_req.goal.joint_goal
+            goal = torch.cat((joint_goal['position'], joint_goal['velocity']), dim=-1).unsqueeze(0)
+            self.reset_policy.update_goal(goal)
+
 
         for i in range(1000):
             #only do something if state has been received
@@ -154,7 +174,11 @@ class MPCReacherServer():
                     )
 
                 #get mpc command
-                command = self.policy.get_action(obs_dict=self.obs_dict) #, control_dt=self.control_dt, WAIT=True)
+                if mode == 0:
+                    command = self.policy.get_action(obs_dict=self.obs_dict) #, control_dt=self.control_dt, WAIT=True)
+                elif mode == 1:
+                    command = self.reset_policy.get_action(obs_dict=self.obs_dict) #, control_dt=self.control_dt, WAIT=True)
+
                 print(command)
                 #publish mpc command
                 self.mpc_command.header = self.command_header

@@ -123,7 +123,7 @@ class ArmReacher(ArmBase):
         goal_ee_quat: 4
 
         """
-    def update_params(self, goal):
+    def update_params(self, goal, goal_state=None):
 
         # retract_state = goal_dict['retract_state'] if 'retract_state' in goal_dict else None
         # goal_state = goal_dict['goal_state'] if 'goal_state' in goal_dict else None
@@ -131,7 +131,6 @@ class ArmReacher(ArmBase):
         # goal_ee_rot = goal_dict['goal_ee_rot'] if 'goal_ee_rot' in goal_dict else None
         # goal_ee_quat = goal_dict['goal_ee_quat'] if 'goal_ee_quat' in goal_dict else None
         retract_state = None
-        goal_state = None
         goal_ee_pos = goal[:, 0:3]
         goal_ee_quat = goal[:, 3:7]
         goal_ee_rot = None        
