@@ -163,10 +163,11 @@ class MPCPolicy(Policy):
         rollout_fn = ArmReacher(**kwargs)
         return rollout_fn
 
-    def update_goal(self, ee_goal, joint_goal=None):
+    def update_goal(self, ee_goal=None, joint_goal=None):
         self.controller.rollout_fn.update_params(ee_goal, goal_state=joint_goal)
     
 
     def reset(self):
+        self.prev_qdd_des = None
         self.state_filter.reset()
         self.controller.reset_distribution()

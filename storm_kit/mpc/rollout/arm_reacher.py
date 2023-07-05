@@ -131,9 +131,13 @@ class ArmReacher(ArmBase):
         # goal_ee_rot = goal_dict['goal_ee_rot'] if 'goal_ee_rot' in goal_dict else None
         # goal_ee_quat = goal_dict['goal_ee_quat'] if 'goal_ee_quat' in goal_dict else None
         retract_state = None
-        goal_ee_pos = goal[:, 0:3]
-        goal_ee_quat = goal[:, 3:7]
-        goal_ee_rot = None        
+        goal_ee_pos = None
+        goal_ee_quat = None
+        goal_ee_rot = None
+        if goal is not None:
+            goal_ee_pos = goal[:, 0:3]
+            goal_ee_quat = goal[:, 3:7]
+            goal_ee_rot = None        
         super(ArmReacher, self).update_params(retract_state=retract_state)
         
         if goal_ee_pos is not None:

@@ -52,17 +52,16 @@ class MPCReacherServer():
         #Initialize reset policy
         self.reset_mpc_config = copy.deepcopy(self.config)
         self.reset_mpc_config.task.rollout.cost.goal_pose.weight = [0., 0.]
-        self.reset_mpc_config.task.rollout.cost.joint_l2.weight = 0.0
+        self.reset_mpc_config.task.rollout.cost.joint_l2.weight = 100.0
+        self.reset_mpc_config.task.rollout.cost.manipulability.weight = 0.0
+        self.reset_mpc_config.mpc.mppi.horizon=20
         self.reset_policy = MPCPolicy(obs_dim=obs_dim, act_dim=act_dim, config=self.reset_mpc_config.mpc, device=self.device)
-
 
         #STORM Initialization
         obs_dim = 1
         act_dim = 1
         self.policy = MPCPolicy(obs_dim=obs_dim, act_dim=act_dim, config=self.config.mpc, device=self.device)
       
-
-
         #buffers for different messages
         self.mpc_command = JointState()
         self.mpc_command.name = self.joint_names
@@ -116,6 +115,9 @@ class MPCReacherServer():
         self.robot_state['position'] = torch.tensor(msg.position)
         self.robot_state['velocity'] = torch.tensor(msg.velocity)
         self.robot_state['acceleration'] = torch.zeros_like(self.robot_state['velocity'])
+
+
+
         self.robot_state_tensor = torch.cat((
             self.robot_state['position'],
             self.robot_state['velocity'],
@@ -138,8 +140,9 @@ class MPCReacherServer():
 
     def go_to_goal(self, goal_req):
         self.tstep = 0
-        self.policy.reset_distribution()
-        self.reset_policy.reset_distribution()
+        self.policy.reset()
+        self.reset_policy.reset()
+        
         mode = goal_req.goal.MODE_FLAG
         if mode == 0:
             ee_goal = goal_req.goal.ee_goal
@@ -154,47 +157,101 @@ class MPCReacherServer():
                 ee_goal.orientation.y,
                 ee_goal.orientation.z 
             ])
-            # self.policy.update_params(goal_ee_pos = self.ee_goal_pos,
-            #     goal_ee_quat = self.ee_goal_quat)
             goal = torch.cat((ee_goal_pos, ee_goal_quat), dim=-1).unsqueeze(0)
-            self.policy.update_goal(goal)
+            self.go_to_ee_goal(goal)
+            
         elif mode == 1:
             joint_goal = goal_req.goal.joint_goal
-            goal = torch.cat((joint_goal['position'], joint_goal['velocity']), dim=-1).unsqueeze(0)
-            self.reset_policy.update_goal(goal)
+
+            q_pos_goal = torch.as_tensor(joint_goal.position)
+            q_vel_goal = torch.as_tensor(joint_goal.velocity)
+
+            goal = torch.cat((q_pos_goal, q_vel_goal), dim=-1).unsqueeze(0)
+            self.go_to_joint_goal(goal)
 
 
+        # for i in range(1000):
+        #     #only do something if state has been received
+        #     if self.state_sub_on:
+        #         input_dict = {}
+        #         input_dict['states'] = torch.cat(
+        #             (self.obs_dict['states'],
+        #                 torch.as_tensor([self.tstep]).unsqueeze(0)),
+        #                 dim=-1                  
+        #             )
+        #         #get mpc command
+        #         command = self.policy.get_action(obs_dict=copy.deepcopy(input_dict))
+
+        #         #publish mpc command
+        #         self.mpc_command.header = self.command_header
+        #         self.mpc_command.header.stamp = rospy.Time.now()
+        #         self.mpc_command.position = command['q_des'][0].cpu().numpy()
+        #         self.mpc_command.velocity = command['qd_des'][0].cpu().numpy()
+        #         self.mpc_command.effort =  command['qdd_des'][0].cpu().numpy()
+
+        #         self.command_pub.publish(self.mpc_command)
+
+        #         #update tstep
+        #         if self.tstep == 0:
+        #             rospy.loginfo('[MPCPoseReacher]: Controller running')
+        #             self.start_t = rospy.get_time()
+        #         self.tstep = rospy.get_time() - self.start_t
+
+        #     else:
+        #         if (not self.state_sub_on) and (self.first_iter):
+        #             rospy.loginfo('[MPCPoseReacher]: Waiting for robot state.')
+            
+        #     self.first_iter = False
+        #     self.rate.sleep()
+
+
+        dummy = JointMsg()
+        dummy.q_pos = 10
+        dummy.q_vel = 10
+        dummy.q_acc = 10
+        dummy.q_pos_cmd = 10
+        dummy.q_vel_cmd = 10
+        dummy.q_acc_cmd = 10
+        
+        response = ReachGoalResponse()
+        response.joint_data = [dummy]
+        print(response)
+        return response
+
+
+    def go_to_ee_goal(self, ee_goal):
+        tstep = 0
+        self.policy.reset()
+        self.policy.update_goal(ee_goal=ee_goal)
         for i in range(1000):
             #only do something if state has been received
             if self.state_sub_on:
-                self.obs_dict['states'] = torch.cat(
+                input_dict = {}
+                input_dict['states'] = torch.cat(
                     (self.obs_dict['states'],
-                        torch.as_tensor([self.tstep]).unsqueeze(0)),
-                        dim=-1                  
-                    )
-
+                        torch.as_tensor([tstep]).unsqueeze(0)),
+                        dim=-1)
+                
                 #get mpc command
-                if mode == 0:
-                    command = self.policy.get_action(obs_dict=self.obs_dict) #, control_dt=self.control_dt, WAIT=True)
-                elif mode == 1:
-                    command = self.reset_policy.get_action(obs_dict=self.obs_dict) #, control_dt=self.control_dt, WAIT=True)
+                command = self.policy.get_action(
+                    obs_dict=copy.deepcopy(input_dict))
 
-                print(command)
                 #publish mpc command
-                self.mpc_command.header = self.command_header
-                self.mpc_command.header.stamp = rospy.Time.now()
-                self.mpc_command.position = command['q_des'][0].cpu().numpy()
-                self.mpc_command.velocity = command['qd_des'][0].cpu().numpy()
-                self.mpc_command.effort =  command['qdd_des'][0].cpu().numpy()
+                mpc_command = JointState()
+                mpc_command.header = self.command_header
+                mpc_command.name = self.joint_names
+                mpc_command.header.stamp = rospy.Time.now()
+                mpc_command.position = command['q_des'][0].cpu().numpy()
+                mpc_command.velocity = command['qd_des'][0].cpu().numpy()
+                mpc_command.effort =  command['qdd_des'][0].cpu().numpy()
 
-                self.command_pub.publish(self.mpc_command)
+                self.command_pub.publish(mpc_command)
 
                 #update tstep
-                if self.tstep == 0:
+                if tstep == 0:
                     rospy.loginfo('[MPCPoseReacher]: Controller running')
-                    self.start_t = rospy.get_time()
-                self.tstep = rospy.get_time() - self.start_t
-
+                    start_t = rospy.get_time()
+                tstep = rospy.get_time() - start_t
             else:
                 if (not self.state_sub_on) and (self.first_iter):
                     rospy.loginfo('[MPCPoseReacher]: Waiting for robot state.')
@@ -213,56 +270,91 @@ class MPCReacherServer():
         
         response = ReachGoalResponse()
         response.joint_data = [dummy]
-        print(response)
-        return response
+        return response  
 
 
 
-    # def control_loop(self):
-    #     while not rospy.is_shutdown():
-    #         #only do something if state and goal have been received
-    #         if self.state_sub_on and self.goal_sub_on:
-    #             #check if goal was updated
-    #             if self.new_ee_goal:
-    #                 # self.policy.update_params(goal_ee_pos = self.ee_goal_pos,
-    #                 #     goal_ee_quat = self.ee_goal_quat)
-    #                 goal = torch.cat((self.ee_goal_pos, self.ee_goal_quat), dim=-1).unsqueeze(0)
-    #                 self.policy.update_goal(goal)
-    #                 self.new_ee_goal = False
+    def go_to_joint_goal(self, joint_goal):
+        tstep = 0
+        self.reset_policy.reset()
 
-    #             self.obs_dict['states'] = torch.cat(
-    #                 (self.obs_dict['states'],
-    #                  torch.as_tensor([self.tstep]).unsqueeze(0)),
-    #                  dim=-1                  
-    #                 )
+        self.reset_policy.update_goal(joint_goal = joint_goal)
 
-    #             #get mpc command
-    #             command = self.policy.get_action(obs_dict=self.obs_dict) #, control_dt=self.control_dt, WAIT=True)
+        goal_q_pos = joint_goal[:, 0:self.n_dofs]
 
-    #             #publish mpc command
-    #             self.mpc_command.header = self.command_header
-    #             self.mpc_command.header.stamp = rospy.Time.now()
-    #             self.mpc_command.position = command['q_des'][0].cpu().numpy()
-    #             self.mpc_command.velocity = command['qd_des'][0].cpu().numpy()
-    #             self.mpc_command.effort =  command['qdd_des'][0].cpu().numpy()
+        goal_reached = False
+        curr_q_pos = self.obs_dict['states'][:, 0:self.n_dofs]
+        curr_error = torch.norm(curr_q_pos - goal_q_pos, p=2).item()
+        delta_error_list = []
+
+        while not goal_reached:
+            #only do something if state has been received
+            if self.state_sub_on:
+                input_dict = {}
+                input_dict['states'] = torch.cat(
+                    (self.obs_dict['states'],
+                        torch.as_tensor([tstep]).unsqueeze(0)),
+                        dim=-1)
+                
+                #get mpc command
+                command = self.reset_policy.get_action(
+                    obs_dict=copy.deepcopy(input_dict))
+
+                #publish mpc command
+                mpc_command = JointState()
+                mpc_command.header = self.command_header
+                mpc_command.name = self.joint_names
+                mpc_command.header.stamp = rospy.Time.now()
+                mpc_command.position = command['q_des'][0].cpu().numpy()
+                mpc_command.velocity = command['qd_des'][0].cpu().numpy()
+                mpc_command.effort =  command['qdd_des'][0].cpu().numpy()
+
+                self.command_pub.publish(mpc_command)
+
+                #update tstep
+                if tstep == 0:
+                    rospy.loginfo('[MPCPoseReacher]: Controller running')
+                    start_t = rospy.get_time()
+                tstep = rospy.get_time() - start_t
+                
+                new_q_pos = self.obs_dict['states'][:, 0:self.n_dofs]
+                new_error = torch.norm(new_q_pos - goal_q_pos, p=2).item()
+                delta_error = abs(curr_error - new_error)
+                delta_error_list.append(delta_error)
+                goal_reached = self.check_goal_reached(new_error, delta_error_list)
+                curr_error = copy.deepcopy(new_error)
 
 
-    #             self.command_pub.publish(self.mpc_command)
-
-    #             #update tstep
-    #             if self.tstep == 0:
-    #                 rospy.loginfo('[MPCPoseReacher]: Controller running')
-    #                 self.start_t = rospy.get_time()
-    #             self.tstep = rospy.get_time() - self.start_t
-
-    #         else:
-    #             if (not self.state_sub_on) and (self.first_iter):
-    #                 rospy.loginfo('[MPCPoseReacher]: Waiting for robot state.')
-    #             if (not self.goal_sub_on) and (self.first_iter):
-    #                 rospy.loginfo('[MPCPoseReacher]: Waiting for ee goal.')
+            else:
+                if (not self.state_sub_on) and (self.first_iter):
+                    rospy.loginfo('[MPCPoseReacher]: Waiting for robot state.')
             
-    #         self.first_iter = False
-    #         self.rate.sleep()
+            self.first_iter = False
+            self.rate.sleep()
+        
+        print('[Reset]: Goal Reached. curr_error={}, delta_error={}'.format(curr_error, delta_error))
+
+
+        dummy = JointMsg()
+        dummy.q_pos = 10
+        dummy.q_vel = 10
+        dummy.q_acc = 10
+        dummy.q_pos_cmd = 10
+        dummy.q_vel_cmd = 10
+        dummy.q_acc_cmd = 10
+        
+        response = ReachGoalResponse()
+        response.joint_data = [dummy]
+        return response  
+
+    def check_goal_reached(self, curr_error, delta_error_list):
+        # error = torch.norm(q_pos - q_pos_goal, p=2)
+        # return  error.item() <= 1e-2
+        reached = False
+        reached = curr_error <= 1e-2
+        if len(delta_error_list) >= 20:
+            reached = np.average(delta_error_list[-20:]) <= 1e-4
+        return reached
     
     def close(self):
         self.command_pub.unregister()
