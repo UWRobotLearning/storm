@@ -56,11 +56,6 @@ class MPCReacherServer():
         self.reset_mpc_config.task.rollout.cost.manipulability.weight = 0.0
         self.reset_mpc_config.mpc.mppi.horizon=20
         self.reset_policy = MPCPolicy(obs_dim=obs_dim, act_dim=act_dim, config=self.reset_mpc_config.mpc, device=self.device)
-
-        #STORM Initialization
-        obs_dim = 1
-        act_dim = 1
-        self.policy = MPCPolicy(obs_dim=obs_dim, act_dim=act_dim, config=self.config.mpc, device=self.device)
       
         #buffers for different messages
         self.mpc_command = JointState()

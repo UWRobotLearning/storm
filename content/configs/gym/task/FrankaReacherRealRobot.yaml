@@ -4,6 +4,7 @@ name: FrankaReacherRealRobot
 env:
   control_space: 'joint_impedance'
   numEnvs: 1
+  episodeLength: 500
 
 rollout:
 

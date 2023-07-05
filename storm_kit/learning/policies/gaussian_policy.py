@@ -56,6 +56,9 @@ class GaussianPolicy(Policy):
         repr_str = '(use_tanh): {}\n'.format(self.use_tanh)
         return repr_str
 
+    def reset(self):
+        pass
+
 if __name__ == "__main__":
     import torch.nn as nn
 

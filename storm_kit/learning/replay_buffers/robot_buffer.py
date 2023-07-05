@@ -17,12 +17,16 @@ class RobotBuffer(ReplayBuffer):
         self.q_vel_cmd_buff = torch.empty(capacity, n_dofs, device=self.device)
         self.q_acc_cmd_buff = torch.empty(capacity, n_dofs, device=self.device)
 
+        self.ee_goal_buff = torch.empty(capacity, 7, device=self.device)
+        self.joint_goal_buff = torch.empty(capacity, n_dofs, device=self.device)
+        self.ee_goal_stored = False
+        self.joint_goal_stored = False
 
         self.curr_idx = 0
         self.num_stored = 0
 
 
-    def add(self, q_pos, q_vel, q_acc, q_pos_cmd, q_vel_cmd, q_acc_cmd):
+    def add(self, q_pos, q_vel, q_acc, q_pos_cmd, q_vel_cmd, q_acc_cmd, ee_goal=None, joint_goal=None):
 
         q_pos = q_pos.to(self.device)
         q_vel = q_vel.to(self.device)
@@ -30,7 +34,12 @@ class RobotBuffer(ReplayBuffer):
         q_pos_cmd = q_pos_cmd.to(self.device)
         q_vel_cmd = q_vel_cmd.to(self.device)
         q_acc_cmd = q_acc_cmd.to(self.device)
-
+        if ee_goal is not None:
+            ee_goal = ee_goal.to(self.device)
+            self.ee_goal_stored = True
+        if joint_goal is not None:
+            joint_goal = joint_goal.to(self.device)
+            self.joint_goal_stored = True
 
         num_obs = q_pos.shape[0]
         remaining = min(self.capacity - self.curr_idx, num_obs)
@@ -43,6 +52,11 @@ class RobotBuffer(ReplayBuffer):
             self.q_pos_cmd_buff[0:extra] = q_pos_cmd[-extra:]
             self.q_vel_cmd_buff[0:extra] = q_vel_cmd[-extra:]
             self.q_acc_cmd_buff[0:extra] = q_acc_cmd[-extra:]
+            if ee_goal is not None:
+                self.ee_goal_buff[0:extra] = ee_goal[-extra:]
+            if joint_goal is not None:
+                self.joint_goal_buff[0:extra] = joint_goal[-extra:]
+
             # self.act_buff[0:extra] = act[-extra:]
             # self.rew_buff[0:extra] = reward[-extra:]
             # self.next_obs_buff[0:extra] = next_obs[-extra:]
@@ -58,7 +72,11 @@ class RobotBuffer(ReplayBuffer):
         self.q_pos_cmd_buff[self.curr_idx:self.curr_idx + remaining] = q_pos_cmd[0:remaining]
         self.q_vel_cmd_buff[self.curr_idx:self.curr_idx + remaining] = q_vel_cmd[0:remaining]
         self.q_acc_cmd_buff[self.curr_idx:self.curr_idx + remaining] = q_acc_cmd[0:remaining]
-        
+        if ee_goal is not None:
+            self.ee_goal_buff[self.curr_idx:self.curr_idx + remaining] = ee_goal[0:remaining]
+        if joint_goal is not None:
+            self.joint_goal_buff[self.curr_idx:self.curr_idx + remaining] = joint_goal[0:remaining]
+
         self.curr_idx = (self.curr_idx + num_obs) % self.capacity
         self.num_stored = min(self.num_stored + num_obs, self.capacity)
     
@@ -92,12 +110,22 @@ class RobotBuffer(ReplayBuffer):
     
     def load(self, filepath):
         state = torch.load(filepath)
-        self.q_pos_buff = state['q_pos_buff']
-        self.q_vel_buff = state['q_vel_buff']
-        self.q_acc_buff = state['q_acc_buff']
-        self.q_pos_cmd_buff = state['q_pos_cmd_buff']
-        self.q_vel_cmd_buff = state['q_vel_cmd_buff']
-        self.q_acc_cmd_buff = state['q_acc_cmd_buff']
+        self.q_pos_buff = state['q_pos_buff'].to(self.device)
+        self.q_vel_buff = state['q_vel_buff'].to(self.device)
+        self.q_acc_buff = state['q_acc_buff'].to(self.device)
+        self.q_pos_cmd_buff = state['q_pos_cmd_buff'].to(self.device)
+        self.q_vel_cmd_buff = state['q_vel_cmd_buff'].to(self.device)
+        self.q_acc_cmd_buff = state['q_acc_cmd_buff'].to(self.device)
+        if 'ee_goal_buff' in state:
+            self.ee_goal_buff = state['ee_goal_buff'].to(self.device)
+            self.ee_goal_stored = True
+        if 'joint_goal_buff' in state:
+            self.joint_goal_buff = state['joint_goal_buff'].to(self.device)
+            self.joint_goal_stored = True
+
+        self.capacity = state['num_stored']
+        self.num_stored = state['num_stored']
+
 
     def get_as_tensor_dict(self):
         state = {
@@ -110,4 +138,12 @@ class RobotBuffer(ReplayBuffer):
             'curr_idx': self.curr_idx,
             'num_stored': self.num_stored
         }
+        if self.ee_goal_stored:         
+            state['ee_goal_buff'] = self.ee_goal_buff[0:self.num_stored]
+        if self.joint_goal_stored:         
+            state['joint_goal_buff'] = self.joint_goal_buff[0:self.num_stored]
         return state
+
+    def __repr__(self):
+        str = 'num_stored={}, capacity={}, ee_goal_stored={}, joint_goal_stored={}'.format(self.num_stored, self.capacity, self.ee_goal_stored, self.joint_goal_stored)
+        return str
