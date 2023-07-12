@@ -7,23 +7,39 @@ class MPCAgent(Agent):
             self, 
             cfg,
             envs,
-            obs_space,
-            action_space,
+            task,
+            obs_dim,
+            action_dim,
             buffer,
             policy,
+            runner_fn,
             logger=None,
             tb_writer=None,
             device=torch.device('cpu')):
 
         super().__init__(
-            cfg, envs, obs_space, action_space,
+            cfg, envs, task, obs_dim, action_dim,
             buffer=buffer, policy=policy, 
-            logger=logger, tb_writer=tb_writer,
+            runner_fn=runner_fn, logger=logger, tb_writer=tb_writer,
             device=device,
         )
 
-    def collect_experience(self, num_steps_per_env: int, update_buffer:bool = True):
-        metrics = super().collect_experience(num_steps_per_env, update_buffer)
+    def collect_experience(self, num_episodes: int, update_buffer:bool = True):
+        
+        buff = None
+        if update_buffer:
+            buff = self.buffer
+        
+        # metrics = super().collect_experience(num_steps_per_env, buff)
+        buff, metrics = self.runner_fn(
+            envs = self.envs,
+            num_episodes=num_episodes, 
+            policy = self.policy,
+            task = self.task,
+            buffer = buff,
+            device=self.device
+        )
+
         if self.logger is not None:
             self.logger.row(metrics)
         if self.tb_writer is not None:

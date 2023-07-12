@@ -1,5 +1,5 @@
 
-expert_data_path: './tmp_results/${task_name}/MPC/models/agent_buffer_0.pt'
+expert_data_path: 'simple_reaching_mpc'
 
 policy:
   mlp_params:
@@ -16,7 +16,7 @@ policy:
   use_tanh: false
 
 agent:
-  name: 'BC'
+  name: 'BP'
   num_train_steps: 1000
   train_batch_size: 256
   optimizer:

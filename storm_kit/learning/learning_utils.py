@@ -1,4 +1,5 @@
-import csv, json, random, string, sys
+import csv, json, os, random, string, sys
+import numpy as np
 import copy
 from datetime import datetime
 from pathlib import Path
@@ -7,7 +8,7 @@ import torch
 from tqdm import tqdm
 import time
 from torch.utils.data import TensorDataset, DataLoader
-
+from storm_kit.learning.replay_buffers import ReplayBuffer, RobotBuffer
 
 
 def _gen_dir_name():
@@ -70,6 +71,35 @@ class Log:
         self.txt_file.close()
         if self.csv_file is not None:
             self.csv_file.close()
+
+def buffer_from_file(filepath):
+    print('Loading buffer from {}'.format(filepath))
+    buffer = RobotBuffer(capacity=1000, n_dofs=7)
+    buffer.load(filepath)
+    print('Loaded buffer {}'.format(buffer))
+    return buffer, len(buffer)
+
+def buffer_from_folder(data_dir, capacity=None, device=torch.device('cpu')):
+    files = sorted(os.listdir(data_dir))
+    #TODO: Sort by episode number!!!!
+    episode_buffers = []
+    total_data_points = 0
+    for file in files:
+        filepath = os.path.join(data_dir, file)
+        #TODO: ensure buffers have consistent dimensions for obs, act 
+        ep_buff, num_datapoints = buffer_from_file(filepath)
+        episode_buffers.append(ep_buff) 
+        total_data_points += num_datapoints
+    
+    # obs_dim = episode_buffers[0].obs_dim
+    # act_dim = episode_buffers[0].act_dim
+    # buffer = ReplayBuffer(capacity=total_data_points, obs_dim=obs_dim, act_dim=act_dim, device=device)
+    buffer_capacity=total_data_points if capacity is None else capacity
+    buffer = RobotBuffer(buffer_capacity, 7, device)
+    for b in episode_buffers:
+        buffer.concatenate(b.state_dict()) 
+    return buffer
+
 
 def fit_mlp(
     net:torch.nn.Module, 
@@ -245,3 +275,137 @@ def scale_to_base(data, norm_dict, key):
     """    
     scaled_data = torch.mul(data, norm_dict[key]['std']) + norm_dict[key]['mean']
     return scaled_data
+
+
+def episode_runner(
+        envs,
+        num_episodes: int, 
+        policy,
+        task,
+        buffer = None,
+        device=torch.device('cpu')):        
+        
+        if buffer is not None:
+            update_buffer = True
+        
+        obs_dim = task.obs_dim
+        total_steps_collected = 0
+
+        targets = task.get_randomized_goals(
+                num_envs = envs.num_envs, randomization_mode='randomize_position')
+        policy.update_goal(targets)
+        task.update_params(goal = targets)
+        envs.update_target_poses(targets)
+
+        state_dict = envs.reset()
+        obs, _ = task.compute_observations(current_state = state_dict)
+        obs = obs.view(envs.num_envs, obs_dim)
+
+        # obs_dict = {
+        #     'states': state_dict,
+        #     'obs': obs
+        # }
+
+
+        curr_costs = torch.zeros(envs.num_envs, device=device)
+        episode_lens = torch.zeros(envs.num_envs, device=device)
+        # done_episodes_reward_sum = 0.0 
+        episode_cost_buffer = []
+        avg_episode_cost = 0.0
+
+        episodes_done = 0
+        while episodes_done < num_episodes:
+            with torch.no_grad():
+                obs_dict = {
+                    'states': state_dict,
+                    'obs': obs}
+
+                action = policy.get_action(obs_dict)
+                # next_obs_dict, reward, done, info = self.envs.step(action)
+                next_state_dict, done = envs.step(action)
+                next_obs, _ = task.compute_observations(current_state = next_state_dict)
+                cost, _ = task.compute_cost(current_state = state_dict)
+                next_obs = next_obs.view(envs.num_envs, obs_dim)
+                cost = cost.view(envs.num_envs,)
+
+            curr_costs += cost
+            episode_lens += 1
+            done_indices = done.nonzero(as_tuple=False).squeeze(-1)
+            done_episode_rewards = curr_costs[done_indices]
+            #reset goal poses
+            if len(done_indices) > 0:
+                targets = task.get_randomized_goals(
+                    num_envs = envs.num_envs, 
+                    target_pose_buff=targets,
+                    env_ids=done_indices,
+                    randomization_mode='randomize_position')
+                policy.update_goal(targets)
+                task.update_params(targets)
+                envs.update_target_poses(targets)
+
+
+            # self.done_episodes_reward_sum += torch.sum(done_episode_rewards).item()
+            curr_num_eps_dones = torch.sum(done).item()
+            if curr_num_eps_dones > 0:
+                # rem = min(10 - self.curr_idx, curr_num_eps_dones)
+
+                # if curr_num_eps_dones > rem:
+                #     #add to front
+                #     extra = curr_num_eps_dones - rem
+                #     print(extra, rem)
+
+                #     self.episode_reward_buffer[0:extra] = done_episode_rewards[-extra:]
+                # self.episode_reward_buffer[self.curr_idx:self.curr_idx + rem] = done_episode_rewards[0:rem]
+                # self.curr_idx = (self.curr_idx + curr_num_eps_dones) % 10
+                for i in range(curr_num_eps_dones):
+                    episode_cost_buffer.append(done_episode_rewards[i].item())
+                    # if len(episode_reward_buffer) > 10:
+                    #     episode_reward_buffer.pop(0)
+
+                episodes_done += curr_num_eps_dones
+            
+            not_done = 1.0 - done.float()
+            curr_costs = curr_costs * not_done
+            episode_lens = episode_lens * not_done
+
+            #remove timeout from done
+            timeout = episode_lens == envs.max_episode_length - 1
+            done = done * (1-timeout.float())
+
+            if update_buffer:
+            #     #TODO: Save full actions
+                buffer.add(
+                    q_pos = state_dict['q_pos'],
+                    q_vel = state_dict['q_vel'],
+                    q_acc = state_dict['q_acc'],
+                    q_pos_cmd = action['q_pos_des'],
+                    q_vel_cmd = action['q_vel_des'],
+                    q_acc_cmd = action['q_acc_des'],
+                    ee_goal = targets,
+                    obs = obs, 
+                    reward=cost, 
+                    )
+
+            curr_num_steps = cost.shape[0]
+            curr_num_steps = state_dict['q_pos'].shape[0]
+            total_steps_collected += curr_num_steps
+
+            # obs_dict = obs_dict = copy.deepcopy(next_obs_dict)
+            state_dict = copy.deepcopy(next_state_dict)
+            obs = next_obs.clone()
+
+        
+        if len(episode_cost_buffer) > 0:
+            print(episode_cost_buffer)
+            avg_episode_cost = np.average(episode_cost_buffer).item()
+            # avg_episode_cost = done_episodes_reward_sum / total_episodes_done
+        
+        metrics = {
+            'num_steps_collected': total_steps_collected,
+            'buffer_size': len(buffer),
+            # 'episode_reward_running_sum':self.done_episodes_reward_sum,
+            'num_eps_completed': episodes_done,
+            'avg_episode_cost': avg_episode_cost,
+            # 'curr_steps_reward': self.curr_rewards.mean().item()
+            }
+        return buffer, metrics

@@ -155,10 +155,10 @@ rollout: ${task.rollout}
 world: ${task.world}
   
 mppi:
-  num_instances     : ${task.env.numEnvs}
+  num_instances     : ${task.env.num_envs}
   horizon           : 40
   init_cov          : 0.005 #.5 #.5
-  gamma             : 0.98
+  gamma             : 0.99 #0.98
   n_iters           : 1
   step_size_mean    : 0.98
   step_size_cov     : 0.7

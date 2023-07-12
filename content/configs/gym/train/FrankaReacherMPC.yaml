@@ -3,7 +3,7 @@ policy:
 
 agent:
   name: 'MPC'
-  num_steps_per_env: 2000
+  num_episodes: 2
   save_buffer: false
   log_freq: 50
   eval_freq: 100

@@ -23,7 +23,7 @@
 import torch
 from torch.profiler import record_function
 
-from ...differentiable_robot_model.coordinate_transform import matrix_to_quaternion, quaternion_to_matrix
+from ...differentiable_robot_model.coordinate_transform import matrix_to_quaternion, quaternion_to_matrix, rpy_angles_to_matrix
 from ..cost import DistCost, PoseCost, PoseCostQuaternion, ZeroCost, FiniteDifferenceCost
 from ...mpc.rollout.arm_base import ArmBase
 
@@ -44,8 +44,6 @@ class ArmReacher(ArmBase):
         self.goal_ee_pos = None
         self.goal_ee_rot = None
         
-        # device = self.tensor_args['device']
-        # float_dtype = self.tensor_args['dtype']
         self.dist_cost = DistCost(**self.cfg['cost']['joint_l2'], device=self.device, dtype=self.dtype)
 
         # self.goal_cost = PoseCostQuaternion(**cfg['cost']['goal_pose'],
@@ -78,9 +76,14 @@ class ArmReacher(ArmBase):
         goal_state = self.goal_state
         
 
+        # with record_function("pose_cost"):
+        #     goal_cost, rot_err_norm, goal_dist = self.goal_cost.forward(ee_pos_batch, ee_rot_batch,
+        #                                                                 goal_ee_pos, goal_ee_rot)
+
         with record_function("pose_cost"):
             goal_cost, rot_err_norm, goal_dist = self.goal_cost.forward(ee_pos_batch, ee_rot_batch,
                                                                         goal_ee_pos, goal_ee_rot)
+            # goal_cost[:,:,0:-1] = 0.
         cost += goal_cost
         
         # joint l2 cost
@@ -107,6 +110,7 @@ class ArmReacher(ArmBase):
         goal_ee_pos = self.goal_ee_pos.unsqueeze(1).unsqueeze(1)
         # goal_ee_quat = self.goal_ee_quat.unsqueeze(1).unsqueeze(1)
         goal_ee_rot = self.goal_ee_rot.unsqueeze(1).unsqueeze(1).flatten(-2,-1)
+        
         obs = torch.cat((
             obs, 
             goal_ee_pos, goal_ee_rot,
@@ -155,6 +159,56 @@ class ArmReacher(ArmBase):
             self.goal_state = torch.as_tensor(goal_state, dtype=self.dtype, device=self.device)#.unsqueeze(0)
             self.goal_ee_pos, self.goal_ee_rot = self.dynamics_model.robot_model.compute_forward_kinematics(self.goal_state[:,0:self.n_dofs], self.goal_state[:,self.n_dofs:2*self.n_dofs], link_name=self.cfg['model']['ee_link_name'])
             self.goal_ee_quat = matrix_to_quaternion(self.goal_ee_rot)
-        
         return True
+
+
+    def get_randomized_goals(self, num_envs, target_pose_buff=None, env_ids=None, randomization_mode='fixed'):
+
+        # target_poses = []
+        # for i in range(num_envs):
+        #     target_pose_franka = torch.tensor([0.3, 0.0, 0.1, 0.0, 0.707, 0.707, 0.0], device=self.device, dtype=torch.float) 
+        #     self.target_poses.append(target_pose_franka)
+        # self.target_poses = torch.cat(self.target_poses, dim=-1).view(self.num_envs, 7)
+        default_goal = torch.tensor([0.3, 0.0, 0.1, 0.0, 0.707, 0.707, 0.0], device=self.device)
+
+        if env_ids is None:
+            env_ids = torch.arange(num_envs, device=self.device)
+
+        if target_pose_buff is None:
+            target_pose_buff = default_goal.unsqueeze(0).repeat(num_envs, 1)
+
+        #reset EE target 
+        if randomization_mode == "fixed":
+            pass
+
+        if randomization_mode in ["randomize_position", "randomize_full_pose"]:
+            #randomize position
+            target_pose_buff[env_ids, 0] = 0.2 + 0.4 * torch.rand(
+                size=(env_ids.shape[0],), device=self.device) #x from [0.2, 0.6)
+            target_pose_buff[env_ids, 1] = -0.3 + 0.6 * torch.rand(
+                size=(env_ids.shape[0],), device=self.device) #y from [-0.3, 0.3)
+            target_pose_buff[env_ids, 2] = 0.2 + 0.3 * torch.rand(
+                size=(env_ids.shape[0],), device=self.device) #z from [0.2, 0.5)
+
+        
+        if randomization_mode == "randomize_full_pose":
+            #randomize orientation
+            roll = -torch.pi + 2*torch.pi * torch.rand(
+                size=(env_ids.shape[0],1), device=self.device) #roll from [-pi, pi)
+            pitch = -torch.pi + 2*torch.pi * torch.rand(
+                size=(env_ids.shape[0],1), device=self.device) #pitch from [-pi, pi)
+            yaw = -torch.pi + 2*torch.pi * torch.rand(
+                size=(env_ids.shape[0],1), device=self.device) #yaw from [-pi, pi)
+            quat = matrix_to_quaternion(rpy_angles_to_matrix(torch.cat([roll, pitch, yaw], dim=-1)))
+            target_pose_buff[env_ids, 3:7] = quat
+        
+        return target_pose_buff
+
+    @property
+    def obs_dim(self)->int:
+        return 41
+    
+    @property
+    def action_dim(self)->int:
+        return self.n_dofs
     

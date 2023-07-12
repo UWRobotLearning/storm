@@ -13,11 +13,13 @@ class SACAgent(Agent):
             self,
             cfg,
             envs,
-            obs_space, 
-            action_space,
+            task,
+            obs_dim, 
+            action_dim,
             buffer,
             policy,
             critic,
+            runner_fn,
             logger=None,
             tb_writer=None,
             device=torch.device('cpu'),
@@ -25,10 +27,10 @@ class SACAgent(Agent):
 
 
         super().__init__(
-            cfg, envs, obs_space, action_space,
+            cfg, envs, task, obs_dim, action_dim,
             buffer=buffer, policy=policy,
-            logger=logger, tb_writer=tb_writer,
-            device=device        
+            runner_fn=runner_fn, logger=logger, 
+            tb_writer=tb_writer, device=device        
         )
         self.critic = critic
         self.target_critic = copy.deepcopy(self.critic)
@@ -40,14 +42,13 @@ class SACAgent(Agent):
         self.discount = self.cfg['discount']
         # self.updates_per_train_step = self.cfg['updates_per_train_step']
         self.num_action_samples = self.cfg['num_action_samples']
-        self.num_steps_per_env = self.cfg['num_steps_per_env']
+        self.num_train_episodes = self.cfg['num_train_episodes']
         self.num_update_steps = self.cfg['num_update_steps']
         self.automatic_entropy_tuning = self.cfg['automatic_entropy_tuning']
 
-
         if self.automatic_entropy_tuning:
             self.log_alpha = nn.Parameter(torch.tensor(self.cfg['init_log_alpha']))
-            self.target_entropy = -np.prod(action_space.shape)
+            self.target_entropy = -np.prod(self.action_dim)
             self.alpha_optimizer = optim.Adam([self.log_alpha], lr=self.cfg['alpha_optimizer']['lr'])
         else:
             self.alpha = torch.tensor(self.cfg['fixed_alpha'])
@@ -67,7 +68,16 @@ class SACAgent(Agent):
         for i in pbar:
             # step_start_time = time.time()
             #collect new experience
-            play_metrics = self.collect_experience(num_steps_per_env=self.num_steps_per_env, update_buffer=True)
+            # play_metrics = self.collect_experience(num_steps_per_env=self.num_steps_per_env, update_buffer=True)
+            self.buffer, play_metrics = self.runner_fn(
+                envs=self.envs,
+                num_episodes=self.num_train_episodes, 
+                policy=self.policy,
+                task=self.task,
+                buffer=self.buffer,
+                device=self.device
+            )
+
             total_env_steps += play_metrics['num_steps_collected']
             #update agent
             for _ in range(self.num_update_steps):
@@ -102,16 +112,16 @@ class SACAgent(Agent):
             #     self.policy.train()
             #     pbar.set_postfix(eval_metrics)
 
-    def update(self, obs_batch, act_batch, rew_batch, next_obs_batch, done_batch, state_batch=None, next_state_batch=None):
+    def update(self, obs_batch, act_batch, cost_batch, next_obs_batch, done_batch, state_batch=None, next_state_batch=None):
         obs_batch = obs_batch.to(self.device)
         act_batch = act_batch.to(self.device)
-        rew_batch = rew_batch.to(self.device)
+        cost_batch = cost_batch.to(self.device)
         next_obs_batch = next_obs_batch.to(self.device)
         done_batch = done_batch.to(self.device)
 
         #Update critic
         self.critic_optimizer.zero_grad()
-        critic_loss, avg_q_value = self.compute_critic_loss(obs_batch, act_batch, rew_batch, next_obs_batch, done_batch)
+        critic_loss, avg_q_value = self.compute_critic_loss(obs_batch, act_batch, cost_batch, next_obs_batch, done_batch)
         critic_loss.backward()
         self.critic_optimizer.step()
 
@@ -158,12 +168,12 @@ class SACAgent(Agent):
         return policy_loss, log_pi_new_actions.mean()
 
 
-    def compute_critic_loss(self, obs_batch, act_batch, rew_batch, next_obs_batch, done_batch):
+    def compute_critic_loss(self, obs_batch, act_batch, cost_batch, next_obs_batch, done_batch):
 
         # def compute_bellman_target(q_pred_next):
-        #     assert rew_batch.shape == q_pred_next.shape
-        #     return (rew_batch + (1.-done_batch.float())*self.discount*q_pred_next)#.clamp(min=self._Vmin, max=self._Vmax)
-
+        #     assert cost_batch.shape == q_pred_next.shape
+        #     return (cost_batch + (1.-done_batch.float())*self.discount*q_pred_next)#.clamp(min=self._Vmin, max=self._Vmax)
+        rew_batch = -1.0 * cost_batch #TODO: fix
         with torch.no_grad():
             next_actions_dist = self.policy({'obs': next_obs_batch})
             next_actions = next_actions_dist.rsample(torch.Size([self.num_action_samples]))

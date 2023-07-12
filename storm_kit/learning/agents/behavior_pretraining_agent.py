@@ -7,13 +7,14 @@ from storm_kit.learning.agents import Agent
 import time
 from tqdm import tqdm
 
-class BCAgent(Agent):
+class BPAgent(Agent):
     def __init__(
         self,
         cfg,
         envs,
-        obs_space, 
-        action_space,
+        task,
+        # obs_space, 
+        # action_space,
         buffer,
         policy,
         critic=None,
@@ -22,7 +23,7 @@ class BCAgent(Agent):
         device=torch.device('cpu'), 
     ):
         super().__init__(
-            cfg, envs, obs_space, action_space,
+            cfg, envs, task, #obs_space, action_space,
             buffer=buffer, policy=policy,
             logger=logger, tb_writer=tb_writer,
             device=device

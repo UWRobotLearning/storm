@@ -4,6 +4,7 @@ import isaacgym
 import hydra
 from omegaconf import DictConfig, OmegaConf
 import torch
+
 from datetime import datetime
 
 
@@ -11,31 +12,54 @@ from datetime import datetime
 def main(cfg: DictConfig):
     torch.set_default_dtype(torch.float32)
     import isaacgymenvs
-    import storm_kit.envs
+    # import storm_kit.envs
+    from storm_kit.envs import FrankaEnv, PointRobotEnv
+    torch.set_default_dtype(torch.float32)
 
-    envs = isaacgymenvs.make(
-        cfg.seed, 
-        cfg.task_name, 
-        cfg.task.env.numEnvs, 
-        cfg.sim_device,
-        cfg.rl_device,
-        cfg.graphics_device_id,
-        cfg.headless,
-        cfg.multi_gpu,
-        cfg.capture_video,
-        cfg.force_render,
-        cfg,
-        # **kwargs,
-    )
+    # envs = isaacgymenvs.make(
+    #     cfg.seed, 
+    #     cfg.task_name, 
+    #     cfg.task.env.numEnvs, 
+    #     cfg.sim_device,
+    #     cfg.rl_device,
+    #     cfg.graphics_device_id,
+    #     cfg.headless,
+    #     cfg.multi_gpu,
+    #     cfg.capture_video,
+    #     cfg.force_render,
+    #     cfg,
+    #     # **kwargs,
+    # )
+
+    if cfg.task.name == "FrankaReacher":
+        envs = FrankaEnv(
+            cfg.task, 
+            torch.device(cfg.rl_device), 
+            torch.device(cfg.sim_device), 
+            cfg.graphics_device_id, 
+            cfg.headless, 
+            False, 
+            cfg.force_render
+        )
+    else:
+        envs = PointRobotEnv(
+            cfg.task, 
+            torch.device(cfg.rl_device), 
+            torch.device(cfg.sim_device), 
+            cfg.graphics_device_id, 
+            cfg.headless, 
+            False, 
+            cfg.force_render
+        )
 
     envs.render()
-    envs.step(torch.zeros(3))
-    input('....')
-
-    obs_dim = envs.obs_space.shape[0]
-    act_dim = envs.action_space.shape[0]
+    while True:
+        state_dict = envs.step({
+        'q_pos_des': torch.zeros(1),
+        'q_vel_des': torch.zeros(1),
+        'q_acc_des': torch.zeros(1),
+        'effort': torch.tensor([0.1, 0.0])})
+        print(state_dict)
     
-
-
 if __name__ == "__main__":
     main()

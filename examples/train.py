@@ -6,37 +6,51 @@ from omegaconf import DictConfig, OmegaConf
 import torch
 from torch.utils.tensorboard import SummaryWriter
 from datetime import datetime
-from storm_kit.learning.agents import BCAgent, SACAgent, MPCAgent, MPOAgent, MPQAgent
+from storm_kit.learning.agents import BPAgent, SACAgent, MPCAgent, MPOAgent, MPQAgent
 from storm_kit.learning.policies import MPCPolicy, GaussianPolicy
 from storm_kit.learning.value_functions import QFunction, TwinQFunction
 from storm_kit.learning.world_models import GaussianWorldModel
-from storm_kit.learning.replay_buffer import ReplayBuffer
-from storm_kit.learning.learning_utils import Log
+from storm_kit.learning.replay_buffers import ReplayBuffer, RobotBuffer
+from storm_kit.learning.learning_utils import Log, buffer_from_folder
+from storm_kit.util_file import get_data_path
+from storm_kit.learning.learning_utils import episode_runner
 
 
 @hydra.main(config_name="config", config_path="../content/configs/gym")
 def main(cfg: DictConfig):
     torch.set_default_dtype(torch.float32)
-    import isaacgymenvs
-    import storm_kit.envs
+    # import isaacgymenvs
+    # import storm_kit.envs
+    from storm_kit.envs import FrankaEnv
+    from storm_kit.mpc.rollout import ArmReacher
 
-    envs = isaacgymenvs.make(
-        cfg.seed, 
-        cfg.task_name, 
-        cfg.task.env.numEnvs, 
-        cfg.sim_device,
-        cfg.rl_device,
-        cfg.graphics_device_id,
-        cfg.headless,
-        cfg.multi_gpu,
-        cfg.capture_video,
-        cfg.force_render,
-        cfg,
-        # **kwargs,
+    # envs = isaacgymenvs.make(
+    #     cfg.seed, 
+    #     cfg.task_name, 
+    #     cfg.task.env.numEnvs, 
+    #     cfg.sim_device,
+    #     cfg.rl_device,
+    #     cfg.graphics_device_id,
+    #     cfg.headless,
+    #     cfg.multi_gpu,
+    #     cfg.capture_video,
+    #     cfg.force_render,
+    #     cfg,
+    #     # **kwargs,
+    # )
+    #Initialize franka env
+    envs = FrankaEnv(
+        cfg.task, 
+        cfg.rl_device, 
+        cfg.sim_device, 
+        cfg.graphics_device_id, 
+        cfg.headless, 
+        False, 
+        cfg.force_render
     )
 
-    envs.render()
-
+    #Initialize task
+    task = ArmReacher(cfg=cfg.task.rollout, device=cfg.rl_device, world_params=cfg.task.world)
     base_dir = Path('./tmp_results/{}/{}'.format(cfg.task_name, cfg.train.agent.name))
     log_dir = os.path.join(base_dir, 'logs')
     model_dir = os.path.join(base_dir, 'models')
@@ -48,34 +62,51 @@ def main(cfg: DictConfig):
     log(f'Log dir: {log.dir}')
     writer = SummaryWriter(log.dir)
 
+    cfg.mpc.world = cfg.task.world
+    cfg.mpc.control_dt = cfg.task.sim.dt
 
+    obs_dim = task.obs_dim
+    act_dim = task.action_dim
+
+    buffer = RobotBuffer(capacity=int(1e6), n_dofs=cfg.task.rollout.n_dofs, 
+                         obs_dim=obs_dim, device=cfg.rl_device)
     # cfg.mpc.env_control_space = cfg.task.env.controlSpace
     # cfg.mpc.world = cfg.task.world
     # cfg.mpc.control_dt = cfg.task.sim.dt
 
-    obs_dim = envs.obs_space.shape[0]
-    act_dim = envs.action_space.shape[0]
+    # obs_dim = envs.obs_space.shape[0]
+    # act_dim = envs.action_space.shape[0]
+
+    if cfg.train.agent.name == "BP":
+        try:
+            data_path = os.path.join(get_data_path(), cfg.train.expert_data_path)
+            buffer = buffer_from_folder(data_path)
+            print(buffer)
+        except Exception as e:
+            print(e)
+        
+
+        agent = BPAgent(cfg.train.agent, envs=envs, obs_space=envs.obs_space, action_space=envs.action_space, 
+                        buffer=buffer, policy=policy, logger=log, tb_writer=writer, device=cfg.rl_device)
+        exit()
+
     
-    buffer = ReplayBuffer(capacity=int(2e6), obs_dim=obs_dim, act_dim=act_dim, device=torch.device('cpu'))
-    # if cfg.train.expert_data_path is not None:
-    #     data_path = os.path.abspath(cfg.train.expert_data_path)
-    #     buffer.load(data_path)
-    #     print('Buffer Loaded. Size = {}'.format(len(buffer)))
-    # agent = BCAgent(cfg.train.agent, envs=envs, obs_space=envs.obs_space, action_space=envs.action_space, 
-    #                  buffer=buffer, policy=policy, logger=log, tb_writer=writer, device=cfg.rl_device)
-
-
     if cfg.train.agent.name == 'SAC':
+        buffer = ReplayBuffer(capacity=int(2e6), obs_dim=obs_dim, act_dim=act_dim, device=torch.device('cpu'))
+
         policy = GaussianPolicy(obs_dim=obs_dim, act_dim=act_dim, config=cfg.train.policy, device=cfg.rl_device)
         critic = TwinQFunction(obs_dim=obs_dim, act_dim=act_dim, config=cfg.train.critic, device=cfg.rl_device)
-        agent = SACAgent(cfg.train.agent, envs=envs, obs_space=envs.obs_space, action_space=envs.action_space, 
-                        buffer=buffer, policy=policy, critic=critic, logger=log, tb_writer=writer, device=cfg.rl_device)
+        agent = SACAgent(cfg.train.agent, envs=envs, task=task, obs_dim=obs_dim, action_dim=act_dim, 
+                         buffer=buffer, policy=policy, critic=critic, runner_fn=episode_runner, 
+                         logger=log, tb_writer=writer, device=cfg.rl_device)
     elif cfg.train.agent.name == 'MPO':
+        buffer = ReplayBuffer(capacity=int(2e6), obs_dim=obs_dim, act_dim=act_dim, device=torch.device('cpu'))
         policy = GaussianPolicy(obs_dim=obs_dim, act_dim=act_dim, config=cfg.train.policy, device=cfg.rl_device)
         critic = QFunction(obs_dim=obs_dim, act_dim=act_dim, config=cfg.train.critic, device=cfg.rl_device)
         agent = MPOAgent(cfg.train.agent, envs=envs, obs_space=envs.obs_space, action_space=envs.action_space, 
                         buffer=buffer, policy=policy, critic=critic, logger=log, tb_writer=writer, device=cfg.rl_device)
     elif cfg.train.agent.name == 'MPQ':
+        buffer = ReplayBuffer(capacity=int(2e6), obs_dim=obs_dim, act_dim=act_dim, device=torch.device('cpu'))
         policy = GaussianPolicy(obs_dim=obs_dim, act_dim=act_dim, config=cfg.train.policy, device=cfg.rl_device)
         critic = TwinQFunction(obs_dim=obs_dim, act_dim=act_dim, config=cfg.train.critic, device=cfg.rl_device)
         world_model = GaussianWorldModel(obs_dim=obs_dim, act_dim=act_dim, config=cfg.train.world_model, device=cfg.rl_device)

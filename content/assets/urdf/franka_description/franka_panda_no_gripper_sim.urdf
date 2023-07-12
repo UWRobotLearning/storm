@@ -199,8 +199,7 @@
   </joint>
   <link name="panda_hand">
     <visual>
-      <!-- <origin rpy="-1.57 0.0 0.0" xyz="0 0 0.0"/> -->
-      <origin rpy="0.0 0.0 -1.57" xyz="0 0 0.0"/>
+      <origin rpy="-1.57 0.0 0.0" xyz="0 0 0.0"/>
       <geometry>
         <!--box size="0.01 0.01 0.01"/-->
         <!-- <mesh filename="meshes/visual/hand.dae"/> -->

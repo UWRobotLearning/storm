@@ -3,8 +3,8 @@ import torch
 from torch.distributions import Normal, TransformedDistribution
 from torch.distributions.transforms import TanhTransform
 
-from storm_kit.rl.world_models import WorldModel
-from storm_kit.rl.networks import GaussianMLP
+from storm_kit.learning.world_models import WorldModel
+from storm_kit.learning.networks import GaussianMLP
 
 
 class GaussianWorldModel(WorldModel):

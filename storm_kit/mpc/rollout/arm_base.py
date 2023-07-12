@@ -20,6 +20,7 @@
 # LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
 # FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 # DEALINGS IN THE SOFTWARE.#
+from typing import Optional, Dict
 import torch
 from torch.profiler import record_function
 
@@ -56,21 +57,7 @@ class ArmBase(RolloutBase):
         # initialize dynamics model:
         dynamics_horizon = cfg['horizon'] * model_params['dt']
         #Create the dynamical system used for rollouts
-        # self.dynamics_model = torch.jit.script(URDFKinematicModel(join_path(assets_path,cfg['model']['urdf_path']),
-        #                                          dt=cfg['model']['dt'],
-        #                                          batch_size=mppi_params['num_particles'],
-        #                                          horizon=dynamics_horizon,
-        #                                          num_instances=self.num_instances,
-        #                                         #  tensor_args=self.tensor_args,
-        #                                          ee_link_name=cfg['model']['ee_link_name'],
-        #                                          link_names=cfg['model']['link_names'],
-        #                                          dt_traj_params=cfg['model']['dt_traj_params'],
-        #                                          control_space=cfg['control_space'],
-        #                                          vel_scale=cfg['model']['vel_scale'],
-        #                                          device=self.device,
-        #                                          dtype=self.dtype))
-
-        self.dynamics_model = torch.jit.script(URDFKinematicModel(join_path(assets_path,cfg['model']['urdf_path']),
+        self.dynamics_model = torch.jit.script(URDFKinematicModel(join_path(assets_path, cfg['model']['urdf_path']),
                                                  dt=cfg['model']['dt'],
                                                  batch_size=cfg['num_particles'],
                                                  horizon=dynamics_horizon,
@@ -90,11 +77,7 @@ class ArmBase(RolloutBase):
         #self.traj_dt = torch.arange(self.dt, (mppi_params['horizon'] + 1) * self.dt, self.dt, device=device, dtype=float_dtype)
         self.traj_dt = self.dynamics_model.traj_dt
         self.num_links = len(cfg['model']['link_names'])
-                
-        self.goal_state = None
-        self.goal_ee_pos = None
-        self.goal_ee_rot = None
-        
+                        
         # device = self.tensor_args['device']
         # float_dtype = self.tensor_args['dtype']
 
@@ -243,10 +226,13 @@ class ArmBase(RolloutBase):
 
         return cost, state_dict
 
-    def compute_observations(self, state_dict=None, current_state=None):
+    def compute_observations(self, 
+                             state_dict: Optional[Dict[str,torch.Tensor]]=None, 
+                             current_state: Optional[Dict[str,torch.Tensor]]=None):
+        
         if current_state is None and state_dict is None:
             raise ValueError('Either provide current state or full robot state dict')
-        
+
         if state_dict is None:
             state_dict = self.compute_full_robot_state(current_state)
         
@@ -303,18 +289,26 @@ class ArmBase(RolloutBase):
 
 
 
-    def compute_full_robot_state(self, current_state: torch.Tensor):
+    # def compute_full_robot_state(self, current_state: torch.Tensor):
+    def compute_full_robot_state(self, current_state: Dict[str,torch.Tensor]):
 
-        current_state = current_state.to(device=self.device, dtype=self.dtype)
+        q_pos = current_state['q_pos'].to(device=self.device)
+        q_vel = current_state['q_vel'].to(device=self.device)
+        q_acc = current_state['q_acc'].to(device=self.device)
+        tstep = current_state['tstep']
+
+        current_state_tensor = torch.cat((q_pos, q_vel, q_acc, tstep), dim=-1)
         
-        curr_batch_size = current_state.shape[0]
+        curr_batch_size = current_state_tensor.shape[0]
         num_traj_points = 1 
         horizon = 1 #self.dynamics_model.num_traj_points
         
+        # ee_pos_batch, ee_rot_batch, lin_jac_batch, ang_jac_batch = self.dynamics_model.robot_model.compute_fk_and_jacobian(
+        #     current_state[:, :self.dynamics_model.n_dofs], 
+        #     current_state[:, self.dynamics_model.n_dofs: 2*self.dynamics_model.n_dofs], 
+        #     self.cfg['model']['ee_link_name'])
         ee_pos_batch, ee_rot_batch, lin_jac_batch, ang_jac_batch = self.dynamics_model.robot_model.compute_fk_and_jacobian(
-            current_state[:, :self.dynamics_model.n_dofs], 
-            current_state[:, self.dynamics_model.n_dofs: 2*self.dynamics_model.n_dofs], 
-            self.cfg['model']['ee_link_name'])
+            q_pos, q_vel, self.cfg['model']['ee_link_name'])
 
         link_pos_seq = self.link_pos_seq
         link_rot_seq = self.link_rot_seq
@@ -325,8 +319,8 @@ class ArmBase(RolloutBase):
             link_pos_seq[:,:,:,ki,:] = link_pos.view((curr_batch_size, horizon, num_traj_points,3))
             link_rot_seq[:,:,:,ki,:,:] = link_rot.view((curr_batch_size, horizon, num_traj_points,3,3))
             
-        if len(current_state.shape) == 2:
-            current_state = current_state.unsqueeze(1).unsqueeze(1)
+        if len(current_state_tensor.shape) == 2:
+            current_state_tensor = current_state_tensor.unsqueeze(1).unsqueeze(1)
             ee_pos_batch = ee_pos_batch.unsqueeze(1).unsqueeze(1)
             ee_rot_batch = ee_rot_batch.unsqueeze(1).unsqueeze(1)
             lin_jac_batch = lin_jac_batch.unsqueeze(1).unsqueeze(1)
@@ -334,7 +328,7 @@ class ArmBase(RolloutBase):
         
         state_dict = {'ee_pos_seq': ee_pos_batch, 'ee_rot_seq':ee_rot_batch,
                       'lin_jac_seq': lin_jac_batch, 'ang_jac_seq': ang_jac_batch,
-                      'state_seq': current_state, 'prev_state_seq': current_state,
+                      'state_seq': current_state_tensor, 'prev_state_seq': current_state_tensor,
                       'link_pos_seq':link_pos_seq, 'link_rot_seq':link_rot_seq}
         
         return state_dict

@@ -111,7 +111,7 @@ class FrankaReacher(FrankaEnv):
         self.gym.refresh_rigid_body_state_tensor(self.sim)
         self.gym.refresh_jacobian_tensors(self.sim)
 
-        current_state = torch.cat((self.franka_dof_pos, self.franka_dof_vel, self.franka_dof_vel), dim=-1)
+        current_state = torch.cat((self.franka_dof_pos, self.franka_dof_vel, self.franka_dof_acc), dim=-1)
 
         obs, self.state_dict = self.rollout_fn.compute_observations(current_state=current_state)
         self.obs_buf[:] = obs.squeeze(1).squeeze(1)

@@ -112,9 +112,9 @@ class RobotExperienceCollector():
         self.obs_dict = {'states':self.robot_state_tensor}
 
 
-    def collect_experience(self,
-                           num_episodes: int,
-                           data_folder: str = None):
+    def collect_episodes(self,
+                         num_episodes: int,
+                         data_folder: str = None):
         
         collect_data = False
         if data_folder is not None:
@@ -389,7 +389,7 @@ if __name__ == "__main__":
     data_folder =  os.path.join(get_data_path(), f'{now_str}_{rand_str}')
     experience_collector = RobotExperienceCollector(config, policy=policy, device=device)
     try:
-        experience_collector.collect_experience(num_episodes=50, data_folder=data_folder)
+        experience_collector.collect_episodes(num_episodes=50, data_folder=data_folder)
     except KeyboardInterrupt:
         print('Exiting')
         pass

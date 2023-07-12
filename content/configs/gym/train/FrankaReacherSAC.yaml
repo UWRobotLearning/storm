@@ -14,6 +14,7 @@ policy:
   std_type: 'heteroscedastic'
   learn_logvar_bounds: false
   use_tanh: true
+  control_dt: ${task.rollout.control_dt}
 
 critic:
   mlp_params:
@@ -27,7 +28,8 @@ agent:
   name: 'SAC'
   save_buffer: false
   num_train_steps: 100000
-  num_steps_per_env: 1
+  # num_steps_per_env: 1
+  num_train_episodes: 1
   num_update_steps: 10
   discount: 0.99
   train_batch_size: 256
