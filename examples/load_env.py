@@ -58,8 +58,8 @@ def main(cfg: DictConfig):
         'q_pos_des': torch.zeros(1),
         'q_vel_des': torch.zeros(1),
         'q_acc_des': torch.zeros(1),
-        'effort': torch.tensor([0.1, 0.0])})
+        'effort': torch.tensor([0.5, 0.0])})
         print(state_dict)
-    
+
 if __name__ == "__main__":
     main()

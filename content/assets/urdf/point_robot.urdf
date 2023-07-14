@@ -24,6 +24,9 @@
         <sphere radius="0.01"/>
       </geometry>
     </collision>
+    <inertial>
+      <mass value="0.01"/>
+    </inertial>
   </link>
 
   <joint name="x_joint" type="prismatic">

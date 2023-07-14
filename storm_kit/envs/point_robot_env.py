@@ -174,6 +174,10 @@ class PointRobotEnv(): #VecTask
             (self.num_envs, self.num_robot_dofs), device=self.device)
         self.robot_q_acc_buff = torch.zeros(
             (self.num_envs, self.num_robot_dofs), device=self.device)
+        
+        self.target_buf = torch.zeros(
+            self.num_envs, 3, device=self.device
+        )
         self.reset_buf = torch.ones(
             self.num_envs, device=self.device, dtype=torch.long)
         self.timeout_buf = torch.zeros(
@@ -215,23 +219,34 @@ class PointRobotEnv(): #VecTask
 
         robot_asset, robot_dof_props = self.load_robot_asset()
         table_asset, table_dims, table_color = self.load_table_asset()
-        ball_asset, ball_color = self.load_ball_asset()
+        # ball_asset, ball_color = self.load_ball_asset()
+        ball_asset, ball_color = self.load_object_asset(disable_gravity=False)
+        # target_asset, target_color = self.load_ball_asset(disable_gravity=True)
+        # target_color = gymapi.Vec3(0.0, 1.0, 0.0)
+
 
         # temp = self.world_model["coll_objs"]["cube"]["table"]["pose"]
         table_pose_world = gymapi.Transform()
         table_pose_world.p = gymapi.Vec3(0, 0, 0 + table_dims.z)
         table_pose_world.r = gymapi.Quat(0., 0., 0., 1.)
         robot_start_pose_table = gymapi.Transform()
-        robot_start_pose_table.p = gymapi.Vec3(-table_dims.x/2.0 + 0.2, 0.0, table_dims.z/2.0 + 0.01)
+        robot_start_pose_table.p = gymapi.Vec3(-table_dims.x/2.0 + 0.3, 0.0, table_dims.z/2.0 + 0.02)
         robot_start_pose_table.r = gymapi.Quat(0.0, 0.0, 0.0, 1.0)
 
         self.robot_pose_world =  table_pose_world * robot_start_pose_table #convert from franka to world frame
 
         ball_start_pose_table = gymapi.Transform()
-        ball_start_pose_table.p = gymapi.Vec3(-table_dims.x/2.0 + 0.5, 0.0, table_dims.z/2.0)
+        ball_start_pose_table.p = gymapi.Vec3(-table_dims.x/2.0 + 0.4, 0.0, table_dims.z/2.0)
         ball_start_pose_table.r = gymapi.Quat(0.0, 0.0, 0.0, 1.0)
 
         self.ball_start_pose_world =  table_pose_world * ball_start_pose_table #convert from franka to world frame
+
+
+        # target_start_pose_table = gymapi.Transform()
+        # target_start_pose_table.p = gymapi.Vec3(-table_dims.x/2.0 + 0.5, 0.0, table_dims.z/2.0 + 0.01)
+        # target_start_pose_table.r = gymapi.Quat(0.0, 0.0, 0.0, 1.0)
+        # self.target_start_pose_world =  table_pose_world * target_start_pose_table #convert from franka to world frame
+
 
         trans = torch.tensor([
             self.robot_pose_world.p.x,
@@ -256,8 +271,8 @@ class PointRobotEnv(): #VecTask
         # self.world_pose_robot = self.robot_pose_world.inverse() 
 
         # compute aggregate size
-        max_agg_bodies = self.num_robot_bodies + 1 # #+ self.num_props * num_prop_bodies
-        max_agg_shapes = self.num_robot_shapes + 1 #+ num_target_shapes #+ self.num_props * num_prop_shapes
+        max_agg_bodies = self.num_robot_bodies + 3 # #+ self.num_props * num_prop_bodies
+        max_agg_shapes = self.num_robot_shapes + 3 #+ num_target_shapes #+ self.num_props * num_prop_shapes
 
         # self.tables = []
         self.robots = []
@@ -283,6 +298,17 @@ class PointRobotEnv(): #VecTask
 
             self.ball_actor = self.gym.create_actor(env_ptr, ball_asset, self.ball_start_pose_world, "ball", i, 0, 0)
             self.gym.set_rigid_body_color(env_ptr, self.ball_actor, 0, gymapi.MESH_VISUAL_AND_COLLISION, ball_color)
+            body_props = self.gym.get_actor_rigid_body_properties(env_ptr, self.ball_actor)
+            for b in range(len(body_props)):
+                body_props[b].flags = gymapi.RIGID_BODY_NONE
+            self.gym.set_actor_rigid_body_properties(env_ptr, self.ball_actor, body_props)
+
+            # self.target_actor = self.gym.create_actor(env_ptr, target_asset, self.target_start_pose_world, "target", i, 1, 0)
+            # self.gym.set_rigid_body_color(env_ptr, self.target_actor, 0, gymapi.MESH_VISUAL_AND_COLLISION, target_color)
+            # body_props = self.gym.get_actor_rigid_body_properties(env_ptr, self.target_actor)
+            # for b in range(len(body_props)):
+            #     body_props[b].flags = gymapi.RIGID_BODY_NONE
+            # self.gym.set_actor_rigid_body_properties(env_ptr, self.target_actor, body_props)
 
 
             if self.aggregate_mode > 0:
@@ -307,6 +333,8 @@ class PointRobotEnv(): #VecTask
         self.dof_state = gymtorch.wrap_tensor(dof_state_tensor).view(self.num_envs, -1, 2)
         self.rigid_body_states = gymtorch.wrap_tensor(rigid_body_tensor).view(self.num_envs, -1, 13)
         self.franka_jacobian = gymtorch.wrap_tensor(jacobian_tensor)
+        
+        
         self.robot_default_dof_pos = to_torch([0.0]* self.num_robot_dofs, device=self.device)
         self.robot_dof_state = self.dof_state[:, :self.num_robot_dofs]
         self.robot_dof_pos = self.robot_dof_state[..., 0]
@@ -314,11 +342,32 @@ class PointRobotEnv(): #VecTask
         self.robot_dof_acc = torch.zeros_like(self.robot_dof_vel)
         self.tstep = torch.ones(self.num_envs, 1, device=self.device)
 
+        self.object_state = self.root_state[:,-1]
+        # self.default_object_pos = torch.tensor(
+        #     [self.ball_start_pose_world.p.x,
+        #     self.ball_start_pose_world.p.y,
+        #     self.ball_start_pose_world.p.z], device=self.device)
+        # self.default_object_rot = torch.tensor(
+        #     [self.ball_start_pose_world.r.x,
+        #     self.ball_start_pose_world.r.y,
+        #     self.ball_start_pose_world.r.z,
+        #     self.ball_start_pose_world.r.w], device=self.device)
+        self.init_object_state = torch.zeros(self.num_envs, 13, device=self.device)
+        self.init_object_state[:,0] = self.ball_start_pose_world.p.x
+        self.init_object_state[:,1] = self.ball_start_pose_world.p.y
+        self.init_object_state[:,2] = self.ball_start_pose_world.p.z
+        self.init_object_state[:,3] = self.ball_start_pose_world.r.x
+        self.init_object_state[:,4] = self.ball_start_pose_world.r.y
+        self.init_object_state[:,5] = self.ball_start_pose_world.r.z
+        self.init_object_state[:,6] = self.ball_start_pose_world.r.w
+
+
         self.num_bodies = self.rigid_body_states.shape[1]
         self.num_dofs = self.gym.get_sim_dof_count(self.sim) // self.num_envs
         self.robot_dof_targets = torch.zeros((self.num_envs, self.num_dofs), device=self.device) 
         # self.global_indices = torch.arange(self.num_envs * 3, dtype=torch.int32, device=self.device).view(self.num_envs, -1)
-        self.global_indices = torch.arange(self.num_envs * 1, dtype=torch.int32, device=self.device).view(self.num_envs, -1)
+        self.global_indices = torch.arange(self.num_envs * 3, dtype=torch.int32, 
+                                            device=self.device).view(self.num_envs, -1)
 
 
     def _update_states(self):
@@ -336,11 +385,10 @@ class PointRobotEnv(): #VecTask
     def load_robot_asset(self):
         asset_root = os.path.join(os.path.dirname(os.path.abspath(__file__)), "../../content/assets")
         robot_asset_file = "urdf/franka_description/point_robot.urdf"
-        # target_asset_file = "urdf/mug/movable_mug.urdf"
 
         if "asset" in self.cfg["env"]:
             asset_root = os.path.join(os.path.dirname(os.path.abspath(__file__)), self.cfg["env"]["asset"].get("assetRoot", asset_root))
-            robot_asset_file = self.cfg["env"]["asset"].get("assetFileNameFranka", robot_asset_file)
+            robot_asset_file = self.cfg["env"]["asset"].get("assetFileNameRobot", robot_asset_file)
         
         # load franka asset
         asset_options = gymapi.AssetOptions()
@@ -381,52 +429,48 @@ class PointRobotEnv(): #VecTask
         table_color = gymapi.Vec3(0.6, 0.6, 0.6)
         return table_asset, table_dims, table_color
 
-    def load_ball_asset(self):
+    def load_ball_asset(self, disable_gravity=False):
         #load table asset 
         ball_radius =  0.02
         ball_asset_options = gymapi.AssetOptions()
         # ball_asset_options.armature = 0.001
         ball_asset_options.fix_base_link = False
-        ball_asset_options.disable_gravity = False
+        ball_asset_options.disable_gravity = disable_gravity
         # table_asset_options.thickness = 0.002
         ball_asset = self.gym.create_sphere(self.sim, ball_radius, ball_asset_options)
         ball_color = gymapi.Vec3(0.0, 0.0, 1.0)
         return ball_asset, ball_color
 
+    def load_object_asset(self, disable_gravity=False):
+        asset_root = os.path.join(os.path.dirname(os.path.abspath(__file__)), "../../content/assets")
+        object_asset_file = "urdf/ball.urdf"
 
+        if "asset" in self.cfg["env"]:
+            asset_root = os.path.join(os.path.dirname(os.path.abspath(__file__)), self.cfg["env"]["asset"].get("assetRoot", asset_root))
+            object_asset_file = self.cfg["env"]["asset"].get("assetFileNameObject", object_asset_file )
+        
+        # load franka asset
+        asset_options = gymapi.AssetOptions()
+        asset_options.fix_base_link = False
+        asset_options.collapse_fixed_joints = False
+        asset_options.disable_gravity = disable_gravity
+        asset_options.thickness = 0.001
+        asset_options.use_mesh_materials = True
+        object_asset = self.gym.load_asset(self.sim, asset_root, object_asset_file, asset_options)
+
+        self.num_object_bodies = self.gym.get_asset_rigid_body_count(object_asset)
+        self.num_object_shapes = self.gym.get_asset_rigid_shape_count(object_asset)
+        print("num object bodies: ", self.num_object_bodies)
+        object_color = gymapi.Vec3(0.0, 0.0, 1.0)
+
+        return object_asset, object_color    
 
 
     def pre_physics_step(self, action_dict: Dict[str, torch.Tensor]):
         # implement pre-physics simulation code here
         #    - e.g. apply actions
         actions = action_dict['effort'].clone().to(self.device)
-        print(actions.shape)
         self.gym.set_dof_actuation_force_tensor(self.sim, gymtorch.unwrap_tensor(actions))
-
-
-        # if self.control_space == "pos":
-        #     actions = action_dict['q_pos_des'].clone().to(self.device)
-        #     targets = actions
-        # elif self.control_space == "vel":
-        #     actions = action_dict['q_vel_des'].clone().to(self.device)
-        #     targets = self.robot_dof_targets[:, :self.num_robot_dofs] + \
-        #           self.franka_dof_speed_scales * self.dt * actions * self.action_scale
-
-        # elif self.control_space == "vel_2":
-        #     actions = action_dict['q_vel_des'].clone().to(self.device)
-        #     targets = self.robot_dof_pos + \
-        #         self.franka_dof_speed_scales * self.dt * actions * self.action_scale
-
-        # elif self.control_space == "acc":
-        #     raise NotImplementedError
-    
-        # # targets = actions #self.robot_dof_targets[:, :self.num_robot_dofs] + self.franka_dof_speed_scales * self.dt * self.actions * self.action_scale
-        # self.robot_dof_targets[:, :self.num_robot_dofs] = tensor_clamp(
-        #     targets, self.franka_dof_lower_limits, self.franka_dof_upper_limits)
-        # # env_ids_int32 = torch.arange(self.num_envs, dtype=torch.int32, device=self.device)        
-        # self.gym.set_dof_position_target_tensor(self.sim,
-        #                                         gymtorch.unwrap_tensor(self.robot_dof_targets))
-
 
     def step(self, actions: Dict[str, torch.Tensor]): # -> Tuple[Dict[str, torch.Tensor], torch.Tensor, torch.Tensor, Dict[str, Any]]:
 
@@ -489,17 +533,24 @@ class PointRobotEnv(): #VecTask
 
     def get_state_dict(self):
         self._refresh()
-        self.robot_q_pos_buff[:] = self.robot_dof_pos
-        self.robot_q_vel_buff[:] = self.robot_dof_vel
-        self.robot_q_acc_buff[:] = self.robot_dof_acc
+        # self.robot_q_pos_buff[:] = self.robot_dof_pos
+        # self.robot_q_vel_buff[:] = self.robot_dof_vel
+        # self.robot_q_acc_buff[:] = self.robot_dof_acc
         tstep = self.gym.get_sim_time(self.sim)
         tstep *= self.tstep
-
+        object_pos = self.object_state[:,0:3]
+        object_rot = self.object_state[:,3:7]
+        object_vel = self.object_state[:,7:10]
+        object_ang_vel = self.object_state[:,10:13]
 
         state_dict = {
-            'q_pos': self.robot_q_pos_buff.to(self.rl_device),
-            'q_vel': self.robot_q_vel_buff.to(self.rl_device),
-            'q_acc': self.robot_q_acc_buff.to(self.rl_device),
+            'q_pos': self.robot_dof_pos.to(self.rl_device),
+            'q_vel': self.robot_dof_vel.to(self.rl_device),
+            'q_acc': self.robot_dof_acc.to(self.rl_device),
+            'object_pos': object_pos.to(self.rl_device),
+            'object_rot': object_pos.to(self.rl_device),
+            'object_vel': object_pos.to(self.rl_device),
+            'object_ang_vel': object_pos.to(self.rl_device),
             'tstep': tstep
         }
         return state_dict
@@ -507,43 +558,39 @@ class PointRobotEnv(): #VecTask
     def reset_idx(self, env_ids):
 
         env_ids_int32 = env_ids.to(dtype=torch.int32)
-        # reset franka
-        # pos = tensor_clamp(
-        #     self.franka_default_dof_pos.unsqueeze(0) + 0.25 * (torch.rand((len(env_ids), self.num_robot_dofs), device=self.device) - 0.5),
-        #     self.franka_dof_lower_limits, self.franka_dof_upper_limits)
+        # reset robot
         pos = self.robot_default_dof_pos.unsqueeze(0)
         self.robot_dof_pos[env_ids, :] = pos
         self.robot_dof_vel[env_ids, :] = torch.zeros_like(self.robot_dof_vel[env_ids])
-        self.robot_dof_targets[env_ids, :self.num_robot_dofs] = pos
 
-        # multi_env_ids_int32 = self.global_indices[env_ids, 1:3].flatten()
         multi_env_ids_int32 = self.global_indices[env_ids, 0].flatten()
-        self.gym.set_dof_position_target_tensor_indexed(self.sim,
-                                                        gymtorch.unwrap_tensor(self.robot_dof_targets),
-                                                        gymtorch.unwrap_tensor(multi_env_ids_int32), len(multi_env_ids_int32))
 
-        self.gym.set_dof_state_tensor_indexed(self.sim,
-                                              gymtorch.unwrap_tensor(self.dof_state),
-                                              gymtorch.unwrap_tensor(multi_env_ids_int32), len(multi_env_ids_int32))         
+        self.gym.set_dof_state_tensor_indexed(
+            self.sim,
+            gymtorch.unwrap_tensor(self.dof_state),
+            gymtorch.unwrap_tensor(multi_env_ids_int32), len(multi_env_ids_int32))         
 
-        # self.target_poses[env_ids, 0:3] = 0.2 + (0.6 - 0.2) * torch.rand(
-        #      size=(env_ids.shape[0], 3), device=self.rl_device, dtype=torch.float)
+        # #reset object
+        self.object_state[env_ids] = self.init_object_state[env_ids]
+        multi_env_ids_object_int32 = self.global_indices[env_ids, -1].flatten()
+
+        self.gym.set_actor_root_state_tensor_indexed(
+            self.sim, gymtorch.unwrap_tensor(self.root_state),
+            gymtorch.unwrap_tensor(multi_env_ids_object_int32), len(multi_env_ids_object_int32))
+
+        #update targets
+        self.target_buf[env_ids, :] = self.init_object_state[env_ids, 0:3]
+        self.target_buf[env_ids, 0] += 0.1 
+        self.target_buf[env_ids, 2] += 0.02 
+
+        #update buffers
         self.progress_buf[env_ids] = 0
         self.reset_buf[env_ids] = 0 
         
     def reset(self):
         self.reset_idx(torch.arange(self.num_envs, device=self.device))
-        # self.compute_observations()
         state_dict = self.get_state_dict()
-
-        # self.obs_dict["obs"] = torch.clamp(self.obs_buf, -self.clip_obs, self.clip_obs).to(self.rl_device)
-
-        # asymmetric actor-critic
-        # if self.num_states > 0:
-        #     self.obs_dict["states"] = self.get_state()
-        # self.obs_dict["goal"] = self.get_goal()
-
-        return state_dict #self.obs_dict
+        return state_dict 
 
 
     def render(self, mode="rgb_array"):
@@ -565,6 +612,9 @@ class PointRobotEnv(): #VecTask
             # fetch results
             if self.device != 'cpu':
                 self.gym.fetch_results(self.sim, True)
+            
+            #draw targets etc.
+            self.draw_auxillary_visuals()
 
             # step graphics
             if self.enable_viewer_sync:
@@ -602,6 +652,20 @@ class PointRobotEnv(): #VecTask
             if self.virtual_display and mode == "rgb_array":
                 img = self.virtual_display.grab()
                 return np.array(img)
+
+    def draw_auxillary_visuals(self):
+        #plot target or whatever else you want
+        if self.viewer and self.target_buf is not None:
+            self.gym.clear_lines(self.viewer)
+            for i in range(self.num_envs):
+                # Plot sphere at target
+                sphere_rot = gymapi.Quat.from_euler_zyx(0.0, 0, 0)
+                sphere_pose = gymapi.Transform(r=sphere_rot)
+                sphere_geom = gymutil.WireframeSphereGeometry(0.02, 12, 12, sphere_pose, color=(0, 1, 0))
+                target_pos = self.target_buf[i, 0:3]
+                target_pos = gymapi.Vec3(x=target_pos[0], y=target_pos[1], z=target_pos[2]) 
+                target_pose = gymapi.Transform(p=target_pos)
+                gymutil.draw_lines(sphere_geom, self.gym, self.viewer, self.envs[i], target_pose)
 
 
     def __parse_sim_params(self, physics_engine: str, config_sim: Dict[str, Any]) -> gymapi.SimParams:

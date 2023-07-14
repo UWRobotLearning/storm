@@ -1,0 +1,20 @@
+<?xml version="1.0"?>
+<robot name="ball">
+  <link name="ball">
+    <visual>
+      <origin xyz="0 0 0"/>
+      <geometry>
+        <sphere radius="0.02"/>
+      </geometry>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0"/>
+      <geometry>
+        <sphere radius="0.02"/>
+      </geometry>
+    </collision>
+    <inertial>
+      <mass value="0.001"/>
+    </inertial>
+  </link>
+</robot>

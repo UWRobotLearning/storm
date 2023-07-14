@@ -306,7 +306,6 @@ def episode_runner(
         #     'obs': obs
         # }
 
-
         curr_costs = torch.zeros(envs.num_envs, device=device)
         episode_lens = torch.zeros(envs.num_envs, device=device)
         # done_episodes_reward_sum = 0.0 

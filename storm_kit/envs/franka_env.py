@@ -746,6 +746,8 @@ class FrankaEnv(): #VecTask
         self.target_poses = target_poses
 
 
+
+    
     @property
     def num_envs(self) -> int:
         """Get the number of environments."""

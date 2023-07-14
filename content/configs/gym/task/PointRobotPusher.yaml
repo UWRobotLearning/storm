@@ -7,7 +7,7 @@ physics_engine: ${..physics_engine}
 env:
   num_envs: ${resolve_default:1,${...num_envs}}
   envSpacing: 1.5
-  episodeLength: 2000
+  episodeLength: 500
   enableDebugVis: False
   targetRandomizeMode: "fixed_target"
   clipObservations: 5.0
@@ -23,7 +23,8 @@ env:
 
   asset:
     assetRoot: "../../content/assets"
-    assetFileNameFranka: "urdf/point_robot.urdf"
+    assetFileNameRobot: "urdf/point_robot.urdf"
+    assetFileNameObject: "urdf/ball.urdf"
 
   # # set to True if you use camera sensors in the environment
   # enableCameraSensors: False
