@@ -55,16 +55,16 @@ class RobotStateFilter(object):
 
     def filter_state(self, raw_state, dt=None):
         dt = self.dt if dt is None else dt
-        if(self.filtered_state is None):
+        if self.filtered_state is None:
             self.filtered_state = copy.deepcopy(raw_state)
-            if('acceleration' in self.filter_keys):
+            if 'acceleration' in self.filter_keys:
                 self.filtered_state['acceleration'] = 0.0* raw_state['position']
             #return self.filtered_state
         self.prev_filtered_state = copy.deepcopy(self.filtered_state)
         for k in self.filter_keys:
             if(k in raw_state.keys()):
                 self.filtered_state[k] = self.filter_coeff[k] * raw_state[k] + (1.0 - self.filter_coeff[k]) * self.filtered_state[k]
-        if('acceleration' in self.filter_keys):# and 'acceleration' not in raw_state):
+        if 'acceleration' in self.filter_keys:# and 'acceleration' not in raw_state):
             self.filtered_state['acceleration'] = (self.filtered_state['velocity'] - self.prev_filtered_state['velocity']) / dt
         return self.filtered_state
 
@@ -83,10 +83,15 @@ class JointStateFilter(object):
         
         self.device = device
         self.n_dofs = n_dofs
-        self.internal_jnt_state = torch.empty((self.n_dofs), device=self.device)
+        # self.internal_jnt_state = torch.empty((self.n_dofs), device=self.device)
         # if raw_joint_state is not None:
         #     self.internal_jnt_state = raw_joint_state.clone().to(self.device)
-        self.filter_coeff = filter_coeff
+        self.filter_coeff = filter_coeff 
+        self.filter_keys = filter_coeff.keys()
+        self.internal_jnt_state: Dict[str, torch.Tensor] = {} 
+        for k in self.filter_keys:
+            self.internal_jnt_state[k] = torch.empty((), device=self.device) 
+
         # if isinstance(filter_coeff, float):
         #     for k in filter_keys:
         #         self.filter_coeff[k] = filter_coeff
@@ -94,38 +99,43 @@ class JointStateFilter(object):
         #     self.filter_coeff = filter_coeff
         self.dt = dt
         # self.filter_keys = filter_keys
-        # self.prev_cmd_qdd = None
+        self.prev_cmd_qdd = None
         self.initial_step = True 
     
-    def filter_joint_state(self, raw_joint_state: torch.Tensor):
+    def filter_joint_state(self, raw_joint_state: Dict[str, torch.Tensor])->Dict[str, torch.Tensor]:
         
-        if self.initial_step: 
-            self.internal_jnt_state = raw_joint_state.clone().to(self.device)
+        if self.initial_step:
+            for k in raw_joint_state.keys():
+                self.internal_jnt_state[k] = raw_joint_state[k].clone().to(self.device)
             self.initial_step = False
             return self.internal_jnt_state
 
-        q_pos_raw = raw_joint_state[..., 0:self.n_dofs]
-        q_vel_raw = raw_joint_state[..., self.n_dofs:2*self.n_dofs]
-        q_acc_raw = raw_joint_state[..., 2*self.n_dofs:3*self.n_dofs]
+        # q_pos_raw = raw_joint_state[..., 0:self.n_dofs]
+        # q_vel_raw = raw_joint_state[..., self.n_dofs:2*self.n_dofs]
+        # q_acc_raw = raw_joint_state[..., 2*self.n_dofs:3*self.n_dofs]
 
-        q_pos_internal = self.internal_jnt_state[..., 0:self.n_dofs]
-        q_vel_internal = self.internal_jnt_state[..., self.n_dofs:2*self.n_dofs]
-        q_acc_internal = self.internal_jnt_state[..., 2*self.n_dofs:3*self.n_dofs]
+        # q_pos_internal = self.internal_jnt_state[..., 0:self.n_dofs]
+        # q_vel_internal = self.internal_jnt_state[..., self.n_dofs:2*self.n_dofs]
+        # q_acc_internal = self.internal_jnt_state[..., 2*self.n_dofs:3*self.n_dofs]
 
-        # if 'position' in self.filter_keys:
-        coeff = self.filter_coeff['position']
-        self.internal_jnt_state[..., 0:self.n_dofs] = coeff * q_pos_raw + (1.0 - coeff) * q_pos_internal
+        # # if 'position' in self.filter_keys:
+        # coeff = self.filter_coeff['position']
+        # self.internal_jnt_state[..., 0:self.n_dofs] = coeff * q_pos_raw + (1.0 - coeff) * q_pos_internal
 
-        # if 'velocity' in self.filter_keys:
-        coeff = self.filter_coeff['velocity']
-        self.internal_jnt_state[..., self.n_dofs:2*self.n_dofs] = coeff * q_vel_raw + (1.0 - coeff) * q_vel_internal
+        # # if 'velocity' in self.filter_keys:
+        # coeff = self.filter_coeff['velocity']
+        # self.internal_jnt_state[..., self.n_dofs:2*self.n_dofs] = coeff * q_vel_raw + (1.0 - coeff) * q_vel_internal
 
-        # if 'acceleration' in self.filter_keys:
-        coeff = self.filter_coeff['acceleration']
-        self.internal_jnt_state[..., 2*self.n_dofs:3*self.n_dofs] = coeff * q_acc_raw + (1.0 - coeff) * q_acc_internal
+        # # if 'acceleration' in self.filter_keys:
+        # coeff = self.filter_coeff['acceleration']
+        # self.internal_jnt_state[..., 2*self.n_dofs:3*self.n_dofs] = coeff * q_acc_raw + (1.0 - coeff) * q_acc_internal
 
         # for k in self.filter_keys:
-        #     self.internal_jnt_state[k] = self.filter_coeff[k] * raw_joint_state[k] + (1.0 - self.filter_coeff[k]) * self.internal_jnt_state[k]
+        for k in self.internal_jnt_state.keys():
+            if k in self.filter_keys:
+                self.internal_jnt_state[k] = self.filter_coeff[k] * raw_joint_state[k] + (1.0 - self.filter_coeff[k]) * self.internal_jnt_state[k]
+            else:
+                self.internal_jnt_state[k] = raw_joint_state[k]
 
         return self.internal_jnt_state
 
@@ -144,14 +154,18 @@ class JointStateFilter(object):
     def predict_internal_state(
             self, 
             qdd_des: Optional[torch.Tensor] = None, 
-            dt: Optional[float] = None):
+            dt: Optional[float] = None) -> Dict[str, torch.Tensor]:
         
         if qdd_des is None:
-            return
+            return self.internal_jnt_state
         dt = self.dt if dt is None else dt 
-        self.internal_jnt_state[...,2*self.n_dofs:3*self.n_dofs] = qdd_des
-        self.internal_jnt_state[...,self.n_dofs:2*self.n_dofs] += self.internal_jnt_state[...,2*self.n_dofs:3*self.n_dofs] * dt
-        self.internal_jnt_state[...,0:self.n_dofs] += self.internal_jnt_state[...,self.n_dofs:2*self.n_dofs] * dt
+        self.internal_jnt_state['q_acc'] = qdd_des
+        self.internal_jnt_state['q_vel'] = self.internal_jnt_state['q_vel'] + qdd_des * dt
+        self.internal_jnt_state['q_pos'] = self.internal_jnt_state['q_acc'] + self.internal_jnt_state['q_vel'] * dt
+        return self.internal_jnt_state
+        # self.internal_jnt_state[...,2*self.n_dofs:3*self.n_dofs] = qdd_des
+        # self.internal_jnt_state[...,self.n_dofs:2*self.n_dofs] += self.internal_jnt_state[...,2*self.n_dofs:3*self.n_dofs] * dt
+        # self.internal_jnt_state[...,0:self.n_dofs] += self.internal_jnt_state[...,self.n_dofs:2*self.n_dofs] * dt
         
 
     # def integrate_jerk(self, qddd_des, raw_joint_state, dt=None):
@@ -194,8 +208,6 @@ class JointStateFilter(object):
     #     return self.internal_jnt_state
 
     def reset(self):
-        self.internal_jnt_state = torch.empty((self.n_dofs), device=self.device)
-        # if raw_joint_state is not None:
-        #     self.internal_jnt_state = raw_joint_state.clone().to(self.device)
-        # self.prev_cmd_qdd = None
+        self.internal_jnt_state = {}
+        self.prev_cmd_qdd = None
         self.initial_step = True

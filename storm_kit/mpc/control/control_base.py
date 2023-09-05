@@ -233,12 +233,12 @@ class Controller(nn.Module):
 
         n_iters = n_iters if n_iters is not None else self.n_iters
         # get input device:
-        inp_device = state.device
-        inp_dtype = state.dtype
+        # inp_device = state.device
+        # inp_dtype = state.dtype
         # if state.ndim == 2:
         #     state = state.unsqueeze(0).repeat(self.num_instances, 1, 1)
         
-        state = state.to(**self.tensor_args)
+        # state = state.to(**self.tensor_args)
 
         info = dict(rollout_time=0.0, entropy=[])
         # shift distribution to hotstart from previous timestep
@@ -285,7 +285,7 @@ class Controller(nn.Module):
 
         self.num_steps += 1
 
-        return curr_action_seq.to(inp_device, dtype=inp_dtype), value, info
+        return curr_action_seq, value, info #.to(inp_device, dtype=inp_dtype)
 
     def get_optimal_value(self, state):
         """

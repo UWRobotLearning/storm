@@ -7,7 +7,7 @@ import torch
 from torch.utils.tensorboard import SummaryWriter
 from datetime import datetime
 from storm_kit.learning.agents import BPAgent, SACAgent, MPCAgent, MPOAgent, MPQAgent
-from storm_kit.learning.policies import MPCPolicy, GaussianPolicy
+from storm_kit.learning.policies import MPCPolicy, GaussianPolicy, JointControlWrapper
 from storm_kit.learning.value_functions import QFunction, TwinQFunction
 from storm_kit.learning.world_models import GaussianWorldModel
 from storm_kit.learning.replay_buffers import ReplayBuffer, RobotBuffer
@@ -15,31 +15,30 @@ from storm_kit.learning.learning_utils import Log, buffer_from_folder
 from storm_kit.util_file import get_data_path
 from storm_kit.learning.learning_utils import episode_runner
 
+def get_env_and_task(cfg):
+    task_name = cfg.task.name
+    if task_name == 'FrankaReacher':
+        from storm_kit.envs import FrankaEnv
+        from storm_kit.mpc.rollout import ArmReacher
+        env_cls = FrankaEnv
+        task_cls = ArmReacher
+
+    elif task_name == 'PointRobotPusher':
+        from storm_kit.envs import PointRobotEnv
+        from storm_kit.mpc.rollout import PointRobotPusher
+        env_cls = PointRobotEnv
+        task_cls = PointRobotPusher
+    
+    return env_cls, task_cls
+
 
 @hydra.main(config_name="config", config_path="../content/configs/gym")
 def main(cfg: DictConfig):
     torch.set_default_dtype(torch.float32)
-    # import isaacgymenvs
-    # import storm_kit.envs
-    from storm_kit.envs import FrankaEnv
-    from storm_kit.mpc.rollout import ArmReacher
 
-    # envs = isaacgymenvs.make(
-    #     cfg.seed, 
-    #     cfg.task_name, 
-    #     cfg.task.env.numEnvs, 
-    #     cfg.sim_device,
-    #     cfg.rl_device,
-    #     cfg.graphics_device_id,
-    #     cfg.headless,
-    #     cfg.multi_gpu,
-    #     cfg.capture_video,
-    #     cfg.force_render,
-    #     cfg,
-    #     # **kwargs,
-    # )
-    #Initialize franka env
-    envs = FrankaEnv(
+    env_cls, task_cls = get_env_and_task(cfg)
+
+    envs = env_cls(
         cfg.task, 
         cfg.rl_device, 
         cfg.sim_device, 
@@ -50,7 +49,7 @@ def main(cfg: DictConfig):
     )
 
     #Initialize task
-    task = ArmReacher(cfg=cfg.task.rollout, device=cfg.rl_device, world_params=cfg.task.world)
+    task = task_cls(cfg=cfg.task.rollout, device=cfg.rl_device, world_params=cfg.task.world)
     base_dir = Path('./tmp_results/{}/{}'.format(cfg.task_name, cfg.train.agent.name))
     log_dir = os.path.join(base_dir, 'logs')
     model_dir = os.path.join(base_dir, 'models')
@@ -62,14 +61,13 @@ def main(cfg: DictConfig):
     log(f'Log dir: {log.dir}')
     writer = SummaryWriter(log.dir)
 
-    cfg.mpc.world = cfg.task.world
-    cfg.mpc.control_dt = cfg.task.sim.dt
+    # cfg.mpc.world = cfg.task.world
+    # cfg.mpc.control_dt = cfg.task.sim.dt
 
     obs_dim = task.obs_dim
     act_dim = task.action_dim
 
-    buffer = RobotBuffer(capacity=int(1e6), n_dofs=cfg.task.rollout.n_dofs, 
-                         obs_dim=obs_dim, device=cfg.rl_device)
+    buffer = RobotBuffer(capacity=int(1e6), device=cfg.rl_device)
     # cfg.mpc.env_control_space = cfg.task.env.controlSpace
     # cfg.mpc.world = cfg.task.world
     # cfg.mpc.control_dt = cfg.task.sim.dt
@@ -85,16 +83,15 @@ def main(cfg: DictConfig):
         except Exception as e:
             print(e)
         
-
         agent = BPAgent(cfg.train.agent, envs=envs, obs_space=envs.obs_space, action_space=envs.action_space, 
                         buffer=buffer, policy=policy, logger=log, tb_writer=writer, device=cfg.rl_device)
         exit()
 
     
     if cfg.train.agent.name == 'SAC':
-        buffer = ReplayBuffer(capacity=int(2e6), obs_dim=obs_dim, act_dim=act_dim, device=torch.device('cpu'))
-
-        policy = GaussianPolicy(obs_dim=obs_dim, act_dim=act_dim, config=cfg.train.policy, device=cfg.rl_device)
+        # buffer = ReplayBuffer(capacity=int(2e6), obs_dim=obs_dim, act_dim=act_dim, device=torch.device('cpu'))
+        policy = GaussianPolicy(obs_dim=obs_dim, act_dim=act_dim, config=cfg.train.policy, rollout_cls=None, device=cfg.rl_device)
+        # policy = JointControlWrapper(config=cfg.task, policy=policy, device=cfg.rl_device)
         critic = TwinQFunction(obs_dim=obs_dim, act_dim=act_dim, config=cfg.train.critic, device=cfg.rl_device)
         agent = SACAgent(cfg.train.agent, envs=envs, task=task, obs_dim=obs_dim, action_dim=act_dim, 
                          buffer=buffer, policy=policy, critic=critic, runner_fn=episode_runner, 
@@ -106,12 +103,16 @@ def main(cfg: DictConfig):
         agent = MPOAgent(cfg.train.agent, envs=envs, obs_space=envs.obs_space, action_space=envs.action_space, 
                         buffer=buffer, policy=policy, critic=critic, logger=log, tb_writer=writer, device=cfg.rl_device)
     elif cfg.train.agent.name == 'MPQ':
-        buffer = ReplayBuffer(capacity=int(2e6), obs_dim=obs_dim, act_dim=act_dim, device=torch.device('cpu'))
-        policy = GaussianPolicy(obs_dim=obs_dim, act_dim=act_dim, config=cfg.train.policy, device=cfg.rl_device)
+        # buffer = ReplayBuffer(capacity=int(2e6), obs_dim=obs_dim, act_dim=act_dim, device=torch.device('cpu'))
+        # policy = GaussianPolicy(obs_dim=obs_dim, act_dim=act_dim, config=cfg.train.policy, device=cfg.rl_device)
         critic = TwinQFunction(obs_dim=obs_dim, act_dim=act_dim, config=cfg.train.critic, device=cfg.rl_device)
-        world_model = GaussianWorldModel(obs_dim=obs_dim, act_dim=act_dim, config=cfg.train.world_model, device=cfg.rl_device)
-        agent = MPQAgent(cfg.train.agent, envs=envs, obs_space=envs.obs_space, action_space=envs.action_space, 
-                        buffer=buffer, policy=policy, critic=critic, world_model=world_model, logger=log, tb_writer=writer, device=cfg.rl_device)
+        policy = MPCPolicy(obs_dim=obs_dim, act_dim=act_dim, config=cfg.task.mpc, rollout_cls=task_cls, value_function=critic, device=cfg.rl_device)
+        print('initializing target policy')
+        target_policy = MPCPolicy(obs_dim=obs_dim, act_dim=act_dim, config=cfg.train.target_mpc_policy, rollout_cls=task_cls, value_function=critic, device=cfg.rl_device)
+        # world_model = GaussianWorldModel(obs_dim=obs_dim, act_dim=act_dim, config=cfg.train.world_model, device=cfg.rl_device)
+        agent = MPQAgent(cfg.train.agent, envs=envs, task=task, obs_dim=obs_dim, action_dim=act_dim,
+                        buffer=buffer, policy=policy, critic=critic, target_policy=target_policy, runner_fn=episode_runner, 
+                        logger=log, tb_writer=writer, device=cfg.rl_device)
 
     else:
         raise NotImplementedError('Invalid agent type: {}'.format(cfg.train.agent.name))

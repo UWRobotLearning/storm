@@ -32,7 +32,7 @@ def tensor_circle(pt, radius, tensor=None, device=torch.device('cpu')):
         tensor = torch.empty(3, device=device)
 
     # tensor[:2] = torch.as_tensor(pt, **tensor_args)
-    tensor[:2] = torch.as_tensor(pt, device=torch.device)
+    tensor[:2] = torch.as_tensor(pt, device=device)
     tensor[2] = radius
     return tensor
 

@@ -4,16 +4,11 @@
   <link name="base_link"/>
 
   <link name="robot">
-    <!-- <collision>
-      <geometry>
-        <mesh filename="meshes/collision/link0.stl"/>
-      </geometry>
-    </collision> -->
   </link>
   <link name="robot_y">
     <visual>
       <geometry>
-        <sphere radius="0.01"/>
+        <sphere radius="0.03"/>
       </geometry>
       <material name="red">
         <color rgba="1 0 0 1"/>
@@ -21,11 +16,13 @@
     </visual>
     <collision>
       <geometry>
-        <sphere radius="0.01"/>
+        <sphere radius="0.03"/>
       </geometry>
     </collision>
     <inertial>
-      <mass value="0.01"/>
+      <origin rpy="0 0 0" xyz="0 0 0"/>
+      <mass value="0.1"/>
+      <inertia ixx="0.0" ixy="0.0" ixz="0.0" iyy="0.0" iyz="0.0" izz="0.0"/>
     </inertial>
   </link>
 
@@ -34,7 +31,9 @@
     <parent link="base_link"/>
     <child link="robot"/>
     <axis xyz="1 0 0"/>
-    <limit lower="-0.6" upper="0.6"/>
+    <limit lower="-0.6" upper="0.6" effort="1" velocity="1"/>
+    <dynamics/>
+
   </joint>
 
   <joint name="y_joint" type="prismatic">
@@ -42,8 +41,8 @@
     <parent link="robot"/>
     <child link="robot_y"/>
     <axis xyz="0 1 0"/>
-    <limit lower="-0.6" upper="0.6"/>
-
+    <limit lower="-0.6" upper="0.6" effort="1" velocity="1"/>
+    <dynamics/>
   </joint>
 
   <!-- <link name="base_link"/>

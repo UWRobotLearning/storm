@@ -55,8 +55,6 @@ headless: False
 defaults:
   - task: FrankaReacher
   - train: ${task}SAC
-  - mpc: ${task}MPC
-  # - world: ${task}World
   - hydra/job_logging: disabled
 
 # set the directory where the output files get saved

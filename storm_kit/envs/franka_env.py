@@ -67,12 +67,14 @@ class FrankaEnv(): #VecTask
         self.aggregate_mode = self.cfg["env"]["aggregateMode"]
         self.control_space = self.cfg["env"]["controlSpace"]
         self.num_environments = self.cfg["env"]["num_envs"]
+        # self.num_objects = self.cfg["env"]["num_objects"]
         self.debug_viz = self.cfg["env"]["enableDebugVis"]
         self.up_axis = "z"
         self.up_axis_idx = 2
         self.dt = self.cfg["sim"]["dt"]
         self.world_params = self.cfg["world"]
         self.world_model = self.world_params["world_model"]
+
 
         self.control_freq_inv = self.cfg["env"].get("controlFrequencyInv", 1)
                 
@@ -427,6 +429,31 @@ class FrankaEnv(): #VecTask
         table_color = gymapi.Vec3(0.6, 0.6, 0.6)
         return table_asset, table_dims, table_color
 
+    def load_object_asset(self, disable_gravity=False):
+        asset_root = os.path.join(os.path.dirname(os.path.abspath(__file__)), "../../content/assets")
+        object_asset_file = "urdf/ball.urdf"
+
+        if "asset" in self.cfg["env"]:
+            asset_root = os.path.join(os.path.dirname(os.path.abspath(__file__)), self.cfg["env"]["asset"].get("assetRoot", asset_root))
+            object_asset_file = self.cfg["env"]["asset"].get("assetFileNameObject", object_asset_file )
+        
+        # load franka asset
+        asset_options = gymapi.AssetOptions()
+        asset_options.fix_base_link = False
+        asset_options.collapse_fixed_joints = False
+        asset_options.disable_gravity = disable_gravity
+        asset_options.thickness = 0.001
+        asset_options.use_mesh_materials = True
+        object_asset = self.gym.load_asset(self.sim, asset_root, object_asset_file, asset_options)
+
+        self.num_object_bodies = self.gym.get_asset_rigid_body_count(object_asset)
+        self.num_object_shapes = self.gym.get_asset_rigid_shape_count(object_asset)
+        print("num object bodies: ", self.num_object_bodies)
+        object_color = gymapi.Vec3(0.0, 0.0, 1.0)
+
+        return object_asset, object_color 
+
+
     def world_to_franka(self, transform_world):
         transform_franka = self.world_pose_franka * transform_world
         return transform_franka
@@ -443,7 +470,8 @@ class FrankaEnv(): #VecTask
             actions = action_dict['q_pos_des'].clone().to(self.device)
             targets = actions
         elif self.control_space == "vel":
-            actions = action_dict['q_vel_des'].clone().to(self.device)
+            actions = action_dict['q_vel_des'] if 'q_vel_des' in action_dict else action_dict['raw_action']
+            actions = actions.clone().to(self.device)
             targets = self.franka_dof_targets[:, :self.num_franka_dofs] + \
                   self.franka_dof_speed_scales * self.dt * actions * self.action_scale
 
@@ -565,13 +593,6 @@ class FrankaEnv(): #VecTask
                 # gymutil.draw_lines(sphere_geom, self.gym, self.viewer, self.envs[i], ee_pose_world)
         # print('draw time', time.time()-st)
 
-
-
-
-
-
-
-
         return state_dict
 
     def get_state_dict(self):
@@ -617,7 +638,11 @@ class FrankaEnv(): #VecTask
         #      size=(env_ids.shape[0], 3), device=self.rl_device, dtype=torch.float)
         self.progress_buf[env_ids] = 0
         self.reset_buf[env_ids] = 0 
-        
+
+        state_dict = self.get_state_dict()
+        return state_dict 
+
+
     def reset(self):
         self.reset_idx(torch.arange(self.num_envs, device=self.device))
         # self.compute_observations()
@@ -742,12 +767,9 @@ class FrankaEnv(): #VecTask
         return sim_params
 
 
-    def update_target_poses(self, target_poses):
-        self.target_poses = target_poses
+    def update_goal(self, goal_dict):
+        self.target_poses = goal_dict['ee_goal']
 
-
-
-    
     @property
     def num_envs(self) -> int:
         """Get the number of environments."""

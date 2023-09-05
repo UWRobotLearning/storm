@@ -480,6 +480,7 @@ class CoordinateTransform(object):
 
         if pose is not None:
             self.set_pose(pose)
+
             
     def set_pose(self, pose:torch.Tensor) -> None:
         """

@@ -233,9 +233,6 @@ class WorldPrimitiveCollision(WorldGridCollision):
             cube = tensor_cube(pose_fixed, dims, device=self.tensor_args['device'])
             self._world_cubes.append(cube)
 
-            
-            
-            
         self.n_objs = self._world_spheres.shape[1] + len(self._world_cubes)
         
     
@@ -470,12 +467,14 @@ class WorldImageCollision(WorldCollision):
         self._flat_tensor = flat_tensor
         self.im_bounds = self.bounds 
         self.num_voxels = num_voxels
+    
     def voxel_inds(self, pt):
         pt = (self.pitch * pt).to(dtype=torch.int64)
         
         ind_pt = (pt[...,0]) * (self.num_voxels[0]) + pt[...,1]
         ind_pt = ind_pt.to(dtype=torch.int64)
         return ind_pt
+    
     def get_pt_value(self, pt):
         bound_mask = torch.logical_and(torch.all(pt < self.im_bounds[:,1] - (1.0/self.pitch),dim=-1),
                                        torch.all(pt > self.im_bounds[:,0] + (1.0/self.pitch),dim=-1))

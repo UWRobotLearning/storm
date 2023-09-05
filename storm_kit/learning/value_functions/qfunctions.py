@@ -31,10 +31,11 @@ class QFunction(nn.Module):
             squeeze_output=True)
         self.to(self.device)
 
-    def forward(self, obs_dict: Dict[str,torch.Tensor], act_batch: torch.Tensor):
+    def forward(self, obs_dict: Dict[str,torch.tensor], act_dict: Dict[str, torch.tensor]):
         obs = obs_dict['obs']
-        assert obs.ndim == act_batch.ndim
-        input = torch.cat([obs, act_batch], dim=-1)
+        act = torch.cat([act_dict[k] for k in act_dict])
+        # assert obs.ndim == act_batch.ndim
+        input = torch.cat([obs, act], dim=-1)
         q_pred = self.net(input)
         return q_pred
 
@@ -76,11 +77,11 @@ class TwinQFunction(nn.Module):
             squeeze_output=True)
         self.to(self.device)
     
-    def both(self, obs_dict: Dict[str,torch.Tensor], act_batch: torch.Tensor):
+    def both(self, obs_dict: Dict[str,torch.tensor], act_dict: Dict[str, torch.tensor]):
         obs = obs_dict['obs']
-        assert obs.ndim == act_batch.ndim
-        input = torch.cat([obs, act_batch], -1)
+        act = torch.cat([act_dict[k] for k in act_dict], dim=-1)
+        input = torch.cat([obs, act], -1)
         return self.net1(input), self.net2(input)
 
-    def forward(self, obs_dict: Dict[str,torch.Tensor], act_batch: torch.Tensor):
-        return torch.min(*self.both(obs_dict, act_batch))
+    def forward(self, obs_dict: Dict[str,torch.tensor], act_dict: Dict[str, torch.tensor]):
+        return torch.min(*self.both(obs_dict, act_dict))

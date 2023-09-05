@@ -35,12 +35,13 @@ eps = 0.01
 
 class ProjectedDistCost(DistCost):
     def __init__(self, ndofs, weight=None, vec_weight=None, gaussian_params={}, device=torch.device('cpu'), float_dtype=torch.float32):
-        super(ProjectedDistCost, self).__init__(weight, gaussian_params=gaussian_params, device=device, float_dtype=float_dtype)
+        super(ProjectedDistCost, self).__init__(weight, gaussian_params=gaussian_params, device=device)
         self.ndofs = ndofs
         self.float_dtype = float_dtype
         self.I = torch.eye(ndofs, device=device, dtype=self.float_dtype)
         self.task_I = torch.eye(6, device=device, dtype=self.float_dtype)
         self.vec_weight = torch.as_tensor(vec_weight, device=device, dtype=float_dtype)
+    
     def forward(self, disp_vec, jac_batch, proj_type="transpose", dist_type="squared_l2", beta=1.0):
         inp_device = disp_vec.device
         disp_vec = self.vec_weight * disp_vec.to(self.device)
@@ -52,10 +53,7 @@ class ProjectedDistCost(DistCost):
         elif proj_type == "identity":
             disp_vec_projected = disp_vec
         
-        
-
-
-        return super().forward(disp_vec_projected, dist_type, beta)
+        return super().forward(disp_vec_projected, dist_type)
 
 
     def get_transpose_null_disp(self, disp_vec, jac_batch):

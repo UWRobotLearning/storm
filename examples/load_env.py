@@ -31,7 +31,7 @@ def main(cfg: DictConfig):
     #     # **kwargs,
     # )
 
-    if cfg.task.name == "FrankaReacher":
+    if cfg.task.name in ["FrankaReacher", "FrankaPusher"]:
         envs = FrankaEnv(
             cfg.task, 
             torch.device(cfg.rl_device), 

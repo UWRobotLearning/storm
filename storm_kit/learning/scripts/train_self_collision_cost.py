@@ -68,8 +68,6 @@ def generate_dataset(
         link_rot_seq = torch.cat(link_rot_seq, axis=1).unsqueeze(1)
         distances = self_collision_cost.distance(link_pos_seq, link_rot_seq)
         
-
-
     #compute train-val-split
     num_val_points = int(val_ratio * num_data_points)    
     x_train = q_pos_samples[0:-num_val_points]

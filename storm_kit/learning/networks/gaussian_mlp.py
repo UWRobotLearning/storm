@@ -8,7 +8,7 @@ from omegaconf import OmegaConf
 
 from storm_kit.learning.networks.utils import mlp
 
-
+#TODO: Add init_mean and GMM
 
 class GaussianMLP(nn.Module):
     def __init__(
@@ -22,7 +22,6 @@ class GaussianMLP(nn.Module):
             std_type: str = 'homoscedastic',
             learn_logvar_bounds: bool = False,
             device: torch.device = torch.device('cpu')
-
     ):
         super().__init__()
         assert std_type in ['homoscedastic', 'heteroscedastic', 'fixed', 'no_std']
@@ -81,7 +80,7 @@ class GaussianMLP(nn.Module):
         self.to(self.device)
 
     
-    def forward(self, x):
+    def forward(self, x: torch.Tensor):
         if self.std_type == 'heteroscedastic':
             mean_and_logstd = self.net(x)
             mean, logstd = mean_and_logstd.split(mean_and_logstd.shape[-1]//2, dim=-1)
@@ -97,10 +96,11 @@ class GaussianMLP(nn.Module):
             std = torch.exp(logstd)
             #create normal distribution
             return mean, std
+        
         return mean, None
 
 
-    def sample(self, x:torch.Tensor, deterministic: bool = False, num_samples=1):
+    def sample(self, x:torch.Tensor, deterministic:bool = False, num_samples:int = 1):
         mean, std = self.forward(x)
         if deterministic or self.std_type == 'no_std':
             return mean

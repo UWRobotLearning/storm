@@ -35,8 +35,10 @@ class RobotWorldCollision:
         # self.tensor_args = robot_collision.tensor_args
         self.robot_coll = robot_collision
         self.world_coll = world_collision
+    
     def update_robot_link_poses(self, links_pos, links_rot):
         self.robot_coll.update_robot_link_poses(links_pos, links_rot)
+    
     def update_world_robot_pose(self, w_pos, w_rot):
         self.world_coll.update_reference_frame(w_pos, w_rot)
     
@@ -162,8 +164,6 @@ class RobotWorldCollisionPrimitive(RobotWorldCollision):
             dist[:,i] = torch.max(torch.max(d, dim=-1)[0], dim=-1)[0]
 
         return dist
-
-
 
 
 class RobotWorldCollisionVoxel():

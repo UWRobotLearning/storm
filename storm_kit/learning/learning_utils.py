@@ -25,7 +25,14 @@ def logmeanexp(x, dim):
     max_x, _ = torch.max(x, dim=dim, keepdim=True)
     return torch.squeeze(max_x, dim=dim) + torch.log(torch.mean(torch.exp((x - max_x)), dim=dim))
 
-
+def dict_to_device(d, device):
+    for k, v in d.items():
+        if isinstance(v, dict):
+            for k1, v1 in v.items():
+                d[k][k1] = d[k][k1].to(device)
+        else:
+            d[k] = d[k].to(device)
+    return d
 
 class Log:
     def __init__(self, root_log_dir, cfg_dict,
@@ -291,20 +298,20 @@ def episode_runner(
         obs_dim = task.obs_dim
         total_steps_collected = 0
 
-        targets = task.get_randomized_goals(
-                num_envs = envs.num_envs, randomization_mode='randomize_position')
-        policy.update_goal(targets)
-        task.update_params(goal = targets)
-        envs.update_target_poses(targets)
+        reset_data = task.reset()
 
-        state_dict = envs.reset()
-        obs, _ = task.compute_observations(current_state = state_dict)
+
+        policy.reset(reset_data)
+        # goal_dict = task.randomize_goals(
+        #     num_envs=envs.num_envs, 
+        #     randomization_mode='randomize_position')
+        # policy.update_goal(goal_dict)
+        # envs.update_goal(goal_dict)
+
+        state_dict = envs.reset(reset_data)
+
+        obs, state_dict_full = task.compute_observations(state_dict=state_dict)
         obs = obs.view(envs.num_envs, obs_dim)
-
-        # obs_dict = {
-        #     'states': state_dict,
-        #     'obs': obs
-        # }
 
         curr_costs = torch.zeros(envs.num_envs, device=device)
         episode_lens = torch.zeros(envs.num_envs, device=device)
@@ -315,89 +322,79 @@ def episode_runner(
         episodes_done = 0
         while episodes_done < num_episodes:
             with torch.no_grad():
-                obs_dict = {
+                policy_input = {
                     'states': state_dict,
                     'obs': obs}
 
-                action = policy.get_action(obs_dict)
-                # next_obs_dict, reward, done, info = self.envs.step(action)
-                next_state_dict, done = envs.step(action)
-                next_obs, _ = task.compute_observations(current_state = next_state_dict)
-                cost, _ = task.compute_cost(current_state = state_dict)
-                next_obs = next_obs.view(envs.num_envs, obs_dim)
-                cost = cost.view(envs.num_envs,)
+                action_dict = policy.get_action(policy_input)
+                next_state_dict, done_env = envs.step(action_dict)
+                next_obs, next_state_dict_full = task.compute_observations(state_dict=next_state_dict)
+                done_task, _ = task.compute_termination(next_state_dict_full, action_dict)
+                cost, _, _ = task.compute_cost(state_dict=state_dict_full, action_batch=action_dict, termination=done_task)
 
+                next_obs = next_obs.view(envs.num_envs, obs_dim)
+                done_task = done_task.view(envs.num_envs,)
+                cost = cost.view(envs.num_envs,)
+                
             curr_costs += cost
             episode_lens += 1
+            done = (done_env + done_task) > 0
+
+            #remove timeout from done
+            timeout = episode_lens == envs.max_episode_length - 1
+            done_without_timeouts = done * (1-timeout.float())
+            
+            if update_buffer:
+                experience_dict = {}
+                experience_dict['state_dict'] = state_dict
+                experience_dict['next_state_dict'] = next_state_dict
+                experience_dict['goal_dict'] = reset_data['goal_dict']
+                experience_dict['action_dict'] = action_dict
+                experience_dict['obs'] = obs
+                experience_dict['next_obs'] = next_obs
+                experience_dict['cost'] = cost
+                experience_dict['done'] = done_without_timeouts
+                experience_dict['timeout'] = timeout
+                buffer.add(experience_dict)
+
+            state_dict = copy.deepcopy(next_state_dict)
+            obs = next_obs.clone()
+
+            #reset if done
             done_indices = done.nonzero(as_tuple=False).squeeze(-1)
-            done_episode_rewards = curr_costs[done_indices]
-            #reset goal poses
+            done_episode_costs = curr_costs[done_indices]
+
             if len(done_indices) > 0:
-                targets = task.get_randomized_goals(
-                    num_envs = envs.num_envs, 
-                    target_pose_buff=targets,
-                    env_ids=done_indices,
-                    randomization_mode='randomize_position')
-                policy.update_goal(targets)
-                task.update_params(targets)
-                envs.update_target_poses(targets)
+                reset_data = task.reset_idx(done_indices)
+                state_dict = envs.reset_idx(done_indices, reset_data)
+                #TODO: policy should be reset only for the required instances
+                #especially this is true for MPC policies
+                policy.reset(reset_data)
+                # policy.update_goal(goal_dict)
+                # envs.update_goal(goal_dict)
+                obs, state_dict_full = task.compute_observations(state_dict=state_dict)
 
-
-            # self.done_episodes_reward_sum += torch.sum(done_episode_rewards).item()
+            # self.done_episodes_reward_sum += torch.sum(done_episode_costs).item()
             curr_num_eps_dones = torch.sum(done).item()
             if curr_num_eps_dones > 0:
-                # rem = min(10 - self.curr_idx, curr_num_eps_dones)
-
-                # if curr_num_eps_dones > rem:
-                #     #add to front
-                #     extra = curr_num_eps_dones - rem
-                #     print(extra, rem)
-
-                #     self.episode_reward_buffer[0:extra] = done_episode_rewards[-extra:]
-                # self.episode_reward_buffer[self.curr_idx:self.curr_idx + rem] = done_episode_rewards[0:rem]
-                # self.curr_idx = (self.curr_idx + curr_num_eps_dones) % 10
                 for i in range(curr_num_eps_dones):
-                    episode_cost_buffer.append(done_episode_rewards[i].item())
+                    episode_cost_buffer.append(done_episode_costs[i].item())
                     # if len(episode_reward_buffer) > 10:
                     #     episode_reward_buffer.pop(0)
 
-                episodes_done += curr_num_eps_dones
-            
+            episodes_done += curr_num_eps_dones
+            curr_num_steps = cost.shape[0]
+            total_steps_collected += curr_num_steps
+
             not_done = 1.0 - done.float()
             curr_costs = curr_costs * not_done
             episode_lens = episode_lens * not_done
 
-            #remove timeout from done
-            timeout = episode_lens == envs.max_episode_length - 1
-            done = done * (1-timeout.float())
+            # state_dict = copy.deepcopy(next_state_dict)
+            # obs = next_obs.clone()
 
-            if update_buffer:
-            #     #TODO: Save full actions
-                buffer.add(
-                    q_pos = state_dict['q_pos'],
-                    q_vel = state_dict['q_vel'],
-                    q_acc = state_dict['q_acc'],
-                    q_pos_cmd = action['q_pos_des'],
-                    q_vel_cmd = action['q_vel_des'],
-                    q_acc_cmd = action['q_acc_des'],
-                    ee_goal = targets,
-                    obs = obs, 
-                    reward=cost, 
-                    )
-
-            curr_num_steps = cost.shape[0]
-            curr_num_steps = state_dict['q_pos'].shape[0]
-            total_steps_collected += curr_num_steps
-
-            # obs_dict = obs_dict = copy.deepcopy(next_obs_dict)
-            state_dict = copy.deepcopy(next_state_dict)
-            obs = next_obs.clone()
-
-        
         if len(episode_cost_buffer) > 0:
-            print(episode_cost_buffer)
             avg_episode_cost = np.average(episode_cost_buffer).item()
-            # avg_episode_cost = done_episodes_reward_sum / total_episodes_done
         
         metrics = {
             'num_steps_collected': total_steps_collected,
@@ -407,4 +404,5 @@ def episode_runner(
             'avg_episode_cost': avg_episode_cost,
             # 'curr_steps_reward': self.curr_rewards.mean().item()
             }
+            
         return buffer, metrics

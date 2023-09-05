@@ -26,13 +26,49 @@ critic:
     layer_norm: false
     world: ${task.world}
 
+target_mpc_policy:
+  rollout: ${task.rollout}
+  world: ${task.world}
+  state_filter_coeff: ${task.rollout.state_filter_coeff}
+  viz_rollouts: true
+
+  mppi:
+    num_instances     : ${train.agent.train_batch_size}
+    horizon           : 40
+    init_cov          : 1.0 #.5 #.5
+    gamma             : 0.99 #0.98
+    n_iters           : 1
+    step_size_mean    : 0.98
+    step_size_cov     : 0.7
+    beta              : 0.1 #1.0
+    alpha             : 1
+    num_particles     : 10000 #10000
+    update_cov        : False
+    cov_type          : 'diag_AxA' # 
+    kappa             : 0.005
+    null_act_frac     : 0.01
+    sample_mode       : 'mean'
+    base_action       : 'repeat'
+    squash_fn         : 'clamp'
+    hotstart          : True
+    visual_traj       : null
+    sample_params:
+      type: 'halton'
+      fixed_samples: True
+      sample_ratio: {'halton':1.0, 'halton-knot':0.0, 'random':0.0, 'random-knot':0.0}
+      seed: 0
+      filter_coeffs: null #[0.3, 0.3, 0.4]
+      knot_scale: 4
+      bspline_degree: 3
+
+
 agent:
-  name: 'SAC'
+  name: 'MPQ'
   save_buffer: false
-  num_epochs: 10000
+  num_train_steps: 10000
   # num_steps_per_env: 1
-  num_train_episodes_per_epoch: 1
-  num_updates_per_epoch: ${task.env.episodeLength} #5
+  num_train_episodes: 1
+  num_update_steps: 5
   discount: 0.99
   train_batch_size: 256
   num_action_samples: 1
@@ -42,7 +78,7 @@ agent:
   num_eval_episodes: 10
   fixed_alpha: 0.2
   init_log_alpha: 0.0
-  automatic_entropy_tuning: true
+  automatic_entropy_tuning: false
   policy_optimizer:
     __target__: torch.optim.Adam
     lr: 0.0003

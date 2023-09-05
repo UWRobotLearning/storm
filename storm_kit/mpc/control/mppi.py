@@ -113,8 +113,9 @@ class MPPI(OLGaussianMPC):
 
         """
         costs = trajectories["costs"].to(**self.tensor_args)
-        vis_seq = trajectories[self.visual_traj].to(**self.tensor_args)
+        # vis_seq = trajectories[self.visual_traj].to(**self.tensor_args)
         actions = trajectories["actions"].to(**self.tensor_args)
+
         with record_function('mppi:exp_util'):
             w = self._exp_util(costs, actions)
         

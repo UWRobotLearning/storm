@@ -22,9 +22,7 @@
 # DEALINGS IN THE SOFTWARE.#
 import torch
 
-#@torch.jit.script
-def build_fd_matrix(horizon, device='cpu', dtype=torch.float32, order=1, PREV_STATE=False,FULL_RANK=False):
-    # type: int, str, str, bool  -> Tensor
+def build_fd_matrix(horizon:int, device='cpu', dtype=torch.float32, order=1, PREV_STATE=False,FULL_RANK=False):
     
     if(PREV_STATE):
         # build order 1 fd matrix of horizon+order size
@@ -107,7 +105,7 @@ def tensor_step_jerk(state, act, state_seq, dt_h, n_dofs, integrate_matrix, fd_m
     
     return state_seq
 
-@torch.jit.script
+# @torch.jit.script
 def tensor_step_acc(
     state: torch.Tensor, 
     act: torch.Tensor, 
@@ -121,7 +119,7 @@ def tensor_step_acc(
     horizon:int) -> torch.Tensor:
     # This is batch,n_dof
     q = state[:, :, :n_dofs]
-    qd = state[:, :, n_dofs:2 * n_dofs]
+    qd = state[:, :, n_dofs:2*n_dofs]
     qdd_new = act.view(num_instances*batch_size, horizon, -1)
     diag_dt = torch.diag(dt_h)
 
