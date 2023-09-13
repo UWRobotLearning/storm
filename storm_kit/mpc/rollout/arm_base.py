@@ -232,7 +232,10 @@ class ArmBase(RolloutBase):
             #coll_cost = self.robot_self_collision_cost.forward(link_pos_batch, link_rot_batch)
             with record_function('self_collision_cost'):
                 # coll_cost = self.robot_self_collision_cost.forward(state_batch[:,:,:self.n_dofs])
-                coll_cost = self.robot_self_collision_cost.forward(state_batch[:,:,:self.n_dofs], link_pos_seq=link_pos_batch, link_rot_seq=link_rot_batch)
+                coll_cost = self.robot_self_collision_cost.forward(
+                    state_batch[:,:,:self.n_dofs], 
+                    link_pos_seq=link_pos_batch, link_rot_seq=link_rot_batch)
+                print(coll_cost)
                 cost += coll_cost
         
         if self.cfg['cost']['primitive_collision']['weight'] > 0:

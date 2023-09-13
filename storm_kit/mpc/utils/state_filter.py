@@ -102,13 +102,13 @@ class JointStateFilter(object):
         self.initial_step = True 
     
     def filter_joint_state(self, raw_joint_state: Dict[str, torch.Tensor])->Dict[str, torch.Tensor]:
-        
+
         if self.initial_step:
             for k in raw_joint_state.keys():
                 self.internal_jnt_state[k] = raw_joint_state[k].clone().to(self.device)
             self.initial_step = False
             return self.internal_jnt_state
-
+        
         # q_pos_raw = raw_joint_state[..., 0:self.n_dofs]
         # q_vel_raw = raw_joint_state[..., self.n_dofs:2*self.n_dofs]
         # q_acc_raw = raw_joint_state[..., 2*self.n_dofs:3*self.n_dofs]

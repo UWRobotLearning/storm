@@ -21,9 +21,9 @@ import rospkg
 # from std_msgs.msg import String, Header
 
 #STORM imports
-# from storm_kit.mpc.task.reacher_task import ReacherTask
-from storm_kit.learning.policies import MPCPolicy
-from storm_kit.learning.replay_buffers import RobotBuffer
+from storm_kit.mpc.rollout import ArmReacher
+from storm_kit.learning.policies import MPCPolicy, JointControlWrapper
+from storm_kit.learning.learning_utils import dict_to_device
 
 class MPCReacherNode():
     def __init__(self) -> None:
@@ -37,40 +37,50 @@ class MPCReacherNode():
         self.joint_names = rospy.get_param('~robot_joint_names', None)
         self.save_data = rospy.get_param('~save_data', False)
         
-        self.device = torch.device('cuda', 0)
-
         initialize(config_path="../../../content/configs/gym", job_name="mpc")
         self.config = compose(config_name="config", overrides=["task=FrankaReacherRealRobot"])
         self.control_dt = self.config.task.rollout.control_dt
         self.n_dofs = self.config.task.rollout.n_dofs
+        self.device = self.config.rl_device
 
         #STORM Initialization
-        # self.policy = ReacherTask(self.mpc_config, self.robot_coll_description, self.world_description, self.tensor_args)
         obs_dim = 1
         act_dim = 1
-        self.policy = MPCPolicy(obs_dim=obs_dim, act_dim=act_dim, config=self.config.mpc, device=self.device)
+        self.policy = MPCPolicy(
+            obs_dim=obs_dim, act_dim=act_dim, 
+            config=self.config.task.mpc, rollout_cls = ArmReacher, 
+            device=self.device)
+        self.policy = JointControlWrapper(config=self.config.task.mpc, policy=self.policy, device=self.device)
 
-        if self.save_data:
-            buffer = RobotBuffer(capacity=1e-6)
+        # if self.save_data:
+        #     buffer = RobotBuffer(capacity=1e-6)
 
 
         #buffers for different messages
         self.mpc_command = JointState()
         self.mpc_command.name = self.joint_names
-        self.mpc_command.effort = np.zeros(7)
         # self.gripper_state = JointState()
         # self.robot_state = JointState()
         self.command_header = None
         self.gripper_state = {
-            'position': torch.zeros(2),
-            'velocity': torch.zeros(2),
-            'acceleration': torch.zeros(2)}
+            'q_pos': torch.zeros(1,2),
+            'q_vel': torch.zeros(1,2),
+            'q_acc': torch.zeros(1,2)}
+        
         self.robot_state = {
-            'position': torch.zeros(7),
-            'velocity': torch.zeros(7),
-            'acceleration': torch.zeros(7)}
-        self.obs_dict = {}
-        self.robot_state_tensor = None
+            'q_pos': torch.zeros(1,7, device=self.device),
+            'q_vel': torch.zeros(1,7, device=self.device),
+            'q_acc': torch.zeros(1,7, device=self.device)}
+
+
+        self.robot_state_tensor =  torch.cat((
+            self.robot_state['q_pos'],
+            self.robot_state['q_vel'],
+            self.robot_state['q_acc']
+        ), dim=-1)
+
+        self.policy_input = {'states': self.robot_state}
+        self.goal_dict = {}
         self.ee_goal_pos = None
         self.ee_goal_quat = None
 
@@ -84,6 +94,8 @@ class MPCReacherNode():
         self.state_sub_on = False
         self.goal_sub_on = False
         self.tstep = 0
+        self.tstep_tensor = torch.as_tensor([self.tstep], device=self.config.rl_device).unsqueeze(0)
+
         self.start_t = None
         self.first_iter = True
 
@@ -104,15 +116,16 @@ class MPCReacherNode():
         # self.robot_state.position = msg.position[2:]
         # self.robot_state.velocity = msg.velocity[2:]
         # self.robot_state.effort = msg.effort[2:]
-        self.robot_state['position'] = torch.tensor(msg.position)
-        self.robot_state['velocity'] = torch.tensor(msg.velocity)
-        self.robot_state['acceleration'] = torch.zeros_like(self.robot_state['velocity'])
-        self.robot_state_tensor = torch.cat((
-            self.robot_state['position'],
-            self.robot_state['velocity'],
-            self.robot_state['acceleration']
-        )).unsqueeze(0)
-        self.obs_dict = {'states':self.robot_state_tensor}
+        self.robot_state['q_pos'] = torch.tensor([msg.position], device=self.device)
+        self.robot_state['q_vel'] = torch.tensor([msg.velocity], device=self.device)
+        # self.robot_state['q_acc'] = torch.zeros_like(self.robot_state['q_vel'])
+        # self.robot_state_tensor = torch.cat((
+        #     self.robot_state['q_pos'],
+        #     self.robot_state['q_vel'],
+        #     self.robot_state['q_acc']
+        # ), dim=-1)
+
+
 
     def ee_goal_callback(self, msg):
         self.goal_sub_on = True
@@ -127,35 +140,46 @@ class MPCReacherNode():
             msg.pose.orientation.y,
             msg.pose.orientation.z])
 
+        goal = torch.cat((self.ee_goal_pos, self.ee_goal_quat), dim=-1).unsqueeze(0)
+        self.goal_dict['ee_goal'] = goal
+
+
     def control_loop(self):
         while not rospy.is_shutdown():
             #only do something if state and goal have been received
             if self.state_sub_on and self.goal_sub_on:
                 #check if goal was updated
                 if self.new_ee_goal:
-                    # self.policy.update_params(goal_ee_pos = self.ee_goal_pos,
-                    #     goal_ee_quat = self.ee_goal_quat)
-                    goal = torch.cat((self.ee_goal_pos, self.ee_goal_quat), dim=-1).unsqueeze(0)
-                    self.policy.update_goal(goal)
+                    param_dict = {'goal_dict': dict_to_device(self.goal_dict, device=self.device)}
+                    self.policy.update_rollout_params(param_dict)
                     self.new_ee_goal = False
 
-                self.obs_dict['states'] = torch.cat(
-                    (self.obs_dict['states'],
-                     torch.as_tensor([self.tstep]).unsqueeze(0)),
-                     dim=-1                  
-                    )
+        
+                # for k in self.robot_state.keys():
+                #     self.policy_input['states'][k] = self.robot_state[k].clone().to(self.device)
+                                
+                self.tstep_tensor[0,0] = self.tstep
+                self.policy_input['states']['tstep'] = self.tstep_tensor
+                self.policy_input['obs'] = self.robot_state_tensor.to(self.device)
+
+                # for k in self.policy_input['states'].keys():
+                #     print('in node', k, self.policy_input['states'][k].device)
+
+
 
                 #get mpc command
-                command = self.policy.get_action(obs_dict=self.obs_dict) #, control_dt=self.control_dt, WAIT=True)
+                command_tensor, policy_info = self.policy.get_action(self.policy_input)
 
                 #publish mpc command
                 self.mpc_command.header = self.command_header
                 self.mpc_command.header.stamp = rospy.Time.now()
-                self.mpc_command.position = command['q_des'][0].cpu().numpy()
-                self.mpc_command.velocity = command['qd_des'][0].cpu().numpy()
-                self.mpc_command.effort =  command['qdd_des'][0].cpu().numpy()
+                self.mpc_command.position = command_tensor[0][0:7].cpu().numpy()
+                self.mpc_command.velocity = command_tensor[0][7:14].cpu().numpy()
+                self.mpc_command.effort =  command_tensor[0][14:21].cpu().numpy()
 
-
+                # self.mpc_command.position = command['q_des'][0].cpu().numpy()
+                # self.mpc_command.velocity = command['qd_des'][0].cpu().numpy()
+                # self.mpc_command.effort =  command['qdd_des'][0].cpu().numpy()
                 self.command_pub.publish(self.mpc_command)
 
                 #update tstep

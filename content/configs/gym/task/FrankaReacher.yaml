@@ -70,7 +70,7 @@ rollout:
       threshold: 0.35
       bounds: [[-0.5, -0.8, 0.0],[0.5,0.8,1.0]]
       collision_spheres: 'robot/franka.yml'
-      self_collision_weights: 'robot_self/franka_panda_self_collision_weights.pt'
+      self_collision_weights: 'robot_self/franka_panda_self_collision_weights_2.pt'
       n_dofs: ${task.rollout.n_dofs} #check
 
     world_collision_params:

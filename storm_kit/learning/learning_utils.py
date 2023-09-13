@@ -27,11 +27,11 @@ def logmeanexp(x, dim):
 
 def dict_to_device(d, device):
     for k, v in d.items():
-        if isinstance(v, dict):
-            for k1, v1 in v.items():
-                d[k][k1] = d[k][k1].to(device)
-        else:
-            d[k] = d[k].to(device)
+    #     if isinstance(v, dict):
+    #         for k1, v1 in v.items():
+    #             d[k][k1] = d[k][k1].to(device)
+    #     else:
+        d[k] = d[k].to(device)
     return d
 
 class Log:

@@ -7,6 +7,7 @@ import time
 
 from torch.profiler import profile, record_function, ProfilerActivity
 from storm_kit.mpc.utils.state_filter import JointStateFilter
+from storm_kit.learning.learning_utils import dict_to_device
 
 class JointControlWrapper(nn.Module):
     def __init__(
@@ -53,11 +54,12 @@ class JointControlWrapper(nn.Module):
             action = action.squeeze(0)
         
         scaled_action = action
+
         if self.act_highs is not None:
             scaled_action = self.scale_action(action)
         
-        command = self.state_filter.predict_internal_state(scaled_action)
-        command_tensor = torch.cat([command['q_pos'], command['q_vel'], command['q_acc']], dim=-1)
+        command_dict = self.state_filter.predict_internal_state(scaled_action)
+        command_tensor = torch.cat([command_dict['q_pos'], command_dict['q_vel'], command_dict['q_acc']], dim=-1)
         self.prev_qdd_des = action.clone()
         
         return command_tensor, {'action': action, 'scaled_action': scaled_action}
@@ -70,9 +72,12 @@ class JointControlWrapper(nn.Module):
         return self.policy.entropy(input_dict, num_samples)
 
 
-    def update_goal(self, goal_dict):
-        self.goal_dict = goal_dict
-        self.policy.update_goal(goal_dict)
+    # def update_goal(self, goal_dict):
+    #     self.goal_dict = goal_dict
+    #     self.policy.update_goal(goal_dict)
+
+    def update_rollout_params(self, param_dict):
+        self.policy.update_rollout_params(param_dict)
 
     def reset(self, reset_data):
         self.prev_qdd_des = None
