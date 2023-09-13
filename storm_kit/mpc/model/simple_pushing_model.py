@@ -61,14 +61,14 @@ class SimplePushingModel(nn.Module):
         self._traj_tstep = torch.matmul(self._integrate_matrix, self._dt_h)
 
         #TODO: This hardcoding will be removed
-        self.robot_mass = 0.01
+        # self.robot_mass = 0.01
         self.object_mass = 0.005
         self.object_radius = 0.03
         self.robot_radius = 0.05 #0.01
 
         self.robot_mass_data = {
-            'mass': self.robot_mass,
-            'inv_mass': 1.0 / self.robot_mass
+            'mass': 0.0,
+            'inv_mass': 0.0
         }
 
         self.obj_mass_data = {
@@ -151,7 +151,7 @@ class SimplePushingModel(nn.Module):
     def rollout_open_loop(self, start_state_dict: Dict[str, torch.Tensor], act_seq: torch.Tensor) -> Dict[str, torch.Tensor]:
         inp_device = act_seq.device
         act_seq = act_seq.to(self.device)
-        
+    
         # add start state to prev state buffer:
         # if self.initial_step is None:
         #     # self.prev_state_buffer = torch.zeros((self.num_instances, 10, self.d_state), device=self.device, dtype=self.dtype)
@@ -182,15 +182,14 @@ class SimplePushingModel(nn.Module):
         ee_acc = ee_state_seq[:,:,:,4:6]
         tstep = ee_state_seq[:,:,:,-1]
 
-        object_state_seq[:,:,:, 0:2] = start_state_dict['object_pos']
-        object_state_seq[:,:,:, 2:4] = start_state_dict['object_vel']
+        object_state_seq[:,:,0, 0:2] = start_state_dict['object_pos'].unsqueeze(1)
+        object_state_seq[:,:,0, 2:4] = start_state_dict['object_vel'].unsqueeze(1)
 
         object_pos = object_state_seq[:,:,:, 0:2]
         object_vel = object_state_seq[:,:,:, 2:4]
 
-
         #run for loop to generate object states
-        for t in range(self.horizon):
+        for t in range(0, self.horizon-1):
             self.robot_sphere.set_pose(
                 CoordinateTransform(
                     trans=ee_pos[:,:,t])
@@ -204,16 +203,20 @@ class SimplePushingModel(nn.Module):
             normal = coll_data['normal']
 
             v_rel = object_vel[:,:,t] - ee_vel[:,:,t]
+            
+            
             v_rel_normal = torch.sum(v_rel * normal, dim=-1)
+
             # v_rel_normal_vec = v_rel_normal * normal
-            tangent = v_rel - v_rel_normal @ normal
+
+
+            tangent = v_rel -  normal * v_rel_normal.unsqueeze(-1)
             tangent_norm = torch.norm(tangent, dim=-1).unsqueeze(-1)
             tangent = torch.where(tangent_norm > 0, torch.div(tangent, tangent_norm), tangent)
             v_rel_tangent =  torch.sum(v_rel * tangent, dim=-1) 
-
-
+            
             #normal impulse
-            e = 0.1 #1.0 #1.0 #min(robot.material.restitution, obj.material.restitution)
+            e = 0.5 #1.0 #1.0 #min(robot.material.restitution, obj.material.restitution)
             normal_impulse_magn = - (1 + e) * v_rel_normal
             normal_impulse_magn /= (self.robot_mass_data['inv_mass'] + self.obj_mass_data['inv_mass'])
             normal_impulse = normal_impulse_magn.unsqueeze(-1) * normal
@@ -222,8 +225,8 @@ class SimplePushingModel(nn.Module):
             #note: could also take averae of the two mu's (actually that might be more interprettable)
             # mu_static = np.sqrt(bodyA.material.mu_static ** 2 + bodyB.material.mu_static ** 2)            
             # mu_dynamic = np.sqrt(bodyA.material.mu_dynamic ** 2 + bodyB.material.mu_dynamic ** 2)            
-            mu_static = 0.01
-            mu_dynamic = 0.01
+            mu_static = 0.2 #0.005
+            mu_dynamic = 0.1 #0.005
 
             friction_impulse_magn = - v_rel_tangent
             friction_impulse_magn /= (self.robot_mass_data['inv_mass'] + self.obj_mass_data['inv_mass'])
@@ -239,9 +242,35 @@ class SimplePushingModel(nn.Module):
             # robot.velocity -= normal_impulse * robot.mass_data['inv_mass']
             obj_vel_update = (normal_impulse + frictional_impulse) * self.obj_mass_data['inv_mass'] #
 
+            #frictional acceleration
+
+
             # self.robot_vel_buff[:,:,t,0:2] = self.robot_vel_buff[:,:,t, 0:2] * (1. - in_coll) + robot.velocity[:,:,0:2] * in_coll
-            object_vel[:,:,t,0:2] = object_vel[:,:,t,0:2]  + obj_vel_update * in_coll    #obj.velocity[:,:,0:2] * in_coll
-            object_pos[:,:,t, 0:2] = object_pos[:,:,t, 0:2] + object_vel[:,:,t, 0:2] * self._dt_h[t]
+            object_vel[:,:,t+1,0:2] = object_vel[:,:,t,0:2]  + obj_vel_update * in_coll    #obj.velocity[:,:,0:2] * in_coll
+            
+            # #calculate ground frictional impulse
+            # tangent = object_vel[:,:,t+1,0:2]
+            # tangent_norm = torch.norm(tangent, dim=-1).unsqueeze(-1)
+            # tangent = torch.where(tangent_norm > 0, torch.div(tangent, tangent_norm), tangent)
+            # v_rel_tangent = torch.sum(object_vel[:,:,t+1,0:2] * tangent, dim=-1)
+            
+            # mu_static = 1.0
+            # mu_dynamic = 0.05
+
+            # friction_impulse_magn = - v_rel_tangent
+            # friction_impulse_magn /= self.obj_mass_data['inv_mass']
+
+            # coloumb_condition = torch.abs(friction_impulse_magn) < mu_static * self.object_mass * 9.81
+            # ground_frictional_impulse = torch.where(
+            #     coloumb_condition.unsqueeze(-1), 
+            #     friction_impulse_magn.unsqueeze(-1) * tangent, 
+            #     -1.0 * mu_dynamic * self.object_mass * 9.81 * tangent)
+             
+            # # # #apply to body
+            # ground_obj_vel_update = ground_frictional_impulse * self.obj_mass_data['inv_mass']
+            # object_vel[:,:,t+1,0:2] += ground_obj_vel_update
+
+            object_pos[:,:,t+1, 0:2] = object_pos[:,:,t, 0:2] + object_vel[:,:,t+1, 0:2] * self._dt_h[t]
             # # self.object_vel_buff[:,:, t, 0] = self.object_vel_buff[:,:,t-1, 0] * (1. - in_coll) + self.robot_vel_buff[:,:,t, 0] * in_coll
             # # self.object_vel_buff[:,:, t, 1] = self.object_vel_buff[:,:,t-1, 1] * (1. - in_coll) + self.robot_vel_buff[:,:,t, 1] * in_coll
             # robot_pos_update = self.robot_pos_buff[:,:,t-1, 0:2] + self.robot_vel_buff[:,:,t, 0:2] * self.dt 
@@ -249,9 +278,6 @@ class SimplePushingModel(nn.Module):
             # self.robot_pos_buff[:,:,t, 0:2]  = self.robot_pos_buff[:,:,t, 0:2] * (1. - in_coll) + robot_pos_update * in_coll
             # self.object_pos_buff[:,:,t, 0:2] = self.object_pos_buff[:,:,t-1, 0:2] + self.object_vel_buff[:,:,t, 0:2] * self.dt 
 
-
-        # #check for first collision
-        # coll_data = sphere_sphere_collision(self.robot_sphere, self.object_sphere)
         
 
         state_dict = {self.robot_keys[0]: ee_pos.to(inp_device),
@@ -262,7 +288,6 @@ class SimplePushingModel(nn.Module):
                       'tstep': tstep.to(inp_device)}
 
         return state_dict
-
 
 
 

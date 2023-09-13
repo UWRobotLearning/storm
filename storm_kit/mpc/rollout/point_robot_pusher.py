@@ -20,7 +20,7 @@
 # LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
 # FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 # DEALINGS IN THE SOFTWARE.#
-from typing import Optional, Dict
+from typing import Optional, Dict, Tuple
 import torch
 from torch.profiler import record_function
 import time
@@ -71,10 +71,7 @@ class PointRobotPusher(RolloutBase):
             device = self.device
         )
 
-        
         #TODO: remove hard coding
-        self.robot_mass = 0.1
-        self.object_mass = 0.005
         self.object_radius = 0.02
         self.robot_radius = 0.03 #0.01
 
@@ -84,7 +81,8 @@ class PointRobotPusher(RolloutBase):
         self.workspace_dims[:,1] = table_dims / 2.0
         self.n_dofs = cfg['n_dofs']
         self.default_object_goal = torch.tensor([0.0, 0.0], device=self.device)
-        self.default_object_init_pos = torch.tensor([-table_dims[0]/2.0 +  0.5 + self.robot_radius + self.object_radius + 0.01, 0.0], device=self.device) #+0.5
+        # self.default_object_init_pos = torch.tensor([-table_dims[0]/2.0 + self.robot_radius + self.object_radius + 0.01, 0.0], device=self.device) #+0.5
+        self.default_object_init_pos = torch.tensor([0.0 + self.robot_radius + self.object_radius, 0.0], device=self.device) #+0.5
 
         self.init_buffers()
 
@@ -101,12 +99,20 @@ class PointRobotPusher(RolloutBase):
         )
 
         self.object_vel_cost = DistCost(
-            weight=1.0,
+            weight=0.0,
             vec_weight=[1.0, 1.0],
             device=self.device
         )
 
-        self.termination_cost_weight = 100.0 # 5000.0
+        self.robot_vel_cost = DistCost(
+            weight=0.0,
+            vec_weight=[1.0, 1.0],
+            device=self.device
+        )
+
+        # self.termination_cost_weight = 100.0 # 5000.0
+        self.goal_bonus_weight = 100.0
+        self.alive_bonus = 1.0 #1.0
 
         self.vis_initialized = False
 
@@ -128,17 +134,30 @@ class PointRobotPusher(RolloutBase):
         object_pos = state_dict['object_pos'][..., 0:2].view(self.num_instances, self.batch_size, self.horizon, 2)
         object_vel = state_dict['object_vel'][..., 0:2].view(self.num_instances, self.batch_size, self.horizon, 2)
         goal_object_pos = self.object_goal_buff.unsqueeze(1).unsqueeze(1).repeat(1, self.batch_size, self.horizon, 1)
+        start_object_pos = self.object_init_pos_buff.unsqueeze(1).unsqueeze(1).repeat(1, self.batch_size, self.horizon, 1)
         # goal_object_pos = goal_object_pos.view(self.num_instances * self.batch_size, self.horizon, 2)
         robot_pos = state_dict['q_pos'][..., 0:2].view(self.num_instances, self.batch_size, self.horizon, 2)
+        robot_vel = state_dict['q_vel'][..., 0:2].view(self.num_instances, self.batch_size, self.horizon, 2)
 
 
-        object_cost, dist = self.object_position_cost(object_pos - goal_object_pos)
+        # object_pos_cost_rel, dist = self.object_position_cost(
+        #     object_pos - goal_object_pos, 
+        #     norm_vec = start_object_pos - goal_object_pos)
+
+        object_pos_cost, dist = self.object_position_cost(
+            object_pos - goal_object_pos)
+
+
         cost_terms = {
-            'object_pos': object_cost,
+            # 'object_pos_rel': object_pos_cost_rel,
+            'object_pos': object_pos_cost,
             # 'object_robot_rel_pos': obj_robot_cost,
         }
 
-        
+        # in_goal_tolerance = dist <= 0.01
+        # goal_bonus = self.goal_bonus_weight * in_goal_tolerance
+        # cost_terms['goal_bonus'] = goal_bonus
+
         # obj_robot_cost, _ = self.object_robot_cost(robot_pos - object_pos)
         # cost_terms['object_robot_rel_pos'] = obj_robot_cost
         
@@ -146,30 +165,48 @@ class PointRobotPusher(RolloutBase):
         # obj_vel_cost[dist >= 0.01] = 0.0
         cost_terms['object_vel_cost'] = obj_vel_cost
 
-        cost = object_cost + obj_vel_cost #+ obj_robot_cost #+ obj_vel_cost
+        robot_vel_cost, _ = self.robot_vel_cost(robot_vel)
+        # robot_vel_cost[dist >= 0.01] = 0.0
+        cost_terms['robot_vel_cost'] = robot_vel_cost
+
+
+        # cost = object_pos_cost_rel + object_pos_cost_abs + obj_vel_cost + robot_vel_cost #+ obj_robot_cost
+        cost = object_pos_cost + obj_vel_cost + robot_vel_cost #- goal_bonus #+ obj_robot_cost
 
 
         if termination is not None:
-            termination_cost = self.termination_cost_weight * termination 
-            cost += termination_cost
-            cost_terms['termination'] = termination_cost
+            # termination_cost = self.termination_cost_weight * termination 
+            alive_bonus = 1.0 * self.alive_bonus * (1.0 - termination.float())
+            # cost += termination_cost
+            cost -= alive_bonus
+            # cost_terms['termination'] = termination_cost
+            cost_terms['alive_bonus'] = alive_bonus
 
 
         return cost, cost_terms, state_dict
 
     def compute_observations(self, 
                              state_dict: Dict[str,torch.Tensor]):
+
         object_goal_buff = self.object_goal_buff.clone()
+        object_start_buff = self.object_init_pos_buff.clone()
+
         if state_dict['q_pos'].ndim > 2:
             _, batch_size, horizon, _ = state_dict['q_pos'].shape
             object_goal_buff = self.object_goal_buff.unsqueeze(1).unsqueeze(1).repeat(1, batch_size, horizon, 1)
+            object_start_buff = self.object_init_pos_buff.unsqueeze(1).unsquueze(1).repeat(1, batch_size, horizon, 1)
 
+        object_pos = state_dict['object_pos']
+        object_vel = state_dict['object_vel']
+        robot_pos = state_dict['q_pos']
+        robot_vel = state_dict['q_vel']
 
         obs = torch.cat((
-            state_dict['q_pos'], state_dict['q_vel'],
-            state_dict['object_pos'], state_dict['object_vel'], 
-            object_goal_buff, object_goal_buff - state_dict['object_pos'],
-            state_dict['q_pos'] - state_dict['object_pos']), dim=-1)
+            robot_pos, robot_vel, object_pos, object_vel, 
+            object_goal_buff, object_goal_buff - object_pos,
+            # object_start_buff, object_start_buff - object_pos,
+            robot_pos - object_pos,
+            ), dim=-1)
 
         return obs, state_dict
 
@@ -200,10 +237,29 @@ class PointRobotPusher(RolloutBase):
                 'obs': obs,
                 'states': state_dict
             }
-            act_dict = {'actions': act_seq}
-            value_preds = self.value_function.forward(input_dict, act_dict)
+            value_preds = -1.0 * self.value_function.forward(input_dict, act_seq) #value function is trained to maximize rewards
 
         return value_preds, state_dict
+
+    def compute_metrics(self, episode_data: Dict[str, torch.Tensor]):
+        states = episode_data['state_dict']
+        object_pos = states['object_pos']
+        object_goal = episode_data['goal_dict']['object_goal']
+
+        errors = torch.norm(object_pos - object_goal, p=2, dim=-1)
+        init_error = errors[0]
+        last_n_errors = errors[-5:]
+        normalized_errors = last_n_errors / init_error
+        # normalized_errors = errors / init_error
+
+        normalized_error_sum = torch.sum(normalized_errors).item()
+        normalized_error_mean = torch.mean(normalized_errors).item()
+        normalized_error_std = torch.std(normalized_errors).item()
+
+        return {
+            'normalized_errors_sum': normalized_error_sum,
+            'mean_normalized_errors': normalized_error_mean, 
+            'std_normalized_errors': normalized_error_std}
 
 
     def rollout_fn(self, start_state, act_seq):
@@ -257,12 +313,15 @@ class PointRobotPusher(RolloutBase):
     #     in_coll =  r >= dist_squared
     #     return in_coll.float(), dist_squared 
 
-    def update_params(self, goal_dict):
+    def update_params(self, param_dict):
         """
         Updates the goal targets for the cost functions.
 
         """
-        self.object_goal_buff = goal_dict['object_goal']
+        if 'goal_dict' in param_dict:
+            self.object_goal_buff = param_dict['goal_dict']['object_goal']
+        if 'start_dict' in param_dict:
+            self.object_init_pos_buff = param_dict['start_dict']['object_start_pos']
             
     def reset(self):
         env_ids = torch.arange(self.num_instances, device=self.device)
@@ -279,18 +338,19 @@ class PointRobotPusher(RolloutBase):
         # self.object_goal_buff[env_ids, 0] += 0.2
         # self.object_goal_buff[env_ids, 1] += 0.2 * torch.rand(1, device=self.device) - 0.1
 
-        self.object_goal_buff[env_ids, 0] += 0.2 * torch.rand(1, device=self.device) - 0.1
-        self.object_goal_buff[env_ids, 1] += 0.2 * torch.rand(1, device=self.device) - 0.1
+        self.object_goal_buff[env_ids, 0] += 0.4 * torch.rand(1, device=self.device) - 0.2
+        self.object_goal_buff[env_ids, 1] += 0.4 * torch.rand(1, device=self.device) - 0.2
 
         #randomize object positions
         self.object_init_pos_buff[env_ids] = self.default_object_init_pos
-
 
         #randomize ball location
         reset_data = {}
         reset_data['goal_dict'] = {
             'object_goal': self.object_goal_buff}
-        reset_data['object_pos'] = self.object_init_pos_buff
+        reset_data['start_dict'] = {
+            'object_start_pos': self.object_init_pos_buff
+        }
         return reset_data
 
 
@@ -327,9 +387,7 @@ class PointRobotPusher(RolloutBase):
                 self.vis["world"]["robot"][str(h)].set_object(meshcat_g.Sphere(self.robot_radius), robot_material)
                 self.vis["world"]["object"][str(h)].set_object(meshcat_g.Sphere(self.object_radius), object_material)
                 self.vis["world"]["goal"][str(h)].set_object(meshcat_g.Sphere(self.object_radius), goal_material)
-
-
-
+    
     def visualize_rollouts(self, rollout_data):
         self.init_viewer()
             # self.fig.canvas.restore_region(self.bg)
@@ -367,6 +425,12 @@ class PointRobotPusher(RolloutBase):
     @property
     def action_dim(self)->int:
         return self.n_dofs
+
+    @property
+    def action_lims(self)->Tuple[torch.Tensor, torch.Tensor]:
+        act_highs = torch.tensor([self.cfg['model']['max_acc']] * self.action_dim,  device=self.device)
+        act_lows = torch.tensor([-1.0 * self.cfg['model']['max_acc']] * self.action_dim, device=self.device)
+        return act_lows, act_highs
 
 
     def __call__(self, start_state, act_seq):

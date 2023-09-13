@@ -284,6 +284,26 @@ def scale_to_base(data, norm_dict, key):
     return scaled_data
 
 
+def cat_dict_list(input_dict_list, idx):
+    #TODO: Handle the case where no idxs are provided
+    D = {}
+    d_0 = input_dict_list[0]
+    K = list(d_0.keys())
+
+    for k in K:
+        if isinstance(d_0[k], dict):
+            l = [d[k] for d in input_dict_list]
+            D[k] = cat_dict_list(l, idx)
+        
+        else:
+            if d_0[k].ndim > 1:
+                D[k] = torch.cat([d[k][idx].unsqueeze(0) for d in input_dict_list], dim=0)
+            else:
+                D[k] = torch.tensor([d[k][idx] for d in input_dict_list], device=d_0[k].device, dtype=d_0[k].dtype)
+    return D
+
+
+
 def episode_runner(
         envs,
         num_episodes: int, 
@@ -299,38 +319,42 @@ def episode_runner(
         total_steps_collected = 0
 
         reset_data = task.reset()
-
-
         policy.reset(reset_data)
-        # goal_dict = task.randomize_goals(
-        #     num_envs=envs.num_envs, 
-        #     randomization_mode='randomize_position')
-        # policy.update_goal(goal_dict)
-        # envs.update_goal(goal_dict)
-
         state_dict = envs.reset(reset_data)
+            
 
         obs, state_dict_full = task.compute_observations(state_dict=state_dict)
         obs = obs.view(envs.num_envs, obs_dim)
 
         curr_costs = torch.zeros(envs.num_envs, device=device)
         episode_lens = torch.zeros(envs.num_envs, device=device)
-        # done_episodes_reward_sum = 0.0 
         episode_cost_buffer = []
         avg_episode_cost = 0.0
+        episodes_terminated = 0
+
 
         episodes_done = 0
+        transition_dict_list = []
+        episode_metrics_list = []
+
         while episodes_done < num_episodes:
+            
             with torch.no_grad():
+
                 policy_input = {
                     'states': state_dict,
                     'obs': obs}
 
-                action_dict = policy.get_action(policy_input)
-                next_state_dict, done_env = envs.step(action_dict)
-                next_obs, next_state_dict_full = task.compute_observations(state_dict=next_state_dict)
-                done_task, _ = task.compute_termination(next_state_dict_full, action_dict)
-                cost, _, _ = task.compute_cost(state_dict=state_dict_full, action_batch=action_dict, termination=done_task)
+                command, policy_info = policy.get_action(policy_input)
+               
+                actions = policy_info['action']
+                if actions.ndim == 3:
+                    actions = actions.squeeze(0)
+
+                next_state_dict, done_env = envs.step(command)
+                next_obs, next_state_dict_full = task.compute_observations(next_state_dict)
+                done_task, _ = task.compute_termination(next_state_dict_full, actions)
+                cost, _, _ = task.compute_cost(state_dict=state_dict_full, action_batch=actions, termination=done_task)
 
                 next_obs = next_obs.view(envs.num_envs, obs_dim)
                 done_task = done_task.view(envs.num_envs,)
@@ -343,19 +367,34 @@ def episode_runner(
             #remove timeout from done
             timeout = episode_lens == envs.max_episode_length - 1
             done_without_timeouts = done * (1-timeout.float())
+
+            # if update_buffer:
+            #     experience_dict = {}
+            #     experience_dict['state_dict'] = state_dict
+            #     experience_dict['next_state_dict'] = next_state_dict
+            #     experience_dict['goal_dict'] = reset_data['goal_dict']
+            #     experience_dict['actions'] = actions
+            #     experience_dict['obs'] = obs
+            #     experience_dict['next_obs'] = next_obs
+            #     experience_dict['cost'] = cost
+            #     experience_dict['done'] = done_without_timeouts
+            #     experience_dict['timeout'] = timeout
+            #     buffer.add(experience_dict)
+            transition_dict = {}
+            transition_dict['state_dict'] = state_dict
+            transition_dict['next_state_dict'] = next_state_dict
+            transition_dict['goal_dict'] = reset_data['goal_dict']
+            transition_dict['actions'] = actions
+            transition_dict['obs'] = obs
+            transition_dict['next_obs'] = next_obs
+            transition_dict['cost'] = cost
+            transition_dict['done'] = done_without_timeouts
+            transition_dict['timeout'] = timeout
             
-            if update_buffer:
-                experience_dict = {}
-                experience_dict['state_dict'] = state_dict
-                experience_dict['next_state_dict'] = next_state_dict
-                experience_dict['goal_dict'] = reset_data['goal_dict']
-                experience_dict['action_dict'] = action_dict
-                experience_dict['obs'] = obs
-                experience_dict['next_obs'] = next_obs
-                experience_dict['cost'] = cost
-                experience_dict['done'] = done_without_timeouts
-                experience_dict['timeout'] = timeout
-                buffer.add(experience_dict)
+            transition_dict_list.append(transition_dict)
+            
+            # if update_buffer:
+            #     buffer.add(transition_dict)
 
             state_dict = copy.deepcopy(next_state_dict)
             obs = next_obs.clone()
@@ -365,24 +404,36 @@ def episode_runner(
             done_episode_costs = curr_costs[done_indices]
 
             if len(done_indices) > 0:
+                #Add done episode to buffer
+                for idx in done_indices:
+                    episode_dict = cat_dict_list(transition_dict_list, idx)
+
+                    if update_buffer:
+                        buffer.add(episode_dict)
+                    
+                    #compute episode metrics
+                    episode_metrics_list.append(task.compute_metrics(episode_dict))
+                                    
+                #Reset everything
                 reset_data = task.reset_idx(done_indices)
                 state_dict = envs.reset_idx(done_indices, reset_data)
+                transition_dict_list = [] #TODO: This also needs to be reset for specific instances
                 #TODO: policy should be reset only for the required instances
                 #especially this is true for MPC policies
                 policy.reset(reset_data)
-                # policy.update_goal(goal_dict)
-                # envs.update_goal(goal_dict)
                 obs, state_dict_full = task.compute_observations(state_dict=state_dict)
-
-            # self.done_episodes_reward_sum += torch.sum(done_episode_costs).item()
+                
             curr_num_eps_dones = torch.sum(done).item()
             if curr_num_eps_dones > 0:
                 for i in range(curr_num_eps_dones):
                     episode_cost_buffer.append(done_episode_costs[i].item())
                     # if len(episode_reward_buffer) > 10:
                     #     episode_reward_buffer.pop(0)
+            curr_num_eps_terminated = torch.sum(done_without_timeouts).item()
+
 
             episodes_done += curr_num_eps_dones
+            episodes_terminated += curr_num_eps_terminated
             curr_num_steps = cost.shape[0]
             total_steps_collected += curr_num_steps
 
@@ -390,19 +441,20 @@ def episode_runner(
             curr_costs = curr_costs * not_done
             episode_lens = episode_lens * not_done
 
-            # state_dict = copy.deepcopy(next_state_dict)
-            # obs = next_obs.clone()
-
         if len(episode_cost_buffer) > 0:
             avg_episode_cost = np.average(episode_cost_buffer).item()
         
         metrics = {
             'num_steps_collected': total_steps_collected,
             'buffer_size': len(buffer),
-            # 'episode_reward_running_sum':self.done_episodes_reward_sum,
             'num_eps_completed': episodes_done,
+            'num_eps_terminated': episodes_terminated,
             'avg_episode_cost': avg_episode_cost,
-            # 'curr_steps_reward': self.curr_rewards.mean().item()
             }
-            
+        
+        episode_metrics_keys = episode_metrics_list[0].keys()
+        for k in episode_metrics_keys:
+            avg_val = np.average([m[k] for m in episode_metrics_list]).item()
+            metrics[k] = avg_val
+
         return buffer, metrics

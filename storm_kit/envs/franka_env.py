@@ -67,7 +67,7 @@ class FrankaEnv(): #VecTask
         self.aggregate_mode = self.cfg["env"]["aggregateMode"]
         self.control_space = self.cfg["env"]["controlSpace"]
         self.num_environments = self.cfg["env"]["num_envs"]
-        # self.num_objects = self.cfg["env"]["num_objects"]
+        self.num_objects = self.cfg["env"]["num_objects"]
         self.debug_viz = self.cfg["env"]["enableDebugVis"]
         self.up_axis = "z"
         self.up_axis_idx = 2
@@ -218,34 +218,42 @@ class FrankaEnv(): #VecTask
         lower = gymapi.Vec3(-spacing, -spacing, 0.0)
         upper = gymapi.Vec3(spacing, spacing, spacing)
 
-        franka_asset, franka_dof_props = self.load_franka_asset()
+        robot_asset, robot_dof_props = self.load_robot_asset()
         table_asset, table_dims, table_color = self.load_table_asset()
+        self.num_object_bodies = 0
+        if self.num_objects > 0:
+            object_assets = []
+            for _ in range(self.num_objects):
+                object_asset, object_color = self.load_object_asset(disable_gravity=False)
+                self.num_object_bodies += self.gym.get_asset_rigid_body_count(object_asset)
+                object_assets.append(object_asset)
+
 
         # temp = self.world_model["coll_objs"]["cube"]["table"]["pose"]
         table_pose_world = gymapi.Transform()
         table_pose_world.p = gymapi.Vec3(0, 0, 0 + table_dims.z)
         table_pose_world.r = gymapi.Quat(0., 0., 0., 1.)
-        franka_start_pose_table = gymapi.Transform()
-        franka_start_pose_table.p = gymapi.Vec3(-table_dims.x/2.0 + 0.2, 0.0, table_dims.z/2.0)
-        franka_start_pose_table.r = gymapi.Quat(0.0, 0.0, 0.0, 1.0)
+        robot_start_pose_table = gymapi.Transform()
+        robot_start_pose_table.p = gymapi.Vec3(-table_dims.x/2.0 + 0.2, 0.0, table_dims.z/2.0)
+        robot_start_pose_table.r = gymapi.Quat(0.0, 0.0, 0.0, 1.0)
 
-        self.franka_pose_world =  table_pose_world * franka_start_pose_table #convert from franka to world frame
+        self.robot_pose_world =  table_pose_world * robot_start_pose_table #convert from franka to world frame
         
         trans = torch.tensor([
-            self.franka_pose_world.p.x,
-            self.franka_pose_world.p.y,
-            self.franka_pose_world.p.z,
+            self.robot_pose_world.p.x,
+            self.robot_pose_world.p.y,
+            self.robot_pose_world.p.z,
         ], device=self.rl_device).unsqueeze(0)
         quat = torch.tensor([
-            self.franka_pose_world.r.w,
-            self.franka_pose_world.r.x,
-            self.franka_pose_world.r.y,
-            self.franka_pose_world.r.z,
+            self.robot_pose_world.r.w,
+            self.robot_pose_world.r.x,
+            self.robot_pose_world.r.y,
+            self.robot_pose_world.r.z,
         ], device=self.rl_device).unsqueeze(0)
         rot = quaternion_to_matrix(quat)
 
         temp = CoordinateTransform(rot = rot, trans=trans)
-        self.world_pose_franka = temp.inverse() #convert from world frame to franka
+        self.world_pose_robot = temp.inverse() #convert from world frame to franka
 
         # self.franka_pose_world = gymapi.Transform()
         # self.franka_pose_world.p = gymapi.Vec3(0.0, 0.0, 0.0)
@@ -254,14 +262,16 @@ class FrankaEnv(): #VecTask
         # self.world_pose_franka = self.franka_pose_world.inverse() 
 
         # compute aggregate size
-        max_agg_bodies = self.num_franka_bodies + 1 # #+ self.num_props * num_prop_bodies
-        max_agg_shapes = self.num_franka_shapes + 1 #+ num_target_shapes #+ self.num_props * num_prop_shapes
+        max_agg_bodies = self.num_robot_bodies + 1 + self.num_object_bodies # #+ self.num_props * num_prop_bodies
+        max_agg_shapes = self.num_robot_shapes + 1 + self.num_object_bodies #+ num_target_shapes #+ self.num_props * num_prop_shapes
 
         # self.tables = []
-        self.frankas = []
+        self.robots = []
         self.envs = []
+        self.objects = []
 
         for i in range(self.num_envs):
+            env_objects = []
             # create env instance
             env_ptr = self.gym.create_env(
                 self.sim, lower, upper, num_per_row
@@ -269,8 +279,8 @@ class FrankaEnv(): #VecTask
 
             if self.aggregate_mode >= 3:
                 self.gym.begin_aggregate(env_ptr, max_agg_bodies, max_agg_shapes, True)
-            franka_actor = self.gym.create_actor(env_ptr, franka_asset, self.franka_pose_world, "franka", i, 1, 0)
-            self.gym.set_actor_dof_properties(env_ptr, franka_actor, franka_dof_props)
+            robot_actor = self.gym.create_actor(env_ptr, robot_asset, self.robot_pose_world, "robot", i, 1, 0)
+            self.gym.set_actor_dof_properties(env_ptr, robot_actor, robot_dof_props)
             if self.aggregate_mode == 2:
                 self.gym.begin_aggregate(env_ptr, max_agg_bodies, max_agg_shapes, True)            
             table_actor = self.gym.create_actor(env_ptr, table_asset, table_pose_world, "table", i, 1, 0)
@@ -278,52 +288,60 @@ class FrankaEnv(): #VecTask
 
             if self.aggregate_mode == 1:
                 self.gym.begin_aggregate(env_ptr, max_agg_bodies, max_agg_shapes, True)
-    
+
+            if self.num_objects > 0:
+                for i, object_asset in enumerate(object_assets):
+                    object_actor = self.gym.create_actor(env_ptr, object_asset, self.ball_start_pose_world, "ball_{}".format(i), i, 0, 0)
+                    self.gym.set_rigid_body_color(env_ptr, object_actor, 0, gymapi.MESH_VISUAL_AND_COLLISION, object_color)
+                    body_props = self.gym.get_actor_rigid_body_properties(env_ptr, object_actor)
+                    for b in range(len(body_props)):
+                        body_props[b].flags = gymapi.RIGID_BODY_NONE
+                    self.gym.set_actor_rigid_body_properties(env_ptr, object_actor, body_props)
+                    env_objects.append(object_actor)
+
             if self.aggregate_mode > 0:
                 self.gym.end_aggregate(env_ptr)
 
             self.envs.append(env_ptr)
-            self.frankas.append(franka_actor)
+            self.robots.append(robot_actor)
+            self.objects.append(env_objects)
         
         self.init_data()
     
     def init_data(self):
         
-        self.ee_handle = self.gym.find_actor_rigid_body_handle(self.envs[0], self.frankas[0], "ee_link")
+        self.ee_handle = self.gym.find_actor_rigid_body_handle(self.envs[0], self.robots[0], "ee_link")
 
         #  get gym GPU state tensors
         actor_root_state_tensor = self.gym.acquire_actor_root_state_tensor(self.sim)
         dof_state_tensor = self.gym.acquire_dof_state_tensor(self.sim)
         rigid_body_tensor = self.gym.acquire_rigid_body_state_tensor(self.sim)
-        jacobian_tensor = self.gym.acquire_jacobian_tensor(self.sim, "franka")
+        jacobian_tensor = self.gym.acquire_jacobian_tensor(self.sim, "robot")
+        mass_tensor = self.gym.acquire_mass_matrix_tensor(self.sim, "robot")
+
 
         self.root_state = gymtorch.wrap_tensor(actor_root_state_tensor).view(self.num_envs, -1, 13)
         self.dof_state = gymtorch.wrap_tensor(dof_state_tensor).view(self.num_envs, -1, 2)
         self.rigid_body_states = gymtorch.wrap_tensor(rigid_body_tensor).view(self.num_envs, -1, 13)
-        self.franka_jacobian = gymtorch.wrap_tensor(jacobian_tensor)
-
-
-        # self.gym.refresh_actor_root_state_tensor(self.sim)
-        # self.gym.refresh_dof_state_tensor(self.sim)
-        # self.gym.refresh_rigid_body_state_tensor(self.sim)
-        # self.gym.refresh_jacobian_tensors(self.sim)
+        self.robot_jacobian = gymtorch.wrap_tensor(jacobian_tensor)
+        self.robot_mass = gymtorch.wrap_tensor(mass_tensor)
 
         # create some wrapper tensors for different slices
         # self.franka_default_dof_pos = to_torch([1.157, -1.066, -0.155, -2.239, -1.841, 1.003, 0.469], device=self.device)
-        self.franka_default_dof_pos = to_torch([0.0, -0.7853, 0.0, -2.3561, 0.0, 1.5707, 0.7853], device=self.device)
+        self.robot_default_dof_pos = to_torch([0.0, -0.7853, 0.0, -2.3561, 0.0, 1.5707, 0.7853], device=self.device)
 
-        self.franka_dof_state = self.dof_state[:, :self.num_franka_dofs]
-        self.franka_dof_pos = self.franka_dof_state[..., 0]
-        self.franka_dof_vel = self.franka_dof_state[..., 1]
-        self.franka_dof_acc = torch.zeros_like(self.franka_dof_vel)
+        self.robot_dof_state = self.dof_state[:, :self.num_robot_dofs]
+        self.robot_dof_pos = self.robot_dof_state[..., 0]
+        self.robot_dof_vel = self.robot_dof_state[..., 1]
+        self.robot_dof_acc = torch.zeros_like(self.robot_dof_vel)
         self.tstep = torch.ones(self.num_envs, 1, device=self.device)
 
         #TODO: Figure out if 13 is right
         self.num_bodies = self.rigid_body_states.shape[1]
         self.target_poses = None
 
-        self.num_dofs = self.gym.get_sim_dof_count(self.sim) // self.num_envs
-        self.franka_dof_targets = torch.zeros((self.num_envs, self.num_dofs), dtype=torch.float, device=self.device) 
+        # self._num_dofs = self.gym.get_sim_dof_count(self.sim) // self.num_envs
+        self.robot_dof_targets = torch.zeros((self.num_envs, self.num_dofs), dtype=torch.float, device=self.device) 
 
         # self.global_indices = torch.arange(self.num_envs * 3, dtype=torch.int32, device=self.device).view(self.num_envs, -1)
         self.global_indices = torch.arange(self.num_envs * 1, dtype=torch.int32, device=self.device).view(self.num_envs, -1)
@@ -348,17 +366,16 @@ class FrankaEnv(): #VecTask
         #     obj_body_ptr = self.gym.get_actor_rigid_body_handle(env_ptr, obj_ptr, 0)
         #     self.gym.set_rigid_transform(env_ptr, obj_body_ptr, copy.deepcopy(ee_pose))
 
-    def load_franka_asset(self):
+    def load_robot_asset(self):
         asset_root = os.path.join(os.path.dirname(os.path.abspath(__file__)), "../../content/assets")
-        franka_asset_file = "urdf/franka_description/franka_panda_no_gripper.urdf"
-        # target_asset_file = "urdf/mug/movable_mug.urdf"
+        robot_asset_file = "urdf/franka_description/franka_panda_no_gripper.urdf"
 
         if "asset" in self.cfg["env"]:
             asset_root = os.path.join(os.path.dirname(os.path.abspath(__file__)), self.cfg["env"]["asset"].get("assetRoot", asset_root))
-            franka_asset_file = self.cfg["env"]["asset"].get("assetFileNameFranka", franka_asset_file)
+            robot_asset_file = self.cfg["env"]["asset"].get("assetFileNameFranka", robot_asset_file)
             # target_asset_file = self.cfg["env"]["asset"].get("assetFileNameTarget", target_asset_file)
         
-        # self.robot_model = DifferentiableRobotModel(os.path.join(asset_root, franka_asset_file), None, device=self.device) #, dtype=self.dtype)
+        # self.robot_model = DifferentiableRobotModel(os.path.join(asset_root, robot_asset_file), None, device=self.device) #, dtype=self.dtype)
 
         # load franka asset
         asset_options = gymapi.AssetOptions()
@@ -369,38 +386,38 @@ class FrankaEnv(): #VecTask
         asset_options.thickness = 0.001
         asset_options.default_dof_drive_mode = gymapi.DOF_MODE_POS
         asset_options.use_mesh_materials = True
-        franka_asset = self.gym.load_asset(self.sim, asset_root, franka_asset_file, asset_options)
+        robot_asset = self.gym.load_asset(self.sim, asset_root, robot_asset_file, asset_options)
 
-        franka_dof_stiffness = to_torch([400, 400, 400, 400, 400, 400, 400, 1.0e6, 1.0e6], dtype=torch.float, device=self.device)
-        franka_dof_damping = to_torch([40, 40, 40, 40, 40, 40, 40, 1.0e2, 1.0e2], dtype=torch.float, device=self.device)
+        robot_dof_stiffness = to_torch([400, 400, 400, 400, 400, 400, 400, 1.0e6, 1.0e6], dtype=torch.float, device=self.device)
+        robot_dof_damping = to_torch([40, 40, 40, 40, 40, 40, 40, 1.0e2, 1.0e2], dtype=torch.float, device=self.device)
 
-        self.num_franka_bodies = self.gym.get_asset_rigid_body_count(franka_asset)
-        self.num_franka_dofs = self.gym.get_asset_dof_count(franka_asset)
-        self.num_franka_shapes = self.gym.get_asset_rigid_shape_count(franka_asset)
+        self.num_robot_bodies = self.gym.get_asset_rigid_body_count(robot_asset)
+        self.num_robot_dofs = self.gym.get_asset_dof_count(robot_asset)
+        self.num_robot_shapes = self.gym.get_asset_rigid_shape_count(robot_asset)
 
         # self.num_target_bodies = self.gym.get_asset_rigid_body_count(target_asset)
         # self.num_target_dofs = self.gym.get_asset_dof_count(target_asset)
 
-        print("num franka bodies: ", self.num_franka_bodies)
-        print("num franka dofs: ", self.num_franka_dofs)
+        print("num robot bodies: ", self.num_robot_bodies)
+        print("num robot dofs: ", self.num_robot_dofs)
         # print("num target bodies:", self.num_target_bodies)
         # print("num target dofs:", self.num_target_dofs)
 
-        # set franka dof properties
-        franka_dof_props = self.gym.get_asset_dof_properties(franka_asset)
-        self.franka_dof_lower_limits = []
-        self.franka_dof_upper_limits = []
-        for i in range(self.num_franka_dofs):
-            franka_dof_props['driveMode'][i] = gymapi.DOF_MODE_POS
+        # set robot dof properties
+        robot_dof_props = self.gym.get_asset_dof_properties(robot_asset)
+        self.robot_dof_lower_limits = []
+        self.robot_dof_upper_limits = []
+        for i in range(self.num_robot_dofs):
+            robot_dof_props['driveMode'][i] = gymapi.DOF_MODE_POS
             if self.physics_engine == gymapi.SIM_PHYSX:
-                franka_dof_props['stiffness'][i] = franka_dof_stiffness[i]
-                franka_dof_props['damping'][i] = franka_dof_damping[i]
+                robot_dof_props['stiffness'][i] = robot_dof_stiffness[i]
+                robot_dof_props['damping'][i] = robot_dof_damping[i]
             else:
-                franka_dof_props['stiffness'][i] = 7000.0
-                franka_dof_props['damping'][i] = 50.0
+                robot_dof_props['stiffness'][i] = 7000.0
+                robot_dof_props['damping'][i] = 50.0
 
-            self.franka_dof_lower_limits.append(franka_dof_props['lower'][i])
-            self.franka_dof_upper_limits.append(franka_dof_props['upper'][i])
+            self.robot_dof_lower_limits.append(robot_dof_props['lower'][i])
+            self.robot_dof_upper_limits.append(robot_dof_props['upper'][i])
         
         # set target object dof properties
         # target_dof_props = self.gym.get_asset_dof_properties(target_asset)
@@ -409,11 +426,11 @@ class FrankaEnv(): #VecTask
         #     target_dof_props['stiffness'][i] = 1000000.0
         #     target_dof_props['damping'][i] = 500.0
   
-        self.franka_dof_lower_limits = to_torch(self.franka_dof_lower_limits, device=self.device)
-        self.franka_dof_upper_limits = to_torch(self.franka_dof_upper_limits, device=self.device)
-        self.franka_dof_speed_scales = torch.ones_like(self.franka_dof_lower_limits)
+        self.robot_dof_lower_limits = to_torch(self.robot_dof_lower_limits, device=self.device)
+        self.robot_dof_upper_limits = to_torch(self.robot_dof_upper_limits, device=self.device)
+        self.robot_dof_speed_scales = torch.ones_like(self.robot_dof_lower_limits)
 
-        return franka_asset, franka_dof_props
+        return robot_asset, robot_dof_props
 
 
     def load_table_asset(self):
@@ -428,6 +445,7 @@ class FrankaEnv(): #VecTask
                                           table_asset_options)
         table_color = gymapi.Vec3(0.6, 0.6, 0.6)
         return table_asset, table_dims, table_color
+
 
     def load_object_asset(self, disable_gravity=False):
         asset_root = os.path.join(os.path.dirname(os.path.abspath(__file__)), "../../content/assets")
@@ -451,47 +469,45 @@ class FrankaEnv(): #VecTask
         print("num object bodies: ", self.num_object_bodies)
         object_color = gymapi.Vec3(0.0, 0.0, 1.0)
 
-        return object_asset, object_color 
+        return object_asset, object_color    
 
+    def pre_physics_step(self, actions: torch.Tensor):
 
-    def world_to_franka(self, transform_world):
-        transform_franka = self.world_pose_franka * transform_world
-        return transform_franka
-
-    def franka_to_world(self, transform_franka):
-        transform_world = self.franka_pose_world * transform_franka
-        return transform_world
-
-    def pre_physics_step(self, action_dict: Dict[str, torch.Tensor]):
         # implement pre-physics simulation code here
         #    - e.g. apply actions
 
+        q_pos_des = actions[:, :self.num_robot_dofs].clone().to(self.device)
+        q_vel_des = actions[:, self.num_robot_dofs:2*self.num_robot_dofs].clone().to(self.device)
+        q_acc_des = actions[:, 2*self.num_robot_dofs:3*self.num_robot_dofs].clone().to(self.device)
+
+
         if self.control_space == "pos":
-            actions = action_dict['q_pos_des'].clone().to(self.device)
-            targets = actions
+            # actions = action_dict['q_pos'].clone().to(self.device)
+            targets = q_pos_des
         elif self.control_space == "vel":
-            actions = action_dict['q_vel_des'] if 'q_vel_des' in action_dict else action_dict['raw_action']
-            actions = actions.clone().to(self.device)
-            targets = self.franka_dof_targets[:, :self.num_franka_dofs] + \
-                  self.franka_dof_speed_scales * self.dt * actions * self.action_scale
+            # actions = action_dict['q_vel']
+            # actions = actions.clone().to(self.device)
+            targets = self.robot_dof_targets[:, :self.num_robot_dofs] + \
+                  self.robot_dof_speed_scales * self.dt * q_vel_des * self.action_scale
 
         elif self.control_space == "vel_2":
-            actions = action_dict['q_vel_des'].clone().to(self.device)
-            targets = self.franka_dof_pos + \
-                self.franka_dof_speed_scales * self.dt * actions * self.action_scale
+            # actions = action_dict['q_vel'].clone().to(self.device)
+            targets = self.robot_dof_pos + \
+                self.robot_dof_speed_scales * self.dt * q_vel_des * self.action_scale
 
         elif self.control_space == "acc":
             raise NotImplementedError
     
-        # targets = actions #self.franka_dof_targets[:, :self.num_franka_dofs] + self.franka_dof_speed_scales * self.dt * self.actions * self.action_scale
-        self.franka_dof_targets[:, :self.num_franka_dofs] = tensor_clamp(
-            targets, self.franka_dof_lower_limits, self.franka_dof_upper_limits)
+        # targets = actions #self.robot_dof_targets[:, :self.num_robot_dofs] + self.robot_dof_speed_scales * self.dt * self.actions * self.action_scale
+        self.robot_dof_targets[:, :self.num_robot_dofs] = tensor_clamp(
+            targets, self.robot_dof_lower_limits, self.robot_dof_upper_limits)
         # env_ids_int32 = torch.arange(self.num_envs, dtype=torch.int32, device=self.device)        
-        self.gym.set_dof_position_target_tensor(self.sim,
-                                                gymtorch.unwrap_tensor(self.franka_dof_targets))
+        self.gym.set_dof_position_target_tensor(
+            self.sim, gymtorch.unwrap_tensor(self.robot_dof_targets))
 
 
-    def step(self, actions: Dict[str, torch.Tensor]): # -> Tuple[Dict[str, torch.Tensor], torch.Tensor, torch.Tensor, Dict[str, Any]]:
+    # def step(self, actions: Dict[str, torch.Tensor]): # -> Tuple[Dict[str, torch.Tensor], torch.Tensor, torch.Tensor, Dict[str, Any]]:
+    def step(self, actions: torch.Tensor): # -> Tuple[Dict[str, torch.Tensor], torch.Tensor, torch.Tensor, Dict[str, Any]]:
 
         """Step the physics of the environment.
 
@@ -575,8 +591,8 @@ class FrankaEnv(): #VecTask
                 target_rot = self.target_poses[i, 3:7]
                 target_pos = gymapi.Vec3(x=target_pos[0], y=target_pos[1], z=target_pos[2]) 
                 target_rot = gymapi.Quat(x=target_rot[1],y=target_rot[2], z=target_rot[3], w=target_rot[0])
-                target_pose_franka = gymapi.Transform(p=target_pos, r=target_rot)
-                target_pose_world = self.franka_pose_world * target_pose_franka
+                target_pose_robot = gymapi.Transform(p=target_pos, r=target_rot)
+                target_pose_world = self.robot_pose_world * target_pose_robot
                 gymutil.draw_lines(axes_geom, self.gym, self.viewer, self.envs[i], target_pose_world)
                 gymutil.draw_lines(sphere_geom, self.gym, self.viewer, self.envs[i], target_pose_world)
                 # #plot ee axes
@@ -597,9 +613,9 @@ class FrankaEnv(): #VecTask
 
     def get_state_dict(self):
         self._refresh()
-        self.robot_q_pos_buff[:] = self.franka_dof_pos
-        self.robot_q_vel_buff[:] = self.franka_dof_vel
-        self.robot_q_acc_buff[:] = self.franka_dof_acc
+        self.robot_q_pos_buff[:] = self.robot_dof_pos
+        self.robot_q_vel_buff[:] = self.robot_dof_vel
+        self.robot_q_acc_buff[:] = self.robot_dof_acc
         tstep = self.gym.get_sim_time(self.sim)
         tstep *= self.tstep
 
@@ -612,51 +628,43 @@ class FrankaEnv(): #VecTask
         }
         return state_dict
     
-    def reset_idx(self, env_ids):
+    def reset_idx(self, env_ids, reset_data=None):
 
         env_ids_int32 = env_ids.to(dtype=torch.int32)
         # reset franka
         # pos = tensor_clamp(
         #     self.franka_default_dof_pos.unsqueeze(0) + 0.25 * (torch.rand((len(env_ids), self.num_franka_dofs), device=self.device) - 0.5),
         #     self.franka_dof_lower_limits, self.franka_dof_upper_limits)
-        pos = self.franka_default_dof_pos.unsqueeze(0)
-        self.franka_dof_pos[env_ids, :] = pos
-        self.franka_dof_vel[env_ids, :] = torch.zeros_like(self.franka_dof_vel[env_ids])
-        self.franka_dof_targets[env_ids, :self.num_franka_dofs] = pos
+        pos = self.robot_default_dof_pos.unsqueeze(0)
+        self.robot_dof_pos[env_ids, :] = pos
+        self.robot_dof_vel[env_ids, :] = torch.zeros_like(self.robot_dof_vel[env_ids])
+        self.robot_dof_targets[env_ids, :self.num_robot_dofs] = pos
 
         # multi_env_ids_int32 = self.global_indices[env_ids, 1:3].flatten()
         multi_env_ids_int32 = self.global_indices[env_ids, 0].flatten()
         self.gym.set_dof_position_target_tensor_indexed(self.sim,
-                                                        gymtorch.unwrap_tensor(self.franka_dof_targets),
+                                                        gymtorch.unwrap_tensor(self.robot_dof_targets),
                                                         gymtorch.unwrap_tensor(multi_env_ids_int32), len(multi_env_ids_int32))
 
         self.gym.set_dof_state_tensor_indexed(self.sim,
                                               gymtorch.unwrap_tensor(self.dof_state),
                                               gymtorch.unwrap_tensor(multi_env_ids_int32), len(multi_env_ids_int32))         
 
-        # self.target_poses[env_ids, 0:3] = 0.2 + (0.6 - 0.2) * torch.rand(
-        #      size=(env_ids.shape[0], 3), device=self.rl_device, dtype=torch.float)
         self.progress_buf[env_ids] = 0
         self.reset_buf[env_ids] = 0 
+
+        if reset_data is not None:
+            if 'goal_dict' in reset_data:
+                self.update_goal(reset_data['goal_dict'])
 
         state_dict = self.get_state_dict()
         return state_dict 
 
 
-    def reset(self):
-        self.reset_idx(torch.arange(self.num_envs, device=self.device))
-        # self.compute_observations()
+    def reset(self, reset_data=None):
+        self.reset_idx(torch.arange(self.num_envs, device=self.device), reset_data=reset_data)
         state_dict = self.get_state_dict()
-
-        # self.obs_dict["obs"] = torch.clamp(self.obs_buf, -self.clip_obs, self.clip_obs).to(self.rl_device)
-
-        # asymmetric actor-critic
-        # if self.num_states > 0:
-        #     self.obs_dict["states"] = self.get_state()
-        # self.obs_dict["goal"] = self.get_goal()
-
-        return state_dict #self.obs_dict
-
+        return state_dict
 
     def render(self, mode="rgb_array"):
         """Draw the frame to the viewer, and check for keyboard events."""
@@ -781,5 +789,6 @@ class FrankaEnv(): #VecTask
     #     return self.num_actions
 
     @property
-    def num_robot_dofs(self):
-        return self.num_franka_dofs
+    def num_dofs(self):
+        return self.num_robot_dofs
+

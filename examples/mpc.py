@@ -9,9 +9,9 @@ import torch
 torch.manual_seed(0)
 from torch.profiler import profile, record_function, ProfilerActivity
 import time
-from storm_kit.learning.policies import MPCPolicy
+from storm_kit.learning.policies import MPCPolicy, JointControlWrapper
 from storm_kit.learning.agents import MPCAgent
-from storm_kit.learning.replay_buffers import ReplayBuffer, RobotBuffer
+from storm_kit.learning.replay_buffers import RobotBuffer
 from storm_kit.learning.learning_utils import episode_runner
 
 def get_env_and_task(cfg):
@@ -73,6 +73,7 @@ def main(cfg: DictConfig):
 
     buffer = RobotBuffer(capacity=int(1e6), device=cfg.rl_device)   
     policy = MPCPolicy(obs_dim=obs_dim, act_dim=act_dim, config=cfg.task.mpc, rollout_cls=task_cls, device=cfg.rl_device)
+    policy = JointControlWrapper(config=cfg.task.mpc, policy=policy, device=cfg.rl_device)
     agent = MPCAgent(cfg.task.train.agent, envs=envs, task=task, obs_dim=obs_dim, action_dim=act_dim, 
                      buffer=buffer, policy=policy, runner_fn=episode_runner, device=cfg.rl_device)
     st=time.time()

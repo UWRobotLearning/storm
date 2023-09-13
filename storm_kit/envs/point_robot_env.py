@@ -163,6 +163,9 @@ class PointRobotEnv():
 
         self.target_buf = torch.zeros(
             self.num_envs, 3, device=self.device)
+        self.start_buf = torch.zeros(
+            self.num_envs, 3, device=self.device)
+
         self.reset_buf = torch.ones(
             self.num_envs, device=self.device, dtype=torch.long)
         self.timeout_buf = torch.zeros(
@@ -210,13 +213,16 @@ class PointRobotEnv():
         table_pose_world.p = gymapi.Vec3(0, 0, 0 + table_dims.z)
         table_pose_world.r = gymapi.Quat(0., 0., 0., 1.)
         robot_start_pose_table = gymapi.Transform()
-        robot_start_pose_table.p = gymapi.Vec3(-table_dims.x/2.0 + 0.3, 0.0, table_dims.z/2.0 + 0.05)
+        # robot_start_pose_table.p = gymapi.Vec3(-table_dims.x/2.0 + 0.3, 0.0, table_dims.z/2.0 + 0.03 + 0.01)
+        robot_start_pose_table.p = gymapi.Vec3(0.0, 0.0, table_dims.z/2.0 + 0.03 + 0.01)
+
         robot_start_pose_table.r = gymapi.Quat(0.0, 0.0, 0.0, 1.0)
 
         self.robot_pose_world =  table_pose_world * robot_start_pose_table #convert from franka to world frame
 
         ball_start_pose_table = gymapi.Transform()
-        ball_start_pose_table.p = gymapi.Vec3(-table_dims.x/2.0 + 0.3 + 0.02 + 0.01 + 0.01, 0.0, table_dims.z/2.0 + 0.02) #0.3
+        # ball_start_pose_table.p = gymapi.Vec3(-table_dims.x/2.0 + 0.3 + 0.02 + 0.01 + 0.01, 0.0, table_dims.z/2.0 + 0.02) #0.3
+        ball_start_pose_table.p = gymapi.Vec3(0.02 + 0.01 + 0.01, 0.0, table_dims.z/2.0 + 0.02) #0.3
         ball_start_pose_table.r = gymapi.Quat(0.0, 0.0, 0.0, 1.0)
 
         self.ball_start_pose_world =  table_pose_world * ball_start_pose_table #convert from franka to world frame
@@ -431,26 +437,51 @@ class PointRobotEnv():
         return object_asset, object_color    
 
 
-    def pre_physics_step(self, action_dict: Dict[str, torch.tensor]):
+    def pre_physics_step(self, actions: torch.Tensor):
         # implement pre-physics simulation code here
         #    - e.g. apply actions
-        if 'raw_action' in action_dict:
-            actions = action_dict['raw_action'].clone().to(self.device)
-            if actions.ndim == 3:
-                actions = actions[:, 0]
-        else:
-            pos_des = action_dict['q_pos_des'].clone().to(self.device)
-            vel_des = action_dict['q_vel_des'].clone().to(self.device)
-            acc_des = action_dict['q_acc_des'].clone().to(self.device)
-            if pos_des.ndim == 3:
-                pos_des = pos_des[:, 0]
-                vel_des = vel_des[:, 0]
-                acc_des = acc_des[:, 0]
-            curr_robot_pos = self.robot_state[:, 0:2]
-            curr_robot_vel = self.robot_state[:, 7:9]
-            actions =  -1.0 * (curr_robot_pos - pos_des) - 0.01 * (curr_robot_vel- vel_des)      
-        actions = tensor_clamp(actions, min=-1.*self.robot_effort_lims, max=self.robot_effort_lims)
-        self.gym.set_dof_actuation_force_tensor(self.sim, gymtorch.unwrap_tensor(actions))
+        pos_des = actions[:, 0:self.num_dofs].clone().to(self.device)
+        vel_des = actions[:, self.num_dofs:2*self.num_dofs].clone().to(self.device)
+        acc_des = actions[:, 2*self.num_dofs:3*self.num_dofs].clone().to(self.device)
+        
+        if pos_des.ndim == 3:
+            pos_des = pos_des[:, 0]
+            vel_des = vel_des[:, 0]
+            acc_des = acc_des[:, 0]
+        
+        curr_robot_pos = self.robot_state[:, 0:2]
+        curr_robot_vel = self.robot_state[:, 7:9]
+        feedforward_torques = torch.einsum('ijk,ik->ij', self.robot_mass, acc_des)
+        feedback_torques =  20.0 * (pos_des - curr_robot_pos) + 1.0 * (vel_des - curr_robot_vel)      
+
+        torques = feedforward_torques + feedback_torques
+        # print(torques, feedforward_torques, feedback_torques)
+        torques = tensor_clamp(torques, min=-1.*self.robot_effort_lims, max=self.robot_effort_lims)
+        
+        
+        self.gym.set_dof_actuation_force_tensor(self.sim, gymtorch.unwrap_tensor(torques))
+
+
+    # def pre_physics_step(self, action_dict: Dict[str, torch.tensor]):
+    #     # implement pre-physics simulation code here
+    #     #    - e.g. apply actions
+    #     if 'raw_action' in action_dict:
+    #         actions = action_dict['raw_action'].clone().to(self.device)
+    #         if actions.ndim == 3:
+    #             actions = actions[:, 0]
+    #     else:
+    #         pos_des = action_dict['q_pos'].clone().to(self.device)
+    #         vel_des = action_dict['q_vel'].clone().to(self.device)
+    #         acc_des = action_dict['q_acc'].clone().to(self.device)
+    #         if pos_des.ndim == 3:
+    #             pos_des = pos_des[:, 0]
+    #             vel_des = vel_des[:, 0]
+    #             acc_des = acc_des[:, 0]
+    #         curr_robot_pos = self.robot_state[:, 0:2]
+    #         curr_robot_vel = self.robot_state[:, 7:9]
+    #         actions =  -1.0 * (curr_robot_pos - pos_des) - 0.01 * (curr_robot_vel- vel_des)      
+    #     actions = tensor_clamp(actions, min=-1.*self.robot_effort_lims, max=self.robot_effort_lims)
+    #     self.gym.set_dof_actuation_force_tensor(self.sim, gymtorch.unwrap_tensor(actions))
 
     def step(self, actions: Dict[str, torch.tensor]): # -> Tuple[Dict[str, torch.Tensor], torch.Tensor, torch.Tensor, Dict[str, Any]]:
 
@@ -472,7 +503,6 @@ class PointRobotEnv():
         # action_tensor = torch.clamp(actions, -self.clip_actions, self.clip_actions)
         # action_tensor = actions
         # apply actions
-        # print(self.robot_state[:, 0:2], self.object_state[:, 0:2])
         self.pre_physics_step(actions)
 
         # step physics and render each frame
@@ -567,18 +597,15 @@ class PointRobotEnv():
         if reset_data is not None:
             if 'goal_dict' in reset_data:
                 self.update_goal(reset_data['goal_dict'])
-            # if 'object_pos' in reset_data:
-            #     self.object_state[env_ids, 0:2] = reset_data['object_pos'][env_ids]
+            if 'start_dict' in reset_data:
+                self.update_start(reset_data['start_dict'])
+                #reset object
+                self.object_state[env_ids, 0:2] = self.start_buf[env_ids][env_ids, 0:2].clone()
 
 
         self.gym.set_actor_root_state_tensor_indexed(
             self.sim, gymtorch.unwrap_tensor(self.root_state),
             gymtorch.unwrap_tensor(multi_env_ids_object_int32), len(multi_env_ids_object_int32))
-
-        
-        # self.target_buf[env_ids, :] = self.init_object_state[env_ids, 0:3]
-        # self.target_buf[env_ids, 0] += 0.1 
-        # self.target_buf[env_ids, 2] += 0.02 
 
         #update buffers
         self.progress_buf[env_ids] = 0
@@ -717,6 +744,8 @@ class PointRobotEnv():
     def update_goal(self, goal_dict):
         self.target_buf = goal_dict['object_goal']
 
+    def update_start(self, goal_dict):
+        self.start_buf = goal_dict['object_start_pos']
     
     @property
     def num_envs(self) -> int:

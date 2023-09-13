@@ -115,9 +115,11 @@ class MPPI(OLGaussianMPC):
         costs = trajectories["costs"].to(**self.tensor_args)
         # vis_seq = trajectories[self.visual_traj].to(**self.tensor_args)
         actions = trajectories["actions"].to(**self.tensor_args)
+        
+        value_preds = trajectories['value_preds']
 
         with record_function('mppi:exp_util'):
-            w = self._exp_util(costs, actions)
+            w = self._exp_util(costs, actions, value_preds)
         
         #Update best action
         best_idx = torch.argmax(w, dim=1)
@@ -182,6 +184,8 @@ class MPPI(OLGaussianMPC):
         # print(torch.norm(self.cov_action))
         self.mean_action.data = (1.0 - self.step_size_mean) * self.mean_action.data +\
             self.step_size_mean * mean_update
+        
+        return dict(mean=self.mean_action, cov=self.full_cov, scale_tril=self.full_scale_tril)
 
         
     def _shift(self, shift_steps):
@@ -236,10 +240,14 @@ class MPPI(OLGaussianMPC):
                 # self.inv_cov_action = torch.cholesky_inverse(self.scale_tril)
 
 
-    def _exp_util(self, costs, actions):
+    def _exp_util(self, costs, actions, value_preds):
         """
             Calculate weights using exponential utility
         """
+        
+        if value_preds is not None:
+            costs[:,:,-1] = value_preds[:,:,-1] 
+
         traj_costs = cost_to_go(costs, self.gamma_seq)
         # if not self.time_based_weights: traj_costs = traj_costs[:,0]
         traj_costs = traj_costs[:,:,0]

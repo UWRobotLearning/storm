@@ -71,6 +71,7 @@ class JointStateFilter(object):
         self.dt = dt
         self.filter_keys = filter_keys
         self.prev_cmd_qdd = None
+    
     def filter_joint_state(self, raw_joint_state):
         if(self.cmd_joint_state is None):
             self.cmd_joint_state = copy.deepcopy(raw_joint_state)

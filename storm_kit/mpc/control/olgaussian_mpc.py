@@ -313,7 +313,7 @@ class OLGaussianMPC(Controller):
         if self.cov_type == 'sigma_I':
             return self.cov_action * self.I
         elif self.cov_type == 'diag_AxA':
-            return torch.diag(self.cov_action)
+            return torch.diag_embed(self.cov_action)
         elif self.cov_type == 'full_AxA':
             return self.cov_action
         elif self.cov_type == 'full_HAxHA':
@@ -324,7 +324,7 @@ class OLGaussianMPC(Controller):
         if self.cov_type == 'sigma_I':
             return self.inv_cov_action * self.I
         elif self.cov_type == 'diag_AxA':
-            return torch.diag(self.inv_cov_action)
+            return torch.diag_embed(self.inv_cov_action)
         elif self.cov_type == 'full_AxA':
             return self.inv_cov_action
         elif self.cov_type == 'full_HAxHA':
@@ -343,7 +343,6 @@ class OLGaussianMPC(Controller):
         elif self.cov_type == 'full_HAxHA':
             return self.scale_tril
             
-
 
     @property
     def entropy(self):

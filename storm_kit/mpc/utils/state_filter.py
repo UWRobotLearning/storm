@@ -76,7 +76,7 @@ class JointStateFilter(object):
             # raw_joint_state: Optional[torch.Tensor] = None, 
             # filter_keys: Tuple[str] = ['position','velocity','acceleration'],
             filter_coeff: Dict[str, float], 
-            n_dofs: int = 7,
+            n_dofs: int,
             dt: float = 0.1, 
             device: Optional[torch.device] = torch.device('cpu')
             ):
@@ -91,14 +91,13 @@ class JointStateFilter(object):
         self.internal_jnt_state: Dict[str, torch.Tensor] = {} 
         for k in self.filter_keys:
             self.internal_jnt_state[k] = torch.empty((), device=self.device) 
-
+        
         # if isinstance(filter_coeff, float):
         #     for k in filter_keys:
         #         self.filter_coeff[k] = filter_coeff
         # else:
         #     self.filter_coeff = filter_coeff
         self.dt = dt
-        # self.filter_keys = filter_keys
         self.prev_cmd_qdd = None
         self.initial_step = True 
     
@@ -135,7 +134,7 @@ class JointStateFilter(object):
             if k in self.filter_keys:
                 self.internal_jnt_state[k] = self.filter_coeff[k] * raw_joint_state[k] + (1.0 - self.filter_coeff[k]) * self.internal_jnt_state[k]
             else:
-                self.internal_jnt_state[k] = raw_joint_state[k]
+                self.internal_jnt_state[k] = raw_joint_state[k].clone()
 
         return self.internal_jnt_state
 
@@ -160,8 +159,8 @@ class JointStateFilter(object):
             return self.internal_jnt_state
         dt = self.dt if dt is None else dt 
         self.internal_jnt_state['q_acc'] = qdd_des
-        self.internal_jnt_state['q_vel'] = self.internal_jnt_state['q_vel'] + qdd_des * dt
-        self.internal_jnt_state['q_pos'] = self.internal_jnt_state['q_acc'] + self.internal_jnt_state['q_vel'] * dt
+        self.internal_jnt_state['q_vel'] += self.internal_jnt_state['q_acc'] * dt
+        self.internal_jnt_state['q_pos'] += self.internal_jnt_state['q_vel'] * dt
         return self.internal_jnt_state
         # self.internal_jnt_state[...,2*self.n_dofs:3*self.n_dofs] = qdd_des
         # self.internal_jnt_state[...,self.n_dofs:2*self.n_dofs] += self.internal_jnt_state[...,2*self.n_dofs:3*self.n_dofs] * dt
@@ -209,5 +208,5 @@ class JointStateFilter(object):
 
     def reset(self):
         self.internal_jnt_state = {}
-        self.prev_cmd_qdd = None
+        # self.prev_cmd_qdd = None
         self.initial_step = True

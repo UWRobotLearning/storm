@@ -36,11 +36,13 @@ class ArmReacher(ArmBase):
     1. Update cfg to be kwargs
     """
 
-    def __init__(self, cfg, device=torch.device('cpu'), dtype=torch.float32, world_params=None):
+    def __init__(self, cfg, world_params=None, value_function=None, viz_rollouts=False, device=torch.device('cpu')):
         super(ArmReacher, self).__init__(cfg=cfg,
                                          world_params=world_params,
+                                         value_function=value_function,
+                                         viz_rollouts=viz_rollouts,
                                          device=device,
-                                         dtype=dtype)
+                                         dtype=torch.float32)
         self.goal_state = None
         self.goal_ee_pos = None
         self.goal_ee_rot = None
@@ -63,7 +65,7 @@ class ArmReacher(ArmBase):
     def compute_cost(
             self, 
             state_dict: Dict[str, torch.Tensor], 
-            action_batch: Optional[Dict[str, torch.Tensor]]=None,
+            action_batch: Optional[torch.Tensor]=None,
             termination: Optional[Dict[str, torch.Tensor]]=None, 
             no_coll: bool=False, horizon_cost: bool=True, return_dist:bool=False):
 
@@ -71,7 +73,7 @@ class ArmReacher(ArmBase):
             state_dict = state_dict,
             action_batch = action_batch,
             termination = termination,
-            no_coll = no_coll, 
+            # no_coll = no_coll, 
             horizon_cost = horizon_cost)
 
         # num_instances, curr_batch_size, num_traj_points, _ = state_dict['state_seq'].shape
@@ -115,8 +117,12 @@ class ArmReacher(ArmBase):
         return cost, cost_terms, state_dict
 
 
-    def compute_termination(self, state_dict: Dict[str,torch.Tensor], act_batch: Dict[str,torch.Tensor]):
+    def compute_termination(self, state_dict: Dict[str,torch.Tensor], act_batch: torch.Tensor):
         return super().compute_termination(state_dict, act_batch)
+
+
+    def compute_metrics(self, episode_data: Dict[str, torch.Tensor]):
+        return {'error': 0.0}
 
 
     def reset(self):
@@ -156,8 +162,10 @@ class ArmReacher(ArmBase):
         #     quat = matrix_to_quaternion(rpy_angles_to_matrix(torch.cat([roll, pitch, yaw], dim=-1)))
         #     curr_target_buff[env_ids, 3:7] = quat
         
+        reset_data = {}
         goal_dict = dict(ee_goal=self.ee_goal_buff)
-        return goal_dict
+        reset_data['goal_dict'] = goal_dict
+        return reset_data
 
 
     # def compute_cost(self, state_dict=None, action_batch=None, current_state=None, no_coll=False, horizon_cost=True, return_dist=False):
@@ -229,19 +237,9 @@ class ArmReacher(ArmBase):
             self.ee_goal_buff[:, 0:3] - state_dict['ee_pos_seq']), dim=-1)
 
         return obs, state_dict
-
-    # def update_params(self, retract_state=None, goal_state=None, goal_ee_pos=None, goal_ee_rot=None, goal_ee_quat=None):
-        """
-        Update params for the cost terms and dynamics model.
-        goal_state: n_dofs
-        goal_ee_pos: 3
-        goal_ee_rot: 3,3
-        goal_ee_quat: 4
-
-        """
     
-    def update_params(self, goal_dict):
-
+    def update_params(self, param_dict):
+        goal_dict = param_dict['goal_dict']
         retract_state = goal_dict['retract_state'] if 'retract_state' in goal_dict else None
         ee_goal = goal_dict['ee_goal'] if 'ee_goal' in goal_dict else None
         joint_goal = goal_dict['joint_goal'] if 'joint_goal' in goal_dict else None
@@ -285,56 +283,3 @@ class ArmReacher(ArmBase):
     @property
     def action_dim(self)->int:
         return self.n_dofs
-
-
-
-
-
-
-    # def randomize_goals(self, num_envs, buff=None, env_ids=None, randomization_mode='fixed'):
-
-        # target_poses = []
-        # for i in range(num_envs):
-        #     target_pose_franka = torch.tensor([0.3, 0.0, 0.1, 0.0, 0.707, 0.707, 0.0], device=self.device, dtype=torch.float) 
-        #     self.target_poses.append(target_pose_franka)
-        # self.target_poses = torch.cat(self.target_poses, dim=-1).view(self.num_envs, 7)
- 
- 
-        # default_goal = torch.tensor([0.3, 0.0, 0.1, 0.0, 0.707, 0.707, 0.0], device=self.device)
-
-        # if env_ids is None:
-        #     env_ids = torch.arange(num_envs, device=self.device)
-
-        # if buff is None:
-        #     curr_target_buff = default_goal.unsqueeze(0).repeat(num_envs, 1)
-        # else:
-        #     curr_target_buff = buff['ee_goal']
-
-        # #reset EE target 
-        # if randomization_mode == "fixed":
-        #     pass
-
-        # if randomization_mode in ["randomize_position", "randomize_full_pose"]:
-        #     #randomize position
-        #     curr_target_buff[env_ids, 0] = 0.2 + 0.4 * torch.rand(
-        #         size=(env_ids.shape[0],), device=self.device) #x from [0.2, 0.6)
-        #     curr_target_buff[env_ids, 1] = -0.3 + 0.6 * torch.rand(
-        #         size=(env_ids.shape[0],), device=self.device) #y from [-0.3, 0.3)
-        #     curr_target_buff[env_ids, 2] = 0.2 + 0.3 * torch.rand(
-        #         size=(env_ids.shape[0],), device=self.device) #z from [0.2, 0.5)
-
-        
-        # if randomization_mode == "randomize_full_pose":
-        #     #randomize orientation
-        #     roll = -torch.pi + 2*torch.pi * torch.rand(
-        #         size=(env_ids.shape[0],1), device=self.device) #roll from [-pi, pi)
-        #     pitch = -torch.pi + 2*torch.pi * torch.rand(
-        #         size=(env_ids.shape[0],1), device=self.device) #pitch from [-pi, pi)
-        #     yaw = -torch.pi + 2*torch.pi * torch.rand(
-        #         size=(env_ids.shape[0],1), device=self.device) #yaw from [-pi, pi)
-        #     quat = matrix_to_quaternion(rpy_angles_to_matrix(torch.cat([roll, pitch, yaw], dim=-1)))
-        #     curr_target_buff[env_ids, 3:7] = quat
-        
-        # goal_dict = dict(ee_goal=curr_target_buff)
-        # self.update_params(goal_dict=goal_dict)
-        # return goal_dict

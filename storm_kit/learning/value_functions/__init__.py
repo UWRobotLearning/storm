@@ -1,1 +1,1 @@
-from .qfunctions import QFunction, TwinQFunction
+from .qfunctions import QFunction, TwinQFunction, EnsembleQFunction

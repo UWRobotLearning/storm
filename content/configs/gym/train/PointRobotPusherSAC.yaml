@@ -24,17 +24,20 @@ critic:
     output_activation: null
     dropout_prob: 0.0 
     layer_norm: false
-    world: ${task.world}
+  ensemble_size: 10
+  prediction_size: 2
 
 agent:
   name: 'SAC'
   save_buffer: false
-  num_epochs: 10000
-  # num_steps_per_env: 1
+  num_epochs: 1e4
   num_train_episodes_per_epoch: 1
-  num_updates_per_epoch: ${task.env.episodeLength} #5
+  update_to_data_ratio: 20
+  policy_update_delay: 20
   discount: 0.99
   train_batch_size: 256
+  max_buffer_size: 1e6
+  min_buffer_size: 5e3
   num_action_samples: 1
   log_freq: 1
   checkpoint_freq: 500
@@ -43,17 +46,19 @@ agent:
   fixed_alpha: 0.2
   init_log_alpha: 0.0
   automatic_entropy_tuning: true
+  random_ensemble_q: true
   policy_optimizer:
     __target__: torch.optim.Adam
-    lr: 0.0003
+    lr: 3e-4 #0.0003
   critic_optimizer:
     __target__: torch.optim.Adam
-    lr: 0.0003
+    lr: 3e-4 #0.0003
   alpha_optimizer:
     __target__: torch.optim.Adam
-    lr: 0.0003
-  polyak_tau: 0.005
+    lr: 3e-4 #0.0003
+  polyak_tau: 5e-3
   target_update_interval: 1
+  backup_entropy: true
 
 eval:
   checkpoint: './tmp_results/${task_name}/${train.agent.name}/models/agent_checkpoint_0.pt'

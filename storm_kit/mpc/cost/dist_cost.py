@@ -43,24 +43,38 @@ class DistCost(nn.Module):
             self.vec_weight = 1.0
         # self.proj_gaussian = GaussianProjection(gaussian_params=gaussian_params)
     
-    def forward(self, disp_vec: torch.Tensor, dist_type: str = "l2") -> Tuple[torch.Tensor, torch.Tensor]:
+    def forward(self, disp_vec: torch.Tensor, dist_type: str = "l2", norm_vec: Optional[torch.Tensor] = None) -> Tuple[torch.Tensor, torch.Tensor]:
         inp_device = disp_vec.device
         disp_vec = self.vec_weight * disp_vec.to(self.device)
 
-        if dist_type == 'l2':
-            dist = torch.norm(disp_vec, p=2, dim=-1,keepdim=False)
-        elif dist_type == 'squared_l2':
-            dist = (torch.sum(torch.square(disp_vec), dim=-1,keepdim=False))
-        elif dist_type == 'l1':
-            dist = torch.norm(disp_vec, p=1, dim=-1,keepdim=False)
-        elif dist_type == 'smooth_l1':
-            l1_dist = torch.norm(disp_vec, p=1, dim=-1)
-            dist = None
-            raise NotImplementedError
+        dist = self.compute_norm(disp_vec, dist_type)
+
+        norm_magn = 1.0
+        if norm_vec is not None:
+            norm_vec = self.vec_weight * norm_vec.to(self.device)
+            norm_magn = self.compute_norm(norm_vec, dist_type)
+        
+        normalized_distance = dist / norm_magn
+
+
 
         # cost = self.weight * self.proj_gaussian(dist)
-        cost = self.weight * dist
+        # cost = self.weight * dist
+        cost = self.weight * normalized_distance
 
         return cost.to(inp_device), dist.to(inp_device)
 
+    def compute_norm(self, disp_vec: torch.Tensor, norm_type: str = "l2"):
 
+        if norm_type == 'l2':
+            dist = torch.norm(disp_vec, p=2, dim=-1,keepdim=False)
+        elif norm_type == 'squared_l2':
+            dist = (torch.sum(torch.square(disp_vec), dim=-1,keepdim=False))
+        elif norm_type == 'l1':
+            dist = torch.norm(disp_vec, p=1, dim=-1,keepdim=False)
+        elif norm_type == 'smooth_l1':
+            l1_dist = torch.norm(disp_vec, p=1, dim=-1)
+            dist = None
+            raise NotImplementedError
+        
+        return dist

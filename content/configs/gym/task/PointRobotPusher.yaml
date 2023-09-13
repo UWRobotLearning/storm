@@ -7,7 +7,7 @@ physics_engine: ${..physics_engine}
 env:
   num_envs: ${resolve_default:1,${...num_envs}}
   envSpacing: 1.5
-  episodeLength: 300
+  episodeLength: 200
   enableDebugVis: False
   targetRandomizeMode: "fixed_target"
   clipObservations: 5.0
@@ -39,14 +39,13 @@ rollout:
   state_filter_coeff: {'q_pos':1.0, 'q_vel':1.0, 'q_acc':0.0}
 
   model:
-    # any link that is not specified as learnable will be initialized from urdf
     urdf_path: "urdf/point_robot.urdf"
     name: "point_robot"
-    max_acc: 100.0 
+    max_acc: 10.0 
     dt_traj_params:
       base_dt:  0.015
-      base_ratio: 0.5
-      max_dt: 0.15
+      base_ratio: 0.8
+      max_dt: 0.15 #0.15
     init_state: [0., 0.]
     link_names: ['robot', 'robot_y']
     # vel_scale: 1.0
@@ -64,21 +63,20 @@ rollout:
 mpc:
   rollout: ${task.rollout}
   world: ${task.world}
-  state_filter_coeff: ${task.rollout.state_filter_coeff}
   viz_rollouts: true
 
 
   mppi:
     num_instances     : ${task.env.num_envs}
-    horizon           : 40
+    horizon           : 30
     init_cov          : 1.0 #.5 #.5
     gamma             : 0.99 #0.98
     n_iters           : 1
-    step_size_mean    : 0.98
+    step_size_mean    : 0.98 #0.98
     step_size_cov     : 0.7
-    beta              : 0.1 #1.0
+    beta              : 0.1
     alpha             : 1
-    num_particles     : 10000 #10000
+    num_particles     : 1000 #10000
     update_cov        : False
     cov_type          : 'diag_AxA' # 
     kappa             : 0.005
@@ -93,14 +91,14 @@ mpc:
       fixed_samples: True
       sample_ratio: {'halton':1.0, 'halton-knot':0.0, 'random':0.0, 'random-knot':0.0}
       seed: 0
-      filter_coeffs: null #[0.3, 0.3, 0.4]
+      filter_coeffs:  [0.3, 0.3, 0.4]
       knot_scale: 4
       bspline_degree: 3
 
 train:
   agent:
     name: 'MPC'
-    num_episodes: 100
+    num_episodes: 10
     save_buffer: false
     log_freq: 50
     eval_freq: 100

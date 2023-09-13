@@ -232,15 +232,9 @@ class Controller(nn.Module):
         """
 
         n_iters = n_iters if n_iters is not None else self.n_iters
-        # get input device:
-        # inp_device = state.device
-        # inp_dtype = state.dtype
-        # if state.ndim == 2:
-        #     state = state.unsqueeze(0).repeat(self.num_instances, 1, 1)
-        
-        # state = state.to(**self.tensor_args)
 
-        info = dict(rollout_time=0.0, entropy=[])
+        info = {}
+        info['rollout_time'] = 0.0
         # shift distribution to hotstart from previous timestep
         if self.hotstart:
             with record_function('mpc:hotstart'):
@@ -258,12 +252,15 @@ class Controller(nn.Module):
 
                     # update distribution parameters
                     with record_function("mpc:update_distribution"):
-                        self._update_distribution(trajectory)
+                        distrib_info = self._update_distribution(trajectory)
                     info['rollout_time'] += trajectory['rollout_time']
 
                     # check if converged
                     if self.check_convergence():
                         break
+
+                info['distrib'] = distrib_info
+
         self.trajectories = trajectory
         #calculate best action
         # curr_action = self._get_next_action(state, mode=self.sample_mode)
@@ -281,7 +278,7 @@ class Controller(nn.Module):
         # else:
         #     self.reset_distribution()
 
-        info['entropy'].append(self.entropy)
+        info['entropy'] = self.entropy
 
         self.num_steps += 1
 

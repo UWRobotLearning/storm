@@ -1,7 +1,7 @@
 
 expert_data_path: './tmp_results/${task_name}/MPC/models/agent_buffer_0.pt'
 
-policy:
+nn_policy:
   mlp_params:
     hidden_layers: [256, 256] 
     activation: torch.nn.ReLU 
@@ -30,7 +30,7 @@ target_mpc_policy:
   rollout: ${task.rollout}
   world: ${task.world}
   state_filter_coeff: ${task.rollout.state_filter_coeff}
-  viz_rollouts: true
+  viz_rollouts: false
 
   mppi:
     num_instances     : ${train.agent.train_batch_size}
@@ -65,12 +65,12 @@ target_mpc_policy:
 agent:
   name: 'MPQ'
   save_buffer: false
-  num_train_steps: 10000
+  num_epochs: 10000
   # num_steps_per_env: 1
-  num_train_episodes: 1
-  num_update_steps: 5
+  num_train_episodes_per_epoch: 1
+  num_updates_per_epoch: ${task.env.episodeLength} #5
   discount: 0.99
-  train_batch_size: 256
+  train_batch_size: 32
   num_action_samples: 1
   log_freq: 1
   checkpoint_freq: 500
@@ -78,7 +78,7 @@ agent:
   num_eval_episodes: 10
   fixed_alpha: 0.2
   init_log_alpha: 0.0
-  automatic_entropy_tuning: false
+  automatic_entropy_tuning: true
   policy_optimizer:
     __target__: torch.optim.Adam
     lr: 0.0003
@@ -90,6 +90,8 @@ agent:
     lr: 0.0003
   polyak_tau: 0.005
   target_update_interval: 1
+  backup_entropy: false
+  collect_data_with_mpc: true
 
 eval:
   checkpoint: './tmp_results/${task_name}/${train.agent.name}/models/agent_checkpoint_0.pt'

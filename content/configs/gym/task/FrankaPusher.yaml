@@ -10,7 +10,7 @@ env:
   episodeLength: 500
   enableDebugVis: False
   controlSpace: "vel"
-  num_objects: 0
+  num_objects: 1
   
   # targetRandomizeMode: "fixed_target"
 
@@ -31,7 +31,7 @@ env:
 
   asset:
     assetRoot: "../../content/assets"
-    assetFileNameFranka: "urdf/franka_description/franka_panda_pusher.urdf"
+    assetFileNameFranka: "urdf/franka_description/franka_panda_no_gripper_sim.urdf"
 
   # set to True if you use camera sensors in the environment
   enableCameraSensors: False
@@ -44,20 +44,15 @@ rollout:
   control_dt: 0.02
   control_space: 'acc'
   n_dofs: 7
-  state_filter_coeff: {'position':0.1, 'velocity':0.0, 'acceleration':0.0}
-  # run_open_loop: False #check
-  # control_space: 'acc'
-  # float_dtype: 'float32' #check
-  # n_dofs: 7
+  state_filter_coeff: {'q_pos':0.1, 'q_vel':0.0, 'q_acc':0.0}
 
   model:
     # any link that is not specified as learnable will be initialized from urdf
-    urdf_path: "urdf/franka_description/franka_panda_pusher.urdf"
+    urdf_path: "urdf/franka_description/franka_panda_no_gripper_sim.urdf"
     learnable_rigid_body_config:
       learnable_links: []
     name: "franka_panda"
-    max_acc: 100.0 
-    # dt: 0.02 #check
+    max_acc: 10.0 
     dt_traj_params:
       base_dt:  0.02 #0.0166 #0.01 #0.02
       base_ratio: 0.5
@@ -178,7 +173,8 @@ rollout:
 mpc:
   rollout: ${task.rollout}
   world: ${task.world}
-  state_filter_coeff: {'position':0.1, 'velocity':0.0, 'acceleration':0.0}
+  # state_filter_coeff: ${task.rollout.state_filter_coeff} #{'position':0.1, 'velocity':0.0, 'acceleration':0.0}
+  viz_rollouts: False
     
   mppi:
     num_instances     : ${task.env.num_envs}
@@ -245,3 +241,4 @@ task:
 
 defaults:
   - world: FrankaReacherWorld
+

@@ -30,33 +30,37 @@ class SACAgent(Agent):
         super().__init__(
             cfg, envs, task, obs_dim, action_dim,
             buffer=buffer, policy=policy,
-            runner_fn=runner_fn, logger=logger, 
-            tb_writer=tb_writer, device=device        
+            runner_fn=runner_fn,
+            logger=logger, tb_writer=tb_writer, 
+            device=device        
         )
         self.critic = critic
         self.target_critic = copy.deepcopy(self.critic)
         self.policy_optimizer = optim.Adam(self.policy.parameters(), 
-                                    lr=self.cfg['policy_optimizer']['lr'])
+                                    lr=float(self.cfg['policy_optimizer']['lr']))
         self.critic_optimizer =  optim.Adam(self.critic.parameters(), 
-                                    lr=self.cfg['critic_optimizer']['lr'])
-        self.polyak_tau = self.cfg['polyak_tau']
+                                    lr=float(self.cfg['critic_optimizer']['lr']))
+        self.polyak_tau = float(self.cfg['polyak_tau'])
         self.discount = self.cfg['discount']
         self.num_action_samples = self.cfg['num_action_samples']
         self.num_train_episodes_per_epoch = self.cfg['num_train_episodes_per_epoch']
-        self.num_updates_per_epoch = self.cfg['num_updates_per_epoch']
+        self.update_to_data_ratio = self.cfg['update_to_data_ratio']
+        self.policy_update_delay = self.cfg['policy_update_delay']
         self.automatic_entropy_tuning = self.cfg['automatic_entropy_tuning']
+        self.backup_entropy = self.cfg['backup_entropy']
+        self.min_buffer_size = int(self.cfg['min_buffer_size'])
 
         if self.automatic_entropy_tuning:
             self.log_alpha = nn.Parameter(torch.tensor(self.cfg['init_log_alpha']))
             self.target_entropy = -np.prod(self.action_dim)
-            self.alpha_optimizer = optim.Adam([self.log_alpha], lr=self.cfg['alpha_optimizer']['lr'])
+            self.alpha_optimizer = optim.Adam([self.log_alpha], lr=float(self.cfg['alpha_optimizer']['lr']))
         else:
             self.alpha = torch.tensor(self.cfg['fixed_alpha'])
             self.log_alpha = torch.log(self.alpha)
 
 
     def train(self, model_dir=None):
-        num_epochs = self.cfg['num_epochs']
+        num_epochs = int(self.cfg['num_epochs'])
         total_env_steps = 0
 
         # self.best_policy = copy.deepcopy(self.policy)
@@ -65,30 +69,29 @@ class SACAgent(Agent):
         
         pbar = tqdm(range(int(num_epochs)), desc='train')
         for i in pbar:
-            # step_start_time = time.time()
             #collect new experience
-            self.buffer, play_metrics = self.runner_fn(
-                envs=self.envs,
-                num_episodes=self.num_train_episodes_per_epoch, 
-                policy=self.policy,
-                task=self.task,
-                buffer=self.buffer,
-                device=self.device
-            )
+            play_metrics = self.collect_experience()
+            print(play_metrics)
+            num_steps_collected = play_metrics['num_steps_collected'] 
+            total_env_steps += num_steps_collected
 
-            total_env_steps += play_metrics['num_steps_collected']
             #update agent
-            for _ in range(self.num_updates_per_epoch):
-                batch = self.buffer.sample(self.cfg['train_batch_size'])
-                train_metrics = self.update(batch)
-                pbar.set_postfix(train_metrics)
+            if len(self.buffer) >= self.min_buffer_size:
+                
+                num_update_steps = int(self.update_to_data_ratio * num_steps_collected)
+                print('Running {} updates'.format(num_update_steps))
 
-            if (i % self.log_freq == 0) or (i == num_epochs -1):
-                if self.tb_writer is not None:
-                    for k, v in play_metrics.items():
-                        self.tb_writer.add_scalar('Train/' + k, v, total_env_steps)
-                    for k, v in train_metrics.items():
-                        self.tb_writer.add_scalar('Train/' + k, v, total_env_steps)
+                for k in range(num_update_steps):
+                    batch = self.buffer.sample(self.cfg['train_batch_size'])
+                    train_metrics = self.update(batch, k, num_update_steps)
+                    pbar.set_postfix(train_metrics)
+
+                if (i % self.log_freq == 0) or (i == num_epochs -1):
+                    if self.tb_writer is not None:
+                        for k, v in play_metrics.items():
+                            self.tb_writer.add_scalar('Train/' + k, v, total_env_steps)
+                        for k, v in train_metrics.items():
+                            self.tb_writer.add_scalar('Train/' + k, v, total_env_steps)
                         
             # eval_metrics = {}
             # if (i % self.eval_freq == 0) or (i == num_train_steps -1):
@@ -108,96 +111,77 @@ class SACAgent(Agent):
             #     self.policy.train()
             #     pbar.set_postfix(eval_metrics)
 
-    def update(self, batch_dict):
+    def collect_experience(self):
+
+        self.buffer, play_metrics = self.runner_fn(
+            envs=self.envs,
+            num_episodes=self.num_train_episodes_per_epoch, 
+            policy=self.policy,
+            task=self.task,
+            buffer=self.buffer,
+            device=self.device
+        )
+        return play_metrics
+
+    def update(self, batch_dict, step_num, num_update_steps):
         batch_dict = dict_to_device(batch_dict, self.device)
+        train_metrics = {}
 
-        #Update critic
-        # self.critic_optimizer.zero_grad()
-        critic_loss, avg_q_value = self.compute_critic_loss(batch_dict)
-        if torch.any(torch.isnan(critic_loss)):
-            import pdb; pdb.set_trace()
-        # critic_loss.backward()
-        # self.critic_optimizer.step()
-
-        # #Update target critic using exponential moving average
-        # for (param1, param2) in zip(self.target_critic.parameters(), self.critic.parameters()):
-        #     param1.data.mul_(1. - self.polyak_tau).add_(param2.data, alpha=self.polyak_tau)
-
-        #Update policy
-        # self.policy_optimizer.zero_grad()
-        policy_loss, log_pi_new_actions = self.compute_policy_loss(batch_dict)
-        if torch.any(torch.isnan(policy_loss)):
-            import pdb; pdb.set_trace()
-        # policy_loss.backward()
-        # self.policy_optimizer.step()
-
-        #Update temperature
-        alpha_loss = torch.tensor([0.0])
-        if self.automatic_entropy_tuning:
-            self.alpha_optimizer.zero_grad()
-            alpha_loss = -self.log_alpha * (log_pi_new_actions + self.target_entropy).detach()
-            if torch.any(torch.isnan(policy_loss)):
-                import pdb; pdb.set_trace()
-            alpha_loss.backward()
-            self.alpha_optimizer.step()
-        
-        #Update policy
-        self.policy_optimizer.zero_grad()
-        policy_loss.backward()
-        self.policy_optimizer.step()
-
-        #Update Q function
+        #Compute critic loss
         self.critic_optimizer.zero_grad()
+        critic_loss, avg_q_value = self.compute_critic_loss(batch_dict)
         critic_loss.backward()
         self.critic_optimizer.step()
+
+
+        if ((step_num + 1) % self.policy_update_delay == 0) or (step_num == num_update_steps - 1): 
+            #Compute policy loss
+            self.policy_optimizer.zero_grad()
+            policy_loss, log_pi_new_actions = self.compute_policy_loss(batch_dict)
+            policy_loss.backward()
+            self.policy_optimizer.step()
+            train_metrics['policy_loss'] = policy_loss.item()
+            train_metrics['policy_entropy'] = log_pi_new_actions.item()
+
+
+            #Update temperature
+            alpha_loss = torch.tensor([0.0])
+            if self.automatic_entropy_tuning:
+                self.alpha_optimizer.zero_grad()
+                alpha_loss = -self.log_alpha * (log_pi_new_actions + self.target_entropy).detach()
+                alpha_loss.backward()
+                self.alpha_optimizer.step()
+                train_metrics['alpha_loss'] = alpha_loss.item()
 
         #Update target critic using exponential moving average
         for (param1, param2) in zip(self.target_critic.parameters(), self.critic.parameters()):
             param1.data.mul_(1. - self.polyak_tau).add_(param2.data, alpha=self.polyak_tau)
 
-            
-        train_metrics = {}
         train_metrics['critic_loss'] = critic_loss.item()
-        train_metrics['policy_loss'] = policy_loss.item()
-        train_metrics['policy_entropy'] = log_pi_new_actions.item()
         train_metrics['avg_q_value'] = avg_q_value.item()
-        train_metrics['alpha_loss'] = alpha_loss.item()
         train_metrics['alpha'] = torch.exp(self.log_alpha).item()
+
         return train_metrics
 
 
-    # def compute_policy_loss(self, obs_batch):
     def compute_policy_loss(self, batch_dict):
         policy_input = {
             'states': batch_dict['state_dict'],
             'obs': batch_dict['obs'],
         }
 
-        # new_action_dist = self.policy({'obs': obs_batch})
-        # new_action_dist = self.policy(policy_input)
-        # new_actions = new_action_dist.rsample(torch.Size([self.num_action_samples]))
-        # log_pi_new_actions = new_action_dist.log_prob(new_actions).sum(-1).mean(0)
-        new_actions = self.policy.get_action(policy_input, num_samples=self.num_action_samples)
-        log_pi_new_actions = self.policy.log_prob(policy_input, new_actions)
-        log_pi_new_actions = log_pi_new_actions.mean() #.sum(-1).mean(0)
-        
+        new_actions, log_pi_new_actions = self.policy.entropy(policy_input, self.num_action_samples)
+        log_pi_new_actions = log_pi_new_actions.mean(-1) #mean along action dimension
+
+
         self.critic.requires_grad_(False)
         q_pred = self.critic(
             {'obs': batch_dict['obs'].unsqueeze(0).repeat(self.num_action_samples, 1, 1)}, 
-            new_actions).mean(0)
-
-        # q_pred = self.critic(
-        #     {'obs': obs_batch.unsqueeze(0).repeat(self.num_action_samples, 1, 1)}, 
-        #     new_actions).mean(0)
+            new_actions).mean(0) #mean along num_action_samples
         
         alpha = self.log_alpha.exp() #torch.exp(self.log_alpha).item()
         self.critic.requires_grad_(True)
         policy_loss = (alpha * log_pi_new_actions - q_pred).mean() 
-        if torch.any(torch.isnan(policy_loss)):
-            print('in policy loss calc')
-            import pdb; pdb.set_trace()
-
-
 
         return policy_loss, log_pi_new_actions.mean()
 
@@ -205,7 +189,7 @@ class SACAgent(Agent):
     def compute_critic_loss(self, batch_dict):
         cost_batch = batch_dict['cost'].squeeze(-1)
         obs_batch = batch_dict['obs']
-        act_batch = batch_dict['action_dict']
+        act_batch = batch_dict['actions']
         next_obs_batch = batch_dict['next_obs']
         next_state_batch = batch_dict['next_state_dict']
         done_batch = batch_dict['done'].squeeze(-1).float()
@@ -216,27 +200,41 @@ class SACAgent(Agent):
                 'states': next_state_batch,
                 'obs': next_obs_batch}
             
-            # next_actions_dist = self.policy(policy_input)
-            next_actions = self.policy.get_action(policy_input, num_samples=self.num_action_samples)
-            next_actions_log_prob = self.policy.log_prob(policy_input, next_actions).mean()
-            # next_actions_log_prob = next_actions_log_prob.mean() #.sum(-1).mean(0)
-            # next_actions = next_actions_dist.rsample(torch.Size([self.num_action_samples]))
-            # next_actions_log_prob = next_actions_dist.log_prob(next_actions).sum(-1).mean(0)
+            next_actions, next_actions_log_prob = self.policy.entropy(policy_input)
+            next_actions_log_prob = next_actions_log_prob.mean(-1) #mean along action dimension
+
             target_pred = self.target_critic(
                 {'obs': next_obs_batch.unsqueeze(0).repeat(self.num_action_samples, 1, 1)}, 
-                next_actions).mean()
+                next_actions) #.mean()
+            target_pred = target_pred.mean(0) #mean across num action samples
             
-            alpha = self.log_alpha.exp() #torch.exp(self.log_alpha).item()
-            q_pred_next =  target_pred - alpha * next_actions_log_prob
+            if self.backup_entropy:
+                alpha = self.log_alpha.exp()
+                q_pred_next =  target_pred - alpha * next_actions_log_prob
+            else:
+                q_pred_next = target_pred
+
             q_target = rew_batch +  (1. - done_batch) * self.discount * q_pred_next
 
-        qf1, qf2 = self.critic.both({'obs': obs_batch}, act_batch)
-        qf1_loss = F.mse_loss(qf1,  q_target, reduction='none').mean()
-        qf2_loss = F.mse_loss(qf2, q_target, reduction='none').mean()
-        qf_loss = qf1_loss + qf2_loss
+        qf_all = self.critic.all({'obs': obs_batch}, act_batch)
+        q_target = q_target.unsqueeze(-1).repeat(1, qf_all.shape[-1])
 
-        avg_q_value = torch.min(qf1, qf2).mean()
-        
+        qf_loss = F.mse_loss(qf_all, q_target, reduction='none')
+        qf_loss = qf_loss.sum(-1).mean(0) #sum along ensemble dimension and mean along batch
+
+        # qf_loss = 0.0
+        # for q in qf_all:
+        #     qf_loss += F.mse_loss(q, q_target, reduction='none').mean()
+        # qf_loss = [F.mse_loss(q, q_target, reduction='none').mean() for q in qf_all]
+        # qf_loss = torch.sum(*qf_loss)
+        # qf1, qf2 = self.critic.both({'obs': obs_batch}, act_batch)
+        # qf1_loss = F.mse_loss(qf1,  q_target, reduction='none').mean()
+        # qf2_loss = F.mse_loss(qf2, q_target, reduction='none').mean()
+        # qf_loss = qf1_loss + qf2_loss
+
+        # avg_q_value = torch.min(qf1, qf2).mean()
+        avg_q_value = torch.min(qf_all, dim=-1)[0].mean()
+
         return qf_loss, avg_q_value
 
 

@@ -64,6 +64,22 @@ class Agent(nn.Module):
         for i in range (self.total_steps):
             episode_metrics = self.collect_experience(num_steps=self.cfg['steps_per_update'], update_buffer=True)
             train_metrics = self.update()
+
+    def save(self, model_dir, save_buffer=False, iter=0):
+        state = {
+            'iter': iter,
+            'policy_state_dict': self.policy.state_dict(),
+        }
+        torch.save(state, os.path.join(model_dir, 'agent_checkpoint_{}.pt'.format(iter)))
+        if save_buffer:
+            print('Saving buffer len= {}'.format(len(self.buffer)))
+            self.buffer.save(os.path.join(model_dir, 'agent_buffer_{}.pt'.format(iter)))
+
+    def load(self, checkpoint_path, buffer_path=None):
+        checkpoint = torch.load(checkpoint_path)
+        self.policy.load_state_dict(checkpoint['policy_state_dict'])
+        if buffer_path is not None:
+            self.buffer.load(buffer_path)
     
     # def collect_experience(self, 
     #                        num_steps_per_env: Optional[int]=None, 
@@ -274,24 +290,6 @@ class Agent(nn.Module):
     #         if total_steps_collected >= num_steps:
     #             break
         
-
-
-
-    def save(self, model_dir, save_buffer=False, iter=0):
-        state = {
-            'iter': iter,
-            'policy_state_dict': self.policy.state_dict(),
-        }
-        torch.save(state, os.path.join(model_dir, 'agent_checkpoint_{}.pt'.format(iter)))
-        if save_buffer:
-            print('Saving buffer len= {}'.format(len(self.buffer)))
-            self.buffer.save(os.path.join(model_dir, 'agent_buffer_{}.pt'.format(iter)))
-
-    def load(self, checkpoint_path, buffer_path=None):
-        checkpoint = torch.load(checkpoint_path)
-        self.policy.load_state_dict(checkpoint['policy_state_dict'])
-        if buffer_path is not None:
-            self.buffer.load(buffer_path)
 
         # torch.save(self.policy.state_dict(), os.path.join(model_dir, 'policy_{}.pt'.format(iter)))
 

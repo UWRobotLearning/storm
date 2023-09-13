@@ -8,7 +8,7 @@ from torch.utils.tensorboard import SummaryWriter
 from datetime import datetime
 from storm_kit.learning.agents import BPAgent, SACAgent, MPCAgent, MPOAgent, MPQAgent
 from storm_kit.learning.policies import MPCPolicy, GaussianPolicy, JointControlWrapper
-from storm_kit.learning.value_functions import QFunction, TwinQFunction
+from storm_kit.learning.value_functions import QFunction, TwinQFunction, EnsembleQFunction
 from storm_kit.learning.world_models import GaussianWorldModel
 from storm_kit.learning.replay_buffers import ReplayBuffer, RobotBuffer
 from storm_kit.learning.learning_utils import Log, buffer_from_folder
@@ -66,14 +66,9 @@ def main(cfg: DictConfig):
 
     obs_dim = task.obs_dim
     act_dim = task.action_dim
+    act_lows, act_highs = task.action_lims
 
-    buffer = RobotBuffer(capacity=int(1e6), device=cfg.rl_device)
-    # cfg.mpc.env_control_space = cfg.task.env.controlSpace
-    # cfg.mpc.world = cfg.task.world
-    # cfg.mpc.control_dt = cfg.task.sim.dt
-
-    # obs_dim = envs.obs_space.shape[0]
-    # act_dim = envs.action_space.shape[0]
+    buffer = RobotBuffer(capacity=int(cfg.train.agent.max_buffer_size), device=cfg.rl_device)
 
     if cfg.train.agent.name == "BP":
         try:
@@ -90,9 +85,12 @@ def main(cfg: DictConfig):
     
     if cfg.train.agent.name == 'SAC':
         # buffer = ReplayBuffer(capacity=int(2e6), obs_dim=obs_dim, act_dim=act_dim, device=torch.device('cpu'))
-        policy = GaussianPolicy(obs_dim=obs_dim, act_dim=act_dim, config=cfg.train.policy, rollout_cls=None, device=cfg.rl_device)
-        # policy = JointControlWrapper(config=cfg.task, policy=policy, device=cfg.rl_device)
-        critic = TwinQFunction(obs_dim=obs_dim, act_dim=act_dim, config=cfg.train.critic, device=cfg.rl_device)
+        policy = GaussianPolicy(obs_dim=obs_dim, act_dim=act_dim, config=cfg.train.policy, device=cfg.rl_device)
+        policy = JointControlWrapper(config=cfg.task, policy=policy, act_lows=act_lows, act_highs=act_highs, device=cfg.rl_device)
+        if cfg.train.agent.random_ensemble_q:
+            critic = EnsembleQFunction(obs_dim=obs_dim, act_dim=act_dim, config=cfg.train.critic, device=cfg.rl_device) 
+        else:
+            critic = TwinQFunction(obs_dim=obs_dim, act_dim=act_dim, config=cfg.train.critic, device=cfg.rl_device)
         agent = SACAgent(cfg.train.agent, envs=envs, task=task, obs_dim=obs_dim, action_dim=act_dim, 
                          buffer=buffer, policy=policy, critic=critic, runner_fn=episode_runner, 
                          logger=log, tb_writer=writer, device=cfg.rl_device)
@@ -103,15 +101,13 @@ def main(cfg: DictConfig):
         agent = MPOAgent(cfg.train.agent, envs=envs, obs_space=envs.obs_space, action_space=envs.action_space, 
                         buffer=buffer, policy=policy, critic=critic, logger=log, tb_writer=writer, device=cfg.rl_device)
     elif cfg.train.agent.name == 'MPQ':
-        # buffer = ReplayBuffer(capacity=int(2e6), obs_dim=obs_dim, act_dim=act_dim, device=torch.device('cpu'))
-        # policy = GaussianPolicy(obs_dim=obs_dim, act_dim=act_dim, config=cfg.train.policy, device=cfg.rl_device)
+        nn_policy = GaussianPolicy(obs_dim=obs_dim, act_dim=act_dim, config=cfg.train.nn_policy, device=cfg.rl_device)
         critic = TwinQFunction(obs_dim=obs_dim, act_dim=act_dim, config=cfg.train.critic, device=cfg.rl_device)
-        policy = MPCPolicy(obs_dim=obs_dim, act_dim=act_dim, config=cfg.task.mpc, rollout_cls=task_cls, value_function=critic, device=cfg.rl_device)
-        print('initializing target policy')
-        target_policy = MPCPolicy(obs_dim=obs_dim, act_dim=act_dim, config=cfg.train.target_mpc_policy, rollout_cls=task_cls, value_function=critic, device=cfg.rl_device)
+        mpc_policy = MPCPolicy(obs_dim=obs_dim, act_dim=act_dim, config=cfg.task.mpc, rollout_cls=task_cls, value_function=critic, device=cfg.rl_device)
+        target_mpc_policy = MPCPolicy(obs_dim=obs_dim, act_dim=act_dim, config=cfg.train.target_mpc_policy, rollout_cls=task_cls, value_function=critic, device=cfg.rl_device)
         # world_model = GaussianWorldModel(obs_dim=obs_dim, act_dim=act_dim, config=cfg.train.world_model, device=cfg.rl_device)
         agent = MPQAgent(cfg.train.agent, envs=envs, task=task, obs_dim=obs_dim, action_dim=act_dim,
-                        buffer=buffer, policy=policy, critic=critic, target_policy=target_policy, runner_fn=episode_runner, 
+                        buffer=buffer, policy=nn_policy, mpc_policy=mpc_policy, target_mpc_policy=target_mpc_policy, critic=critic, runner_fn=episode_runner, 
                         logger=log, tb_writer=writer, device=cfg.rl_device)
 
     else:
