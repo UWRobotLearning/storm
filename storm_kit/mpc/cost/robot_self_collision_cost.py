@@ -20,9 +20,11 @@
 # LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
 # FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 # DEALINGS IN THE SOFTWARE.#
+from typing import Optional
 import torch
 import torch.nn as nn
 # import torch.nn.functional as F
+
 
 from ...differentiable_robot_model.coordinate_transform import CoordinateTransform, quaternion_to_matrix
 
@@ -62,7 +64,7 @@ class RobotSelfCollisionCost(nn.Module):
         # Initialize collision model. This can be used if the NN is not trained.
         # TODO: Add flag to use this model is net weights are not loaded  
         self.collision_model = RobotSphereCollision(self.config, self.batch_size, device=self.device)
-        self.collision_model.build_batch_features(batch_size=self.batch_size, clone_pose=True, clone_objs=True)
+        # self.collision_model.build_batch_features(batch_size=self.batch_size, clone_pose=True, clone_objs=True)
 
         self.nn_collision_model = RobotSelfCollisionNet(
             n_joints=self.config['n_dofs'],
@@ -76,31 +78,31 @@ class RobotSelfCollisionCost(nn.Module):
             self.nn_collision_model.eval()
         except:
             pass
-        self.res = None
-        self.t_mat = None
+        # self.res = None
+        # self.t_mat = None
 
     def distance(self, link_pos_seq, link_rot_seq):
         """
             Uses analytical model for calculating signed distance
 
         """
+
         batch_size = link_pos_seq.shape[0]
         horizon = link_pos_seq.shape[1]
         n_links = link_pos_seq.shape[2]
         link_pos = link_pos_seq.view(batch_size * horizon, n_links, 3)
-        link_rot = link_rot_seq.view(batch_size * horizon, n_links, 3, 3)
+        link_rot = link_rot_seq.view(batch_size * horizon, n_links, 3, 3)        
+        # print(self.batch_size, batch_size)
+        # if self.batch_size != batch_size:
+
+        #     self.batch_size = batch_size
+        #     self.collision_model.build_batch_features(batch_size=self.batch_size * horizon, clone_pose=True, clone_objs=True)
         
-        if self.batch_size != batch_size:
-            self.batch_size = batch_size
-            self.collision_model.build_batch_features(batch_size=self.batch_size * horizon, clone_pose=True, clone_objs=True)
-        
-        res = self.collision_model.check_self_collisions(link_pos, link_rot)
-        self.res = res
-        res = res.view(batch_size, horizon, n_links)
+        res = self.collision_model.check_self_collisions(link_pos, link_rot).view(batch_size, horizon, n_links)
         res = torch.max(res, dim=-1)[0]
         return res
 
-    def forward(self, q_pos, link_pos_seq=None, link_rot_seq=None):
+    def forward(self, q_pos: torch.Tensor, link_pos_seq:Optional[torch.Tensor]=None, link_rot_seq:Optional[torch.Tensor]=None):
         """
             Calculate the collision cost
         """
@@ -108,26 +110,25 @@ class RobotSelfCollisionCost(nn.Module):
         horizon = q_pos.shape[1]
         q_pos = q_pos.view(batch_size * horizon, q_pos.shape[2])
         
-        # res = self.coll.check_self_collisions_nn(q)
-        # res = self.coll.check_self_collisions_nn(q)
         if self.weights_loaded:
             res = self.nn_collision_model.compute_signed_distance(q_pos)
             res = res.view(batch_size, horizon)
             res += self.distance_threshold
-            res[res <= 0.0] = 0.0
-            # res[res > 0.0] = 1.0
-            res[res >= 0.5] = 0.5
-            # rescale:
-            res = res / 0.25
+            # res[res <= 0.0] = 0.0
+            # # res[res > 0.0] = 1.0
+            # res[res >= 0.5] = 0.5
+            # # rescale:
+            # res = res / 0.25
             # res = res / 0.2
         else:
             res = self.distance(link_pos_seq, link_rot_seq)
-            res = res.view(batch_size, horizon)
-            res += self.distance_threshold
-            res[res <= 0.0] = 0.0
-            res[res >= 0.5] = 0.5
-            # rescale:
-            res = res / 0.25
+        
+        res = res.view(batch_size, horizon)
+        res += self.distance_threshold
+        res[res <= 0.0] = 0.0
+        res[res >= 0.5] = 0.5
+        # rescale:
+        res = res / 0.25
 
         cost = res
         # cost = self.weight * self.proj_gaussian(cost)

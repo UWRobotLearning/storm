@@ -452,7 +452,7 @@ class PointRobotEnv():
         curr_robot_pos = self.robot_state[:, 0:2]
         curr_robot_vel = self.robot_state[:, 7:9]
         feedforward_torques = torch.einsum('ijk,ik->ij', self.robot_mass, acc_des)
-        feedback_torques =  20.0 * (pos_des - curr_robot_pos) + 1.0 * (vel_des - curr_robot_vel)      
+        feedback_torques =  10.0 * (pos_des - curr_robot_pos) + 1.0 * (vel_des - curr_robot_vel)      
 
         torques = feedforward_torques + feedback_torques
         # print(torques, feedforward_torques, feedback_torques)

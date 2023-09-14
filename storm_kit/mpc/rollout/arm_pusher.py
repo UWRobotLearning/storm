@@ -28,7 +28,7 @@ from ...differentiable_robot_model.coordinate_transform import matrix_to_quatern
 from ..cost import DistCost, PoseCost, PoseCostQuaternion, ZeroCost, FiniteDifferenceCost
 from ...mpc.rollout.arm_base import ArmBase
 
-class ArmReacher(ArmBase):
+class ArmPusher(ArmBase):
     """
     This rollout function is for reaching a cartesian pose for a robot
 
@@ -37,7 +37,7 @@ class ArmReacher(ArmBase):
     """
 
     def __init__(self, cfg, world_params=None, value_function=None, viz_rollouts=False, device=torch.device('cpu')):
-        super(ArmReacher, self).__init__(cfg=cfg,
+        super(ArmPusher, self).__init__(cfg=cfg,
                                          world_params=world_params,
                                          value_function=value_function,
                                          viz_rollouts=viz_rollouts,
@@ -54,8 +54,9 @@ class ArmReacher(ArmBase):
         #                                     quat_inputs=False)
 
         self.goal_cost = PoseCost(**cfg['cost']['goal_pose'], device=self.device)
-        self.default_ee_goal = torch.tensor([0.3, 0.0, 0.3, 0.0, 0.707, 0.707, 0.0], device=self.device)
+        self.default_ee_goal = torch.tensor([0.05, 0.0, 0.3, 0.0, 0.707, 0.707, 0.0], device=self.device)
         self.init_buffers()
+
 
     def init_buffers(self):
         self.ee_goal_buff = torch.zeros(self.num_instances, 7, device=self.device)

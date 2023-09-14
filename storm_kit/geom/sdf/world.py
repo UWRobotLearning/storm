@@ -202,7 +202,7 @@ class WorldPrimitiveCollision(WorldGridCollision):
         self.load_collision_model(world_collision_params)
         self.dist = torch.zeros((1,1,1), **self.tensor_args)
 
-        if(bounds is not None):
+        if bounds is not None:
             self.update_world_sdf()
 
     def load_collision_model(self, world_collision_params):

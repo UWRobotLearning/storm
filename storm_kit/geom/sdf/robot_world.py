@@ -70,20 +70,29 @@ class RobotWorldCollisionCapsule(RobotWorldCollision):
         return dist
 
 class RobotWorldCollisionPrimitive(RobotWorldCollision):
+    # def __init__(self, robot_collision_params, world_collision_params, robot_batch_size=1,
+    #              world_batch_size=1,tensor_args={'device':"cpu", 'dtype':torch.float32},
+    #              bounds=None, grid_resolution=None):
+
     def __init__(self, robot_collision_params, world_collision_params, robot_batch_size=1,
-                 world_batch_size=1,tensor_args={'device':"cpu", 'dtype':torch.float32},
+                 world_batch_size=1, tensor_args={'device':"cpu", 'dtype':torch.float32},
                  bounds=None, grid_resolution=None):
+        
         self.device = tensor_args['device']
-        robot_collision = RobotSphereCollision(robot_collision_params, robot_batch_size, device=tensor_args['device'])
+        robot_collision = RobotSphereCollision(robot_collision_params, batch_size=robot_batch_size, device=tensor_args['device'])
         world_collision = WorldPrimitiveCollision(world_collision_params, tensor_args=tensor_args, batch_size=world_batch_size, bounds=bounds, grid_resolution=grid_resolution)
-        self.robot_batch_size = robot_batch_size
-
         super().__init__(robot_collision, world_collision)
-        self.dist = None
+        self.robot_batch_size = robot_batch_size
+        self.initialize()
+        # self.dist = None
+    
+    def initialize(self):
+        self.dist_buff = torch.zeros((self.robot_batch_size, self.robot_coll.num_links), device=self.device)
 
-    def build_batch_features(self, batch_size, clone_pose=True, clone_points=True):
-        self.batch_size = batch_size
-        self.robot_coll.build_batch_features(clone_objs=clone_points, batch_size=batch_size)
+
+    # def build_batch_features(self, batch_size, clone_pose=True, clone_points=True):
+    #     self.batch_size = batch_size
+    #     self.robot_coll.build_batch_features(clone_objs=clone_points, batch_size=batch_size)
 
     def check_robot_sphere_collisions(self, link_trans, link_rot):
         """get signed distance from stored grid [very fast]
@@ -95,11 +104,11 @@ class RobotWorldCollisionPrimitive(RobotWorldCollision):
         Returns:
             tensor: signed distance [b,1]
         """        
-        batch_size = link_trans.shape[0]
+        # batch_size = link_trans.shape[0]
         # update link pose:
-        if self.robot_batch_size != batch_size:
-            self.robot_batch_size = batch_size
-            self.build_batch_features(self.robot_batch_size, clone_pose=True, clone_points=True)
+        # if self.robot_batch_size != batch_size:
+        #     self.robot_batch_size = batch_size
+        #     self.build_batch_features(self.robot_batch_size, clone_pose=True, clone_points=True)
 
         with record_function('robot_world:update_batch_collision_objs'):
             self.robot_coll.update_batch_robot_collision_objs(link_trans, link_rot)
@@ -109,9 +118,9 @@ class RobotWorldCollisionPrimitive(RobotWorldCollision):
         
         n_links = len(w_link_spheres)
 
-        if self.dist is None or self.dist.shape[0] != n_links:
-            self.dist = torch.zeros((batch_size, n_links), device=self.device)
-        dist = self.dist
+        # if self.dist is None or self.dist.shape[0] != n_links:
+            # self.dist = torch.zeros((batch_size, n_links), device=self.device)
+        dist = self.dist_buff
         for i in range(n_links):
             spheres = w_link_spheres[i]
             b, n, _ = spheres.shape

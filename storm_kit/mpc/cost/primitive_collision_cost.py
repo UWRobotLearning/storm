@@ -28,20 +28,24 @@ from ...geom.sdf.robot_world import RobotWorldCollisionPrimitive
 from .gaussian_projection import GaussianProjection
 
 class PrimitiveCollisionCost(nn.Module):
-    def __init__(self, weight=None, world_params=None, robot_params=None, gaussian_params={},
+    # def __init__(self, weight=None, world_params=None, robot_params=None, gaussian_params={},
+    #              distance_threshold=0.1, tensor_args={'device':torch.device('cpu'), 'dtype':torch.float32}):
+    def __init__(self, weight=None, world_params=None, robot_params=None, batch_size:int=1,
                  distance_threshold=0.1, tensor_args={'device':torch.device('cpu'), 'dtype':torch.float32}):
+
         super(PrimitiveCollisionCost, self).__init__()
         
         self.tensor_args = tensor_args
         self.weight = torch.as_tensor(weight,**self.tensor_args)
         
-        self.proj_gaussian = GaussianProjection(gaussian_params=gaussian_params)
+        # self.proj_gaussian = GaussianProjection(gaussian_params=gaussian_params)
 
         robot_collision_params = robot_params['robot_collision_params']
-        self.batch_size = -1
+        self.batch_size = batch_size
         # BUILD world and robot:
         self.robot_world_coll = RobotWorldCollisionPrimitive(robot_collision_params,
                                                              world_params['world_model'],
+                                                             robot_batch_size=batch_size,
                                                              tensor_args=self.tensor_args,
                                                              bounds=robot_params['world_collision_params']['bounds'],
                                                              grid_resolution=robot_params['world_collision_params']['grid_resolution'])
@@ -50,21 +54,23 @@ class PrimitiveCollisionCost(nn.Module):
         self.t_mat = None
         self.distance_threshold = distance_threshold
     
-    def forward(self, link_pos_seq, link_rot_seq):
+    def forward(self, link_pos_seq:torch.Tensor, link_rot_seq:torch.Tensor):
         
         inp_device = link_pos_seq.device
         batch_size = link_pos_seq.shape[0]
         horizon = link_pos_seq.shape[1]
         n_links = link_pos_seq.shape[2]
 
-        if self.batch_size != batch_size:
-            self.batch_size = batch_size
-            self.robot_world_coll.build_batch_features(self.batch_size * horizon, clone_pose=True, clone_points=True)
+        # if self.batch_size != batch_size:
+        #     self.batch_size = batch_size
+        #     self.robot_world_coll.build_batch_features(self.batch_size * horizon, clone_pose=True, clone_points=True)
 
         link_pos_batch = link_pos_seq.view(batch_size * horizon, n_links, 3)
         link_rot_batch = link_rot_seq.view(batch_size * horizon, n_links, 3, 3)
+        
         with record_function("primitive_collision_cost:check_sphere_collision"):
             dist = self.robot_world_coll.check_robot_sphere_collisions(link_pos_batch, link_rot_batch)
+        
         dist = dist.view(batch_size, horizon, n_links)#, self.n_world_objs)
         # cost only when dist is less
         dist += self.distance_threshold
@@ -74,8 +80,6 @@ class PrimitiveCollisionCost(nn.Module):
         dist = dist / 0.25
         
         cost = torch.sum(dist, dim=-1)
-
-
         cost = self.weight * cost 
 
         return cost.to(inp_device)

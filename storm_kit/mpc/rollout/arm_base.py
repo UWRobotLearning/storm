@@ -124,10 +124,15 @@ class ArmBase(RolloutBase):
         #                                                    **self.cfg['cost']['voxel_collision'])
             
         # if cfg['cost']['primitive_collision']['weight'] > 0.0:
-        self.primitive_collision_cost = PrimitiveCollisionCost(world_params=world_params, robot_params=robot_params, tensor_args=tensor_args, **self.cfg['cost']['primitive_collision'])
+        self.primitive_collision_cost = PrimitiveCollisionCost(
+            world_params=world_params, robot_params=robot_params, 
+            batch_size=self.num_instances * self.batch_size * self.horizon,
+            tensor_args=tensor_args, **self.cfg['cost']['primitive_collision'])
 
         # if cfg['cost']['robot_self_collision']['weight'] > 0.0:
-        self.robot_self_collision_cost = RobotSelfCollisionCost(config=model_params['robot_collision_params'], device=self.device, **self.cfg['cost']['robot_self_collision'])
+        self.robot_self_collision_cost = RobotSelfCollisionCost(
+            config=model_params['robot_collision_params'], batch_size=self.num_instances * self.batch_size * self.horizon,
+            device=self.device, **self.cfg['cost']['robot_self_collision'])
 
         self.ee_vel_cost = EEVelCost(ndofs=self.n_dofs,device=device, float_dtype=dtype,**cfg['cost']['ee_vel'])
 
@@ -229,19 +234,17 @@ class ArmBase(RolloutBase):
 
         # if not no_coll:
         if self.cfg['cost']['robot_self_collision']['weight'] > 0:
-            #coll_cost = self.robot_self_collision_cost.forward(link_pos_batch, link_rot_batch)
             with record_function('self_collision_cost'):
-                # coll_cost = self.robot_self_collision_cost.forward(state_batch[:,:,:self.n_dofs])
                 coll_cost = self.robot_self_collision_cost.forward(
                     state_batch[:,:,:self.n_dofs], 
                     link_pos_seq=link_pos_batch, link_rot_seq=link_rot_batch)
-                print(coll_cost)
                 cost += coll_cost
         
         if self.cfg['cost']['primitive_collision']['weight'] > 0:
             with record_function('primitive_collision'):
                 coll_cost = self.primitive_collision_cost.forward(link_pos_batch, link_rot_batch)
                 cost += coll_cost
+
         #     if self.cfg['cost']['voxel_collision']['weight'] > 0:
         #         with record_function('voxel_collision'):
         #             coll_cost = self.voxel_collision_cost.forward(link_pos_batch, link_rot_batch)
