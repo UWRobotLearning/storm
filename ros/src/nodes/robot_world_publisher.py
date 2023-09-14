@@ -52,7 +52,7 @@ class RobotWorldPublisher():
 
         self.robot_model = DifferentiableRobotModel(self.urdf_path)
         self.collision_model = RobotSphereCollision(self.robot_collision_config)
-        self.collision_model.build_batch_features(batch_size=1, clone_pose=True, clone_objs=True)
+        # self.collision_model.build_batch_features(batch_size=1, clone_pose=True, clone_objs=True)
 
 
     def robot_state_callback(self, msg):
