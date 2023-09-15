@@ -125,7 +125,7 @@ rollout:
     primitive_collision:
       weight: 5000.0
       distance_threshold: 0.03
-      gaussian_params: {'n':0, 'c':0.0, 's':0, 'r':10.0}
+      # gaussian_params: {'n':0, 'c':0.0, 's':0, 'r':10.0}
 
     robot_self_collision:
       weight: 5000.0
@@ -148,7 +148,7 @@ mpc:
   mppi:
     num_instances     : 1
     horizon           : 20
-    init_cov          : 0.005
+    init_cov          : 0.01 #0.005
     gamma             : 0.99
     n_iters           : 1
     step_size_mean    : 0.98
