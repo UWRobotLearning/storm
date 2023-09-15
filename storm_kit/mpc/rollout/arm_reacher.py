@@ -54,25 +54,23 @@ class ArmReacher(ArmBase):
         #                                     quat_inputs=False)
 
         self.goal_cost = PoseCost(**cfg['cost']['goal_pose'], device=self.device)
-        self.default_ee_goal = torch.tensor([0.3, 0.0, 0.3, 0.0, 0.707, 0.707, 0.0], device=self.device)
+        self.default_ee_goal = torch.tensor([0.0, 0.0, 0.3, 0.0, 0.707, 0.707, 0.0], device=self.device)
         self.init_buffers()
 
     def init_buffers(self):
         self.ee_goal_buff = torch.zeros(self.num_instances, 7, device=self.device)
-
 
     def compute_cost(
             self, 
             state_dict: Dict[str, torch.Tensor], 
             action_batch: Optional[torch.Tensor]=None,
             termination: Optional[Dict[str, torch.Tensor]]=None, 
-            no_coll: bool=False, horizon_cost: bool=True, return_dist:bool=False):
+            horizon_cost: bool=True, return_dist:bool=False):
 
         cost, cost_terms, state_dict = super(ArmReacher, self).compute_cost(
             state_dict = state_dict,
             action_batch = action_batch,
             termination = termination,
-            # no_coll = no_coll, 
             horizon_cost = horizon_cost)
 
         # num_instances, curr_batch_size, num_traj_points, _ = state_dict['state_seq'].shape

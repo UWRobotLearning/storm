@@ -75,10 +75,8 @@ class MPCPolicy(Policy):
         # planning_state_dict['q_pos'] = planning_state[:, 0:self.n_dofs]
         # planning_state_dict['q_vel'] = planning_state[:, 0:self.n_dofs]
         # planning_state_dict['q_acc'] = planning_state[:, 0:self.n_dofs]
-        
         curr_action_seq, value, info = self.controller.forward(
             state_dict, calc_val=False, shift_steps=1)
-
         q_acc_des = curr_action_seq[:, 0]
         # command = self.state_filter.predict_internal_state(q_acc_des)
 

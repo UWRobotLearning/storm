@@ -31,23 +31,20 @@ class PrimitiveCollisionCost(nn.Module):
     # def __init__(self, weight=None, world_params=None, robot_params=None, gaussian_params={},
     #              distance_threshold=0.1, tensor_args={'device':torch.device('cpu'), 'dtype':torch.float32}):
     def __init__(self, weight=None, world_params=None, robot_params=None, batch_size:int=1,
-                 distance_threshold=0.1, tensor_args={'device':torch.device('cpu'), 'dtype':torch.float32}):
+                 distance_threshold=0.1, device:torch.device=torch.device('cpu')):
 
         super(PrimitiveCollisionCost, self).__init__()
         
-        self.tensor_args = tensor_args
-        self.weight = torch.as_tensor(weight,**self.tensor_args)
-        
-        # self.proj_gaussian = GaussianProjection(gaussian_params=gaussian_params)
-
-        robot_collision_params = robot_params['robot_collision_params']
+        self.device = device
+        self.weight = torch.as_tensor(weight, device=self.device)
+        self.robot_collision_params = robot_params['robot_collision_params']
         self.batch_size = batch_size
-        # BUILD world and robot:
-        self.robot_world_coll = RobotWorldCollisionPrimitive(robot_collision_params,
+        bounds = torch.as_tensor(robot_params['world_collision_params']['bounds'], device=self.device)
+        self.robot_world_coll = RobotWorldCollisionPrimitive(self.robot_collision_params,
                                                              world_params['world_model'],
                                                              robot_batch_size=batch_size,
-                                                             tensor_args=self.tensor_args,
-                                                             bounds=robot_params['world_collision_params']['bounds'],
+                                                             device=self.device,
+                                                             bounds=bounds,
                                                              grid_resolution=robot_params['world_collision_params']['grid_resolution'])
         
         self.n_world_objs = self.robot_world_coll.world_coll.n_objs
@@ -61,25 +58,35 @@ class PrimitiveCollisionCost(nn.Module):
         horizon = link_pos_seq.shape[1]
         n_links = link_pos_seq.shape[2]
 
-        # if self.batch_size != batch_size:
-        #     self.batch_size = batch_size
-        #     self.robot_world_coll.build_batch_features(self.batch_size * horizon, clone_pose=True, clone_points=True)
-
         link_pos_batch = link_pos_seq.view(batch_size * horizon, n_links, 3)
         link_rot_batch = link_rot_seq.view(batch_size * horizon, n_links, 3, 3)
         
         with record_function("primitive_collision_cost:check_sphere_collision"):
-            dist = self.robot_world_coll.check_robot_sphere_collisions(link_pos_batch, link_rot_batch)
+            world_coll_dist, self_coll_dist = self.robot_world_coll.check_robot_sphere_collisions(link_pos_batch, link_rot_batch)
         
-        dist = dist.view(batch_size, horizon, n_links)#, self.n_world_objs)
-        # cost only when dist is less
-        dist += self.distance_threshold
+        #world collision cost
+        world_coll_dist = world_coll_dist.view(batch_size, horizon, n_links)
+        #cost only when world_coll_dist is less
+        world_coll_dist += self.distance_threshold
 
-        dist[dist <= 0.0] = 0.0
-        dist[dist > 0.2] = 0.2
-        dist = dist / 0.25
+        world_coll_dist[world_coll_dist <= 0.0] = 0.0
+        world_coll_dist[world_coll_dist > 0.2] = 0.2
+        world_coll_dist = world_coll_dist / 0.25
         
-        cost = torch.sum(dist, dim=-1)
+        world_cost = torch.sum(world_coll_dist, dim=-1)
+        
+        #self collision cost
+        self_coll_dist = self_coll_dist.view(batch_size, horizon, n_links)
+        # cost only when self_coll_dist is less
+        self_coll_dist += self.distance_threshold
+
+        self_coll_dist[self_coll_dist <= 0.0] = 0.0
+        self_coll_dist[self_coll_dist > 0.2] = 0.2
+        self_coll_dist = self_coll_dist / 0.25
+        
+        self_cost = torch.sum(self_coll_dist, dim=-1)
+        
+        cost = world_cost + self_cost
         cost = self.weight * cost 
 
         return cost.to(inp_device)

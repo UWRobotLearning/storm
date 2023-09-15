@@ -12,11 +12,9 @@ from isaacgym import gymutil, gymtorch, gymapi
 import torch
 
 from isaacgym.torch_utils import *
-# from isaacgymenvs.tasks.base.vec_task import VecTask
 import yaml
 from hydra.utils import instantiate
 
-# from storm_kit.differentiable_robot_model import DifferentiableRobotModel
 from storm_kit.differentiable_robot_model.coordinate_transform import CoordinateTransform, quaternion_to_matrix, matrix_to_quaternion, rpy_angles_to_matrix
 
 

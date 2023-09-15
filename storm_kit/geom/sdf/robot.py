@@ -469,6 +469,10 @@ class RobotSphereCollision:
         #find distance between spheres
         dist = find_link_distance(self.w_batch_link_spheres, self.dist_buff)
         return dist
+    
+    def compute_link_distances(self, w_batch_link_spheres):
+        dist = find_link_distance(w_batch_link_spheres, self.dist_buff)
+        return dist
 
 
     # def check_self_collisions(self, link_trans, link_rot):

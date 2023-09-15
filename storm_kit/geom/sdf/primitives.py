@@ -20,7 +20,7 @@
 # LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
 # FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 # DEALINGS IN THE SOFTWARE.#
-
+from typing import List, Optional
 import torch
 from ...differentiable_robot_model.coordinate_transform import transform_point
 
@@ -147,27 +147,31 @@ def get_pt_primitive_distance(w_pts, world_spheres, world_cubes, dist):
         dist[:,i + world_spheres.shape[1],:] = d
     return dist
 
-@torch.jit.script
-def get_sphere_primitive_distance(w_sphere, world_spheres, world_cubes):
-    # type: (Tensor, Tensor, List[List[Tensor]]) -> Tensor
-    dist = torch.zeros((w_sphere.shape[0], world_spheres.shape[1]+len(world_cubes), w_sphere.shape[1]), device=w_sphere.device, dtype=w_sphere.dtype)
+# type: (Tensor, Tensor, List[List[Tensor]]) -> Tensor
 
+@torch.jit.script
+def get_sphere_primitive_distance(w_sphere:torch.Tensor, world_spheres:torch.Tensor, world_cubes:List[List[torch.Tensor]])->torch.Tensor:
+    
+    dist = torch.zeros((w_sphere.shape[0], world_spheres.shape[1]+len(world_cubes), w_sphere.shape[1]), device=w_sphere.device, dtype=w_sphere.dtype)
+    # dist = torch.zeros((w_sphere.shape[0], num_spheres + num_cubes, num_spheres), device=w_sphere.device, dtype=w_sphere.dtype)
+
+    # if num_spheres > 0:
     for i in range(world_spheres.shape[1]):
         # compute distance between w_pts and sphere:
         # world_spheres: b, 0, 3
         d = sdf_pt_to_sphere(world_spheres[:,i,:3],
-                             world_spheres[:,i,3],
-                             w_sphere[...,:3]) + w_sphere[...,3]
+                            world_spheres[:,i,3],
+                            w_sphere[...,:3]) + w_sphere[...,3]
         
         dist[:,i,:] = d
         
-    
-    # cube signed distance:
+    # if num_cubes > 0:
+        # cube signed distance:
     for i in range(len(world_cubes)):
         cube = world_cubes[i]
         d = sdf_pt_to_box(cube[-1], cube[2], cube[3], w_sphere[...,:3])
         dist[:,i + world_spheres.shape[1],:] = d + w_sphere[...,3]
-        
+    
     return dist
 
 

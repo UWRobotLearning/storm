@@ -27,8 +27,8 @@ import trimesh
 from trimesh.voxel.creation import voxelize
 import torch
 from torch.profiler import record_function
-import matplotlib
-matplotlib.use('tkagg')
+# import matplotlib
+# matplotlib.use('tkagg')
 
 import matplotlib.pyplot as plt
 
@@ -38,10 +38,12 @@ from ...geom.geom_types import tensor_capsule, tensor_sphere, tensor_cube
 from ...geom.sdf.primitives import get_pt_primitive_distance, get_sphere_primitive_distance
 
 class WorldCollision:
-    def __init__(self, batch_size=1, tensor_args={'device':"cpu", 'dtype':torch.float32}):
+    # def __init__(self, batch_size=1, tensor_args={'device':"cpu", 'dtype':torch.float32}):
+    def __init__(self, batch_size:int=1, device:torch.device=torch.device('cpu')):
         # read capsules
         self.batch_size = batch_size
-        self.tensor_args = tensor_args
+        # self.tensor_args = tensor_args
+        self.device = device
         
     def load_collision_model(self):
         raise NotImplementedError
@@ -52,12 +54,15 @@ class WorldGridCollision(WorldCollision):
     """    
     def __init__(self, 
                 batch_size: int = 1, 
-                tensor_args: dict ={'device':"cpu", 'dtype':torch.float32},
-                bounds=None, 
-                grid_resolution: float = 0.05):
+                # tensor_args: dict ={'device':"cpu", 'dtype':torch.float32},
+                bounds:torch.Tensor = torch.zeros(2,2), 
+                grid_resolution:float = 0.05,
+                device:torch.device = torch.device('cpu') ):
         
-        super().__init__(batch_size, tensor_args)
-        self.bounds = torch.as_tensor(bounds, **tensor_args)
+        # super().__init__(batch_size, tensor_args)
+        super().__init__(batch_size, device)
+        # self.bounds = torch.as_tensor(bounds, **tensor_args)
+        self.bounds = torch.tensor(bounds, device=self.device)
         self.grid_resolution = grid_resolution
         self.pitch = self.grid_resolution
         self.scene_sdf = None
@@ -82,17 +87,17 @@ class WorldGridCollision(WorldCollision):
         """        
         raise NotImplementedError
 
-    def view_sdf_grid(self, sdf_grid):
-        ax = plt.axes(projection='3d')
-        ind_matrix = [[x,y,z] for x in range(sdf_grid.shape[0]) for y in range(sdf_grid.shape[1]) for z in range(sdf_grid.shape[2])]
-        ind_matrix = np.matrix(ind_matrix)
-        xdata = ind_matrix[:,0]
-        ydata = ind_matrix[:, 1]
-        zdata = ind_matrix[:,2]
+    # def view_sdf_grid(self, sdf_grid):
+    #     ax = plt.axes(projection='3d')
+    #     ind_matrix = [[x,y,z] for x in range(sdf_grid.shape[0]) for y in range(sdf_grid.shape[1]) for z in range(sdf_grid.shape[2])]
+    #     ind_matrix = np.matrix(ind_matrix)
+    #     xdata = ind_matrix[:,0]
+    #     ydata = ind_matrix[:, 1]
+    #     zdata = ind_matrix[:,2]
         
-        c_data = torch.flatten(sdf_grid).cpu().numpy()
-        ax.scatter3D(xdata, ydata, zdata, c=c_data, cmap='coolwarm')#, vmin=-0.1, vmax=0.1)
-        plt.show()
+    #     c_data = torch.flatten(sdf_grid).cpu().numpy()
+    #     ax.scatter3D(xdata, ydata, zdata, c=c_data, cmap='coolwarm')#, vmin=-0.1, vmax=0.1)
+    #     plt.show()
 
     def build_transform_matrices(self, bounds, pitch):
         '''
@@ -100,16 +105,19 @@ class WorldGridCollision(WorldCollision):
         bounds: [[min_x, min_y, min_z], [max_x, max_y, max_z]]
         pitch: float
         '''
-        origin = torch.tensor(bounds[0], **self.tensor_args)
+        # origin = torch.tensor(bounds[0], **self.tensor_args)
+        origin = torch.tensor(bounds[0], device=self.device)
         # build pt to idx
         # given a point (x,y,z), convert to an index assuming pt is within bounds
-        self.pt_to_idx_rot = torch.eye(3, **self.tensor_args) * (1.0 / pitch)
+        # self.pt_to_idx_rot = torch.eye(3, **self.tensor_args) * (1.0 / pitch)
+        self.pt_to_idx_rot = torch.eye(3, device=self.device) * (1.0 / pitch)
         self.pt_to_idx_trans = -1.0 * origin * (1.0 / pitch)
         # self.proj_pt_idx = CoordinateTransform(trans=-1.0 * trans * (1.0 / pitch), rot=rot, tensor_args=self.tensor_args)
         
         
         # build idx to pt
-        self.idx_to_pt_rot = torch.eye(3, **self.tensor_args) * pitch
+        # self.idx_to_pt_rot = torch.eye(3, **self.tensor_args) * pitch
+        self.idx_to_pt_rot = torch.eye(3, device=self.device) * pitch
         self.idx_to_pt_trans = 1.0 * origin 
         #trans = torch
         # self.proj_idx_pt = CoordinateTransform(trans=1.0 * trans, rot=rot, tensor_args=self.tensor_args)
@@ -121,16 +129,19 @@ class WorldGridCollision(WorldCollision):
         sdf_grid_dims = torch.Size(((self.bounds[1] - self.bounds[0]) / self.grid_resolution).int())
         self.build_transform_matrices(self.bounds, self.grid_resolution)
 
-        sdf_grid = torch.zeros(sdf_grid_dims, **self.tensor_args)
+        # sdf_grid = torch.zeros(sdf_grid_dims, **self.tensor_args)
+        sdf_grid = torch.zeros(sdf_grid_dims, device=self.device)
+        # self.num_voxels = torch.tensor([sdf_grid.shape[0], sdf_grid.shape[1],
+        #                                 sdf_grid.shape[2]],
+        #                                **self.tensor_args)
         self.num_voxels = torch.tensor([sdf_grid.shape[0], sdf_grid.shape[1],
-                                        sdf_grid.shape[2]],
-                                       **self.tensor_args)
-
+                                        sdf_grid.shape[2]], device=self.device).float()
         # get indices
 
         ind_matrix = [[x,y,z] for x in range(sdf_grid.shape[0]) for y in range(sdf_grid.shape[1]) for z in range(sdf_grid.shape[2])]
         
-        ind_matrix = torch.tensor(ind_matrix, **self.tensor_args)
+        # ind_matrix = torch.tensor(ind_matrix, **self.tensor_args)
+        ind_matrix = torch.tensor(ind_matrix, device=self.device).float()
         self.ind_matrix = ind_matrix
         # pt_matrix = self.proj_idx_pt.transform_point(ind_matrix)
         pt_matrix = transform_point(ind_matrix, self.idx_to_pt_rot, self.idx_to_pt_trans)
@@ -174,12 +185,13 @@ class WorldGridCollision(WorldCollision):
         sdf[~in_bounds] = -10.0
         return sdf
 
-    def voxel_inds(self, pt):
+    def voxel_inds(self, pt: torch.Tensor):
 
         # pt = self.proj_pt_idx.transform_point(pt)
         with record_function('sdf_voxel_inds:transform_point'):
             pt = transform_point(pt, self.pt_to_idx_rot, self.pt_to_idx_trans)
             pt = pt.to(dtype=torch.int64)
+        
         with record_function('sdf_voxel_inds:ind_pt'):
             ind_pt = (pt[...,0]) * (self.num_voxels[1] * self.num_voxels[2]) + pt[...,1] * self.num_voxels[2] + pt[...,2]        
             ind_pt = ind_pt.to(dtype=torch.int64)
@@ -191,16 +203,21 @@ class WorldGridCollision(WorldCollision):
 class WorldPrimitiveCollision(WorldGridCollision):
     """ This class holds a batched collision model
     """
-    def __init__(self, world_collision_params, batch_size=1, tensor_args={'device':"cpu", 'dtype':torch.float32}, bounds=None, grid_resolution=0.05):
-        super().__init__(batch_size, tensor_args, bounds, grid_resolution)
-        self._world_spheres = None
-        self._world_cubes = None
+    # def __init__(self, world_collision_params, batch_size=1, tensor_args={'device':"cpu", 'dtype':torch.float32}, bounds=None, grid_resolution=0.05):
+    def __init__(self, world_collision_params, batch_size:int=1, bounds:torch.Tensor = torch.zeros(2,2), grid_resolution:float=0.05, device:torch.device=torch.device('cpu')):
+        super().__init__(batch_size, bounds, grid_resolution, device)
+        self._world_spheres = []
+        self._world_cubes = []
         
         self.n_objs = 0
+        self.num_sphere_objs = 0
+        self.num_cube_objs = 0
 
-        self.l_T_c = CoordinateTransform(device=self.tensor_args['device'])
+        # self.l_T_c = CoordinateTransform(device=self.tensor_args['device'])
+        self.l_T_c = CoordinateTransform(device=self.device)
         self.load_collision_model(world_collision_params)
-        self.dist = torch.zeros((1,1,1), **self.tensor_args)
+        # self.dist = torch.zeros((1,1,1), **self.tensor_args)
+        self.dist_buff = torch.zeros((1,1,1), device=self.device)
 
         if bounds is not None:
             self.update_world_sdf()
@@ -208,33 +225,37 @@ class WorldPrimitiveCollision(WorldGridCollision):
     def load_collision_model(self, world_collision_params):
         
         world_objs = world_collision_params['coll_objs']
-        sphere_objs = world_objs['sphere']
-        if('cube' in world_objs):
+        if 'sphere' in world_objs:
+            sphere_objs = world_objs['sphere']
+        else:
+            sphere_objs = []
+        if 'cube' in world_objs:
             cube_objs = world_objs['cube']
         else:
             cube_objs = []
-            
+        
+        self.num_sphere_objs = len(sphere_objs)
+        self.num_cube_objs = len(cube_objs)
 
         # we store as [Batch, n_link, 7]
-        self._world_spheres = torch.empty((self.batch_size, len(sphere_objs), 4), **self.tensor_args)
-        self._world_cubes = []
+        self._world_spheres = []
+        if len(sphere_objs) > 0:
+            self._world_spheres = torch.empty((self.batch_size, len(sphere_objs), 4), device=self.device)
+            for j_idx, j in enumerate(sphere_objs):
+                position = sphere_objs[j]['position']
+                r = sphere_objs[j]['radius']
+                self._world_spheres[:, j_idx,:] = tensor_sphere(position, r, device=self.device).unsqueeze(0).repeat(self.batch_size, 1)
 
-        for j_idx, j in enumerate(sphere_objs):
-            position = sphere_objs[j]['position']
-            
-            r = sphere_objs[j]['radius']
-            
-            self._world_spheres[:, j_idx,:] = tensor_sphere(position, r, device=self.tensor_args['device']).unsqueeze(0).repeat(self.batch_size, 1)
-        
+        self._world_cubes = []        
         for j_idx, j in enumerate(cube_objs):
             pose = cube_objs[j]['pose']
             pose_fixed = [pose[0], pose[1], pose[2], pose[6], pose[3], pose[4], pose[5]]
             dims = cube_objs[j]['dims']
-            cube = tensor_cube(pose_fixed, dims, device=self.tensor_args['device'])
+            cube = tensor_cube(pose_fixed, dims, device=self.device)
             self._world_cubes.append(cube)
 
-        self.n_objs = self._world_spheres.shape[1] + len(self._world_cubes)
-        
+        # self.n_objs = self._world_spheres.shape[1] + len(self._world_cubes)
+        self.n_objs = self.num_sphere_objs + self.num_cube_objs        
     
     def update_obj_poses(self, objs_pos, objs_rot):
         """
@@ -268,8 +289,9 @@ class WorldPrimitiveCollision(WorldGridCollision):
         self.l_T_c.set_translation(r_pos)
         self.l_T_c.set_rotation(r_rot)
 
-        for i in range(self._world_spheres.shape[1]):
-            self._world_spheres[:,i,:3] = self.l_T_c.transform_point(self._world_spheres[:,i,:3])
+        if self.num_sphere_objs > 0:
+            for i in range(self._world_spheres.shape[1]):
+                self._world_spheres[:,i,:3] = self.l_T_c.transform_point(self._world_spheres[:,i,:3])
             
     def get_sphere_objs(self):
         # return capsule spheres in world frame
@@ -279,30 +301,33 @@ class WorldPrimitiveCollision(WorldGridCollision):
         # return capsule spheres in world frame
         return self._world_cubes
 
-    def get_sphere_distance(self, w_sphere):
-        """
-        Computes the signed distance via analytic function
-        Args:
-        tensor_sphere: b, n, 4
-        """
-        dist = torch.zeros((w_sphere.shape[0], self.n_objs, w_sphere.shape[1]), **self.tensor_args)
-        dist = get_sphere_primitive_distance(w_sphere, self._world_spheres, self._world_cubes)
-        return dist
+    # def get_sphere_distance(self, w_sphere:torch.Tensor):
+    #     """
+    #     Computes the signed distance via analytic function
+    #     Args:
+    #     tensor_sphere: b, n, 4
+    #     """
+    #     # dist = torch.zeros((w_sphere.shape[0], self.n_objs, w_sphere.shape[1]), **self.tensor_args)
+    #     dist = torch.zeros((w_sphere.shape[0], self.n_objs, w_sphere.shape[1]), device=self.device)
+    #     dist = get_sphere_primitive_distance(w_sphere, self._world_spheres, self._world_cubes)
+    #     return dist
 
-    def get_pt_distance(self, w_pts):
+    def get_pt_distance(self, w_pts:torch.Tensor):
         """
         Args:
         w_pts: b, n, 3
         """
-        if(len(w_pts.shape) == 2):
+        if len(w_pts.shape) == 2:
             w_pts = w_pts.view(w_pts.shape[0], 1, 3)
-        if(self.dist.shape[0] != w_pts.shape[0] or self.dist.shape[1] != self.n_objs or self.dist_shape[2] != w_pts.shape[1]):
-            self.dist = torch.zeros((w_pts.shape[0], self.n_objs, w_pts.shape[1]), **self.tensor_args)
-        dist = self.dist
+        
+        if self.dist_buff.shape[0] != w_pts.shape[0] or self.dist_buff.shape[1] != self.n_objs: # or self.dist_shape[2] != w_pts.shape[1]:
+            self.dist_buff = torch.zeros((w_pts.shape[0], self.n_objs, w_pts.shape[1]), device=self.device)
+        
+        dist = self.dist_buff
         dist = get_pt_primitive_distance(w_pts, self._world_spheres, self._world_cubes, dist)
         return dist
 
-    def get_signed_distance(self, w_pts):
+    def get_signed_distance(self, w_pts:torch.Tensor):
         dist = torch.max(self.get_pt_distance(w_pts), dim=1)[0]
         return dist
     

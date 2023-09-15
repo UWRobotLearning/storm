@@ -70,17 +70,14 @@ class RobotWorldCollisionCapsule(RobotWorldCollision):
         return dist
 
 class RobotWorldCollisionPrimitive(RobotWorldCollision):
-    # def __init__(self, robot_collision_params, world_collision_params, robot_batch_size=1,
-    #              world_batch_size=1,tensor_args={'device':"cpu", 'dtype':torch.float32},
-    #              bounds=None, grid_resolution=None):
 
-    def __init__(self, robot_collision_params, world_collision_params, robot_batch_size=1,
-                 world_batch_size=1, tensor_args={'device':"cpu", 'dtype':torch.float32},
-                 bounds=None, grid_resolution=None):
+    def __init__(self, robot_collision_params, world_collision_params, robot_batch_size:int=1,
+                 world_batch_size:int=1, device:torch.device=torch.device('cpu'),
+                 bounds:torch.Tensor=torch.zeros(2,2),grid_resolution:float=0.05):
         
-        self.device = tensor_args['device']
-        robot_collision = RobotSphereCollision(robot_collision_params, batch_size=robot_batch_size, device=tensor_args['device'])
-        world_collision = WorldPrimitiveCollision(world_collision_params, tensor_args=tensor_args, batch_size=world_batch_size, bounds=bounds, grid_resolution=grid_resolution)
+        self.device = device
+        robot_collision = RobotSphereCollision(robot_collision_params, batch_size=robot_batch_size, device=self.device)
+        world_collision = WorldPrimitiveCollision(world_collision_params, batch_size=world_batch_size, bounds=bounds, grid_resolution=grid_resolution, device=self.device)
         super().__init__(robot_collision, world_collision)
         self.robot_batch_size = robot_batch_size
         self.initialize()
@@ -116,8 +113,10 @@ class RobotWorldCollisionPrimitive(RobotWorldCollision):
         with record_function('robot_world:get_batch_robot_link_spheres'):
             w_link_spheres = self.robot_coll.get_batch_robot_link_spheres()
         
+        #compute self collisions
+        self_coll_dist = self.robot_coll.compute_link_distances(w_link_spheres)
+        
         n_links = len(w_link_spheres)
-
         # if self.dist is None or self.dist.shape[0] != n_links:
             # self.dist = torch.zeros((batch_size, n_links), device=self.device)
         dist = self.dist_buff
@@ -131,8 +130,8 @@ class RobotWorldCollisionPrimitive(RobotWorldCollision):
                 sdf = self.world_coll.check_pts_sdf(spheres[:,:3]) + spheres[:,3]
             sdf = sdf.view(b,n)
             dist[:,i] = torch.max(sdf, dim=-1)[0]
- 
-        return dist
+         
+        return dist, self_coll_dist
 
     def get_robot_env_sdf(self, link_trans, link_rot):
         """Compute signed distance via analytic functino

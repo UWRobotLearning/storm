@@ -23,6 +23,7 @@
 from typing import Optional, Dict
 import torch
 from torch.profiler import record_function
+import time
 
 from ..cost import DistCost, PoseCost, ProjectedDistCost, JacobianCost, ZeroCost, EEVelCost, StopCost, FiniteDifferenceCost
 from ..cost.bound_cost import BoundCost
@@ -61,7 +62,6 @@ class ArmBase(RolloutBase):
         #Create the dynamical system used for rollouts
         self.dynamics_model = URDFKinematicModel(
             join_path(assets_path, cfg['model']['urdf_path']),
-            # dt=cfg['model']['dt'],
             batch_size=cfg['batch_size'],
             # horizon=dynamics_horizon,
             horizon=cfg['horizon'],
@@ -81,9 +81,6 @@ class ArmBase(RolloutBase):
         self.traj_dt = self.dynamics_model.traj_dt
         self.num_links = len(cfg['model']['link_names'])
                         
-        # device = self.tensor_args['device']
-        # float_dtype = self.tensor_args['dtype']
-
         # self.jacobian_cost = JacobianCost(ndofs=self.n_dofs, device=device,
         #                                   float_dtype=float_dtype,
         #                                   retract_weight=cfg['cost']['retract_weight'])
@@ -118,21 +115,15 @@ class ArmBase(RolloutBase):
         #     self.smooth_cost = FiniteDifferenceCost(**self.cfg['cost']['smooth'],
         #                                             tensor_args=tensor_args)
 
-        # if self.cfg['cost']['voxel_collision']['weight'] > 0:
-        #     self.voxel_collision_cost = VoxelCollisionCost(robot_params=robot_params,
-        #                                                    tensor_args=tensor_args,
-        #                                                    **self.cfg['cost']['voxel_collision'])
-            
-        # if cfg['cost']['primitive_collision']['weight'] > 0.0:
         self.primitive_collision_cost = PrimitiveCollisionCost(
             world_params=world_params, robot_params=robot_params, 
             batch_size=self.num_instances * self.batch_size * self.horizon,
-            tensor_args=tensor_args, **self.cfg['cost']['primitive_collision'])
+            device=self.device, **self.cfg['cost']['primitive_collision'])
 
         # if cfg['cost']['robot_self_collision']['weight'] > 0.0:
-        self.robot_self_collision_cost = RobotSelfCollisionCost(
-            config=model_params['robot_collision_params'], batch_size=self.num_instances * self.batch_size * self.horizon,
-            device=self.device, **self.cfg['cost']['robot_self_collision'])
+        # self.robot_self_collision_cost = RobotSelfCollisionCost(
+        #     config=model_params['robot_collision_params'], batch_size=self.num_instances * self.batch_size * self.horizon,
+        #     device=self.device, **self.cfg['cost']['robot_self_collision'])
 
         self.ee_vel_cost = EEVelCost(ndofs=self.n_dofs,device=device, float_dtype=dtype,**cfg['cost']['ee_vel'])
 
@@ -213,11 +204,11 @@ class ArmBase(RolloutBase):
                     cost += self.stop_cost_acc.forward(state_batch[:, 2*self.n_dofs :3*self.n_dofs])
 
 
-        # if termination is not None:
-        #     termination = termination.view(self.num_instances*self.batch_size, self.horizon)
-        #     termination_cost = 5000.0 * termination 
-        #     cost += termination_cost
-        #     cost_terms['termination'] = termination_cost
+        if termination is not None:
+            termination = termination.view(self.num_instances*self.batch_size, self.horizon)
+            termination_cost = 5000.0 * termination 
+            cost += termination_cost
+            cost_terms['termination'] = termination_cost
 
 
             # if self.cfg['cost']['smooth']['weight'] > 0:
@@ -232,18 +223,18 @@ class ArmBase(RolloutBase):
             #         traj_dt = torch.cat((prev_dt, self.traj_dt))
             #         cost += self.smooth_cost.forward(state_buffer, traj_dt)
 
-        # if not no_coll:
-        if self.cfg['cost']['robot_self_collision']['weight'] > 0:
-            with record_function('self_collision_cost'):
-                coll_cost = self.robot_self_collision_cost.forward(
-                    state_batch[:,:,:self.n_dofs], 
-                    link_pos_seq=link_pos_batch, link_rot_seq=link_rot_batch)
-                cost += coll_cost
-        
-        if self.cfg['cost']['primitive_collision']['weight'] > 0:
-            with record_function('primitive_collision'):
-                coll_cost = self.primitive_collision_cost.forward(link_pos_batch, link_rot_batch)
-                cost += coll_cost
+        # # if not no_coll:
+        # if self.cfg['cost']['robot_self_collision']['weight'] > 0:
+        #     with record_function('self_collision_cost'):
+        #         st = time.time()
+        #         coll_cost = self.robot_self_collision_cost.forward(
+        #             state_batch[:,:,:self.n_dofs], 
+        #             link_pos_seq=link_pos_batch, link_rot_seq=link_rot_batch)
+        #         cost += coll_cost
+        #         print('self', time.time()-st)
+
+        # if self.cfg['cost']['primitive_collision']['weight'] > 0:
+
 
         #     if self.cfg['cost']['voxel_collision']['weight'] > 0:
         #         with record_function('voxel_collision'):
@@ -290,6 +281,9 @@ class ArmBase(RolloutBase):
         link_pos_batch = link_pos_batch.view(self.num_instances*self.batch_size, self.horizon, self.num_links, 3)
         link_rot_batch = link_rot_batch.view(self.num_instances*self.batch_size, self.horizon, self.num_links, 3, 3)
 
+        with record_function('primitive_collision'):
+            coll_cost = self.primitive_collision_cost.forward(link_pos_batch, link_rot_batch)
+            termination += coll_cost > 0
 
         # if self.cfg['cost']['state_bound']['weight'] > 0:
         #     with record_function('bound_cost'):
@@ -314,7 +308,7 @@ class ArmBase(RolloutBase):
         #         env_coll_cost = env_coll_cost.view(self.num_instances, self.batch_size, self.horizon)
         #         termination += env_coll_cost > 0.
 
-        # termination = (termination > 0)
+        termination = (termination > 0)
         
         return termination, state_dict
     
