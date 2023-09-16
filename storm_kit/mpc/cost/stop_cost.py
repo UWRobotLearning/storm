@@ -26,41 +26,38 @@ import torch.nn as nn
 from .gaussian_projection import GaussianProjection
 
 class StopCost(nn.Module):
-    def __init__(self, tensor_args={'device':torch.device('cpu'), 'dtype':torch.float64},
-                 max_limit=None, max_nlimit=None, weight=1.0, gaussian_params={},
-                 traj_dt=None,**kwargs):
+    def __init__(self, device=torch.device('cpu'),
+                 max_limit=None, max_nlimit=None, weight=1.0,
+                 traj_dt=None, **kwargs):
+        
         super(StopCost, self).__init__()
-        self.tensor_args = tensor_args
-        self.weight = torch.as_tensor(weight, **tensor_args)
-        self.proj_gaussian = GaussianProjection(gaussian_params=gaussian_params)
+        self.device = device
+        self.weight = torch.as_tensor(weight, device=self.device)
         self.traj_dt = traj_dt
         
         # compute max velocity across horizon:
         self.horizon = self.traj_dt.shape[0]
-        sum_matrix = torch.tril(torch.ones((self.horizon, self.horizon), **self.tensor_args)).T
+        sum_matrix = torch.tril(torch.ones((self.horizon, self.horizon), device=self.device)).T
 
         if max_nlimit is not None:
             # every timestep max acceleration:
-            sum_matrix = torch.tril(torch.ones((self.horizon, self.horizon), **self.tensor_args)).T
+            sum_matrix = torch.tril(torch.ones((self.horizon, self.horizon), device=self.device)).T
             delta_vel = self.traj_dt * max_nlimit
             self.max_vel = ((sum_matrix @ delta_vel).unsqueeze(-1))
         elif max_limit is not None:
-            sum_matrix = torch.tril(torch.ones((self.horizon, self.horizon), **self.tensor_args)).T
+            sum_matrix = torch.tril(torch.ones((self.horizon, self.horizon), device=self.device)).T
             delta_vel = torch.ones_like(self.traj_dt) * max_limit
             self.max_vel = ((sum_matrix @ delta_vel).unsqueeze(-1))
         
     def forward(self, vels:torch.Tensor):
         inp_device = vels.device
 
-        
-        vel_abs = torch.abs(vels.to(**self.tensor_args))
-
-
+        vel_abs = torch.abs(vels.to(device=self.device))
         # max velocity threshold:
         vel_abs = vel_abs - self.max_vel
         vel_abs[vel_abs < 0.0] = 0.0
         
-        cost = self.weight * self.proj_gaussian(((torch.sum(torch.square(vel_abs), dim=-1))))
+        # cost = self.weight * self.proj_gaussian(((torch.sum(torch.square(vel_abs), dim=-1))))
+        cost = self.weight * ((torch.sum(torch.square(vel_abs), dim=-1)))
 
-        
         return cost.to(inp_device)

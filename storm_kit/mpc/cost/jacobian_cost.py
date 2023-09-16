@@ -30,15 +30,12 @@ import torch.nn as nn
 from ...differentiable_robot_model.coordinate_transform import matrix_to_euler_angles
 
 class JacobianCost(nn.Module):
-    def __init__(self, ndofs, device, float_dtype, retract_weight):
+    def __init__(self, ndofs, device, retract_weight):
         self.ndofs = ndofs
         self.device = device
-        self.float_dtype = float_dtype
         self.vel_idxs = torch.arange(self.ndofs,2*self.ndofs, dtype=torch.long, device=self.device)
-
-        self.I = torch.eye(ndofs, device=device, dtype=self.float_dtype)
-
-        self.retract_weight = torch.as_tensor(retract_weight, dtype=self.float_dtype, device=self.device)
+        self.I = torch.eye(ndofs, device=device)
+        self.retract_weight = torch.as_tensor(retract_weight, device=self.device)
         super(JacobianCost, self).__init__()
     
     def forward(self, state_batch, ee_pos_batch, ee_rot_batch, 

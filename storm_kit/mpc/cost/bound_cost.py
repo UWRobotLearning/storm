@@ -22,20 +22,15 @@
 # DEALINGS IN THE SOFTWARE.#
 import torch
 import torch.nn as nn
-# import torch.nn.functional as F
-from .gaussian_projection import GaussianProjection
 
 class BoundCost(nn.Module):
-    def __init__(self, tensor_args={'device':torch.device('cpu'), 'dtype':torch.float64},
-                 bounds=[], weight=1.0, gaussian_params={}, bound_thresh=0.1):
+    def __init__(self, device:torch.device=torch.device('cpu'),
+                 bounds=[], weight:float=1.0, bound_thresh:float=0.1):
         super(BoundCost, self).__init__()
-        self.tensor_args = tensor_args
-        self.weight = torch.as_tensor(weight, **tensor_args)
-        self.proj_gaussian = GaussianProjection(gaussian_params=gaussian_params)
-
-        self.bounds = torch.as_tensor(bounds, **tensor_args)
+        self.device = device
+        self.weight = torch.as_tensor(weight, device=self.device)
+        self.bounds = torch.as_tensor(bounds, device=self.device)
         self.bnd_range = (self.bounds[:,1] - self.bounds[:,0]) / 2.0
-        self.t_mat = None
         self.bound_thresh = bound_thresh * self.bnd_range
         self.bounds[:,1] -= self.bound_thresh
         self.bounds[:,0] += self.bound_thresh
@@ -53,6 +48,7 @@ class BoundCost(nn.Module):
         cost[bound_mask] = 0.0
 
         cost = (torch.sum(cost, dim=-1))
-        cost = self.weight * self.proj_gaussian(torch.sqrt(cost))
+        # cost = self.weight * self.proj_gaussian(torch.sqrt(cost))
+        cost = self.weight * torch.sqrt(cost)
         
         return cost.to(inp_device)

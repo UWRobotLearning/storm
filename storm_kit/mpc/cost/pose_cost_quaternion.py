@@ -24,8 +24,6 @@ import torch
 import torch.nn as nn
 # import torch.nn.functional as F
 from typing import List
-import time
-from .gaussian_projection import GaussianProjection
 from storm_kit.differentiable_robot_model.coordinate_transform import matrix_to_quaternion
 
 class PoseCostQuaternion(nn.Module):
@@ -43,13 +41,9 @@ class PoseCostQuaternion(nn.Module):
     convergence_val: List[float]
     def __init__(self, 
                  weight: List[float], 
-                #  vec_weight=[], 
-                #  position_gaussian_params={}, 
-                #  orientation_gaussian_params={}, 
                  hinge_val: float = 100.0,
                  convergence_val: List[float] = [0.0, 0.0],
-                #  tensor_args={'device':"cpu", 'dtype':torch.float32},
-                 device = torch.device("cpu"),
+                 device:torch.device = torch.device("cpu"),
                  quat_inputs: bool =False):
 
         super(PoseCostQuaternion, self).__init__()

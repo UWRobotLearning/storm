@@ -41,6 +41,7 @@ class CollisionCost(nn.Module):
         for obj in world_params['world_model']['coll_objs'].keys():
             self.radius.append(torch.tensor(world_params['world_model']['coll_objs'][obj]['radius'] + 0.1, **self.tensor_args))
             self.position.append(torch.tensor(world_params['world_model']['coll_objs'][obj]['position'], **self.tensor_args))
+    
     def forward(self, position):
         inp_device = position.device
         position = position.to(self.device)

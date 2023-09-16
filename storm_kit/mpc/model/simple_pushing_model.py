@@ -216,7 +216,7 @@ class SimplePushingModel(nn.Module):
             v_rel_tangent =  torch.sum(v_rel * tangent, dim=-1) 
             
             #normal impulse
-            e = 0.5 #1.0 #1.0 #min(robot.material.restitution, obj.material.restitution)
+            e = 1.0 #1.0 #1.0 #min(robot.material.restitution, obj.material.restitution)
             normal_impulse_magn = - (1 + e) * v_rel_normal
             normal_impulse_magn /= (self.robot_mass_data['inv_mass'] + self.obj_mass_data['inv_mass'])
             normal_impulse = normal_impulse_magn.unsqueeze(-1) * normal
@@ -225,8 +225,8 @@ class SimplePushingModel(nn.Module):
             #note: could also take averae of the two mu's (actually that might be more interprettable)
             # mu_static = np.sqrt(bodyA.material.mu_static ** 2 + bodyB.material.mu_static ** 2)            
             # mu_dynamic = np.sqrt(bodyA.material.mu_dynamic ** 2 + bodyB.material.mu_dynamic ** 2)            
-            mu_static = 0.2 #0.005
-            mu_dynamic = 0.1 #0.005
+            mu_static = 0.01 #0.005
+            mu_dynamic = 0.01 #0.005
 
             friction_impulse_magn = - v_rel_tangent
             friction_impulse_magn /= (self.robot_mass_data['inv_mass'] + self.obj_mass_data['inv_mass'])

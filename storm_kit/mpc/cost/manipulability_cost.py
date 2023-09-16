@@ -25,8 +25,6 @@ import torch
 import torch.nn as nn
 from torch.profiler import record_function
 
-from .gaussian_projection import GaussianProjection
-
 eps = 0.01
 
 
@@ -35,7 +33,6 @@ class ManipulabilityCost(nn.Module):
             self, 
             ndofs: int, 
             weight = None, 
-            gaussian_params: dict = {}, 
             device = torch.device('cpu'), 
             float_dtype = torch.float32, 
             thresh:float = 0.1):
@@ -43,7 +40,6 @@ class ManipulabilityCost(nn.Module):
         self.device = device
         self.float_dtype = float_dtype
         self.weight = torch.as_tensor(weight, device=device, dtype=float_dtype)
-        # self.proj_gaussian = GaussianProjection(gaussian_params=gaussian_params)
         self.ndofs = ndofs
         self.thresh = thresh
         self.i_mat = torch.ones((6,1), device=self.device, dtype=self.float_dtype)

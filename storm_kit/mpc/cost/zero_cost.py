@@ -23,19 +23,16 @@
 import torch
 import torch.nn as nn
 
-from .gaussian_projection import GaussianProjection
-
 class ZeroCost(nn.Module):
-    def __init__(self, device=torch.device('cpu'), float_dtype=torch.float64,
+    def __init__(self, device=torch.device('cpu'),
                  hinge_val=100.0, weight=1.0, gaussian_params={}, max_vel=0.01):
         super(ZeroCost, self).__init__()
         self.device = device
-        self.float_dtype = float_dtype
-        self.Z = torch.zeros(1, device=self.device, dtype=self.float_dtype)
-        self.weight = torch.as_tensor(weight, device=device, dtype=float_dtype)
-        self.proj_gaussian = GaussianProjection(gaussian_params=gaussian_params)
+        self.Z = torch.zeros(1, device=self.device)
+        self.weight = torch.as_tensor(weight, device=device)
         self.hinge_val = hinge_val
         self.max_vel = max_vel
+    
     def forward(self, vels, goal_dist):
         inp_device = vels.device
         vel_err = torch.abs(vels.to(self.device))

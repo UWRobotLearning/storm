@@ -33,18 +33,17 @@ from .control_utils import generate_noise, scale_ctrl, generate_gaussian_halton_
 
 class SampleLib:
     def __init__(self, num_instances=1, horizon=None, d_action=None, seed=0, mean=None, scale_tril=None,
-                 covariance_matrix=None,
-                 tensor_args={'device': "cpu", 'dtype': torch.float32}, fixed_samples=False,
+                 covariance_matrix=None, device:torch.device=torch.device('cpu'), fixed_samples=False,
                  filter_coeffs=None, **kwargs):
 
-        self.tensor_args = tensor_args
+        self.device = device
         self.horizon = horizon
         self.d_action = d_action
         self.num_instances = num_instances
         self.seed_val = seed
-        self.Z = torch.zeros(self.horizon * self.d_action, **tensor_args)
+        self.Z = torch.zeros(self.horizon * self.d_action, device=self.device)
         self.scale_tril = None
-        if(scale_tril is None and covariance_matrix is not None):
+        if scale_tril is None and covariance_matrix is not None:
             self.scale_tril = torch.cholesky(covariance_matrix)
         self.covariance_matrix = covariance_matrix
         self.fixed_samples = fixed_samples
@@ -53,7 +52,7 @@ class SampleLib:
         self.filter_coeffs = filter_coeffs
         self.ndims = horizon * d_action
         self.stomp_matrix, self.stomp_scale_tril = get_stomp_cov(
-            self.horizon, self.d_action, tensor_args=self.tensor_args)
+            self.horizon, self.d_action, device=self.device)
 
     def get_samples(self, sample_shape, base_seed, current_state=None, **kwargs):
         raise NotImplementedError
@@ -81,13 +80,18 @@ class SampleLib:
 
 
 class HaltonSampleLib(SampleLib):
-    def __init__(self, num_instances=1, horizon=0, d_action=0, seed=0, mean=None, scale_tril=None, covariance_matrix=None,
-                 tensor_args={'device': "cpu", 'dtype': torch.float32}, fixed_samples=False, filter_coeffs=None, **kwargs):
-        super(HaltonSampleLib, self).__init__(num_instances=num_instances, horizon=horizon, d_action=d_action, seed=seed, tensor_args=tensor_args,
-                                              fixed_samples=fixed_samples, filter_coeffs=filter_coeffs)
+    def __init__(
+        self, num_instances:int=1, horizon:int=0, d_action:int=0, seed:int=0, mean=None, scale_tril=None, covariance_matrix=None,
+        device:torch.device=torch.device('cpu'), fixed_samples=False, filter_coeffs=None, **kwargs):
+        
+        
+        super(HaltonSampleLib, self).__init__(
+            num_instances=num_instances, horizon=horizon, 
+            d_action=d_action, seed=seed, device=device,
+            fixed_samples=fixed_samples, filter_coeffs=filter_coeffs)
 
     def get_samples(self, sample_shape, base_seed=None, filter_smooth=False, **kwargs):
-        if(self.sample_shape != sample_shape or not self.fixed_samples):
+        if self.sample_shape != sample_shape or not self.fixed_samples:
             if len(sample_shape) > 1:
                 print('sample shape should be a single value')
                 raise ValueError
@@ -98,8 +102,7 @@ class HaltonSampleLib(SampleLib):
             self.samples = generate_gaussian_halton_samples(sample_shape[0],
                                                             self.ndims,
                                                             use_ghalton=True, seed_val=self.seed_val,
-                                                            device=self.tensor_args['device'],
-                                                            float_dtype=self.tensor_args['dtype'])
+                                                            device=self.device)
             self.samples = self.samples.view(
                 self.samples.shape[0], self.horizon, self.d_action)
             self.samples = self.samples.unsqueeze(0).repeat(self.num_instances, 1, 1, 1)
@@ -108,7 +111,24 @@ class HaltonSampleLib(SampleLib):
                 self.samples = self.filter_smooth(self.samples)
             else:
                 self.samples = self.filter_samples(self.samples)
-        
+
+            # import matplotlib.pyplot as plt
+            # _, b, h, nd = self.samples.shape
+            # fig, ax = plt.subplots(nd)
+
+            # for d_i in range(nd):
+            #     for b_i in range(b):
+            #         data = self.samples[0, b_i, :, d_i].cpu().numpy()
+            #         ax[d_i].plot(data)
+
+
+            # plt.show()
+
+
+            # print(self.samples.shape, torch.max(self.samples, dim=2)[0], torch.min(self.samples, dim=2)[0], torch.mean(self.samples, dim=2))
+            # exit()
+
+
         return self.samples
 
 
@@ -134,7 +154,7 @@ def bspline(c_arr, t_arr=None, n=100, degree=3):
 
 
 class KnotSampleLib(object):
-    def __init__(self, num_instances=1, horizon=0, d_action=0, n_knots=0, degree=3, seed=0, tensor_args={'device': "cpu", 'dtype': torch.float32}, sample_method='halton',
+    def __init__(self, num_instances:int=1, horizon:int=0, d_action:int=0, n_knots:int=0, degree:int=3, seed:int=0, device:torch.device=torch.device('cpu'), sample_method:str='halton',
                  covariance_matrix=None, **kwargs):
         
         self.num_instances = num_instances
@@ -142,16 +162,17 @@ class KnotSampleLib(object):
         self.n_knots = n_knots
         self.horizon = horizon
         self.d_action = d_action
-        self.tensor_args = tensor_args
+        # self.tensor_args = tensor_args
+        self.device = device
         self.seed_val = seed
         self.degree = degree
         self.sample_method = sample_method
-        self.Z = torch.zeros(self.ndims, **tensor_args)
+        self.Z = torch.zeros(self.ndims, device=self.device)
         if covariance_matrix is None:
-            self.cov_matrix = torch.eye(self.ndims, **tensor_args)
+            self.cov_matrix = torch.eye(self.ndims, device=self.device)
         self.scale_tril = torch.cholesky(
-            self.cov_matrix.to(dtype=torch.float32)).to(**tensor_args)
-        self.mvn = MultivariateNormal(loc=self.Z, scale_tril=self.scale_tril, )
+            self.cov_matrix.to(dtype=torch.float32)).to(device=self.device)
+        self.mvn = MultivariateNormal(loc=self.Z, scale_tril=self.scale_tril)
 
     def get_samples(self, sample_shape, **kwargs):
         # sample shape is the number of particles to sample
@@ -161,17 +182,28 @@ class KnotSampleLib(object):
                 self.ndims,
                 use_ghalton=True,
                 seed_val=self.seed_val,
-                device=self.tensor_args['device'],
-                float_dtype=self.tensor_args['dtype'])
+                device=self.device)
         elif self.sample_method == 'random':
             self.knot_points = self.mvn.sample(sample_shape=sample_shape)
 
-    # Sample splines from knot points:
-        # iteratre over action dimension:
+        # Sample splines from knot points:
+        # iterate over action dimension:
         knot_samples = self.knot_points.view(
             sample_shape[0], self.d_action, self.n_knots)
+        # knot_samples = self.knot_points.view(
+        #     sample_shape[0], self.n_knots, self.d_action)
+
+        # filter_coeffs = [0.7, 0.2, 0.1]
+        # beta_0, beta_1, beta_2 = filter_coeffs
+        # # This could be tensorized:
+        # for i in range(2, knot_samples.shape[2]):
+        #     knot_samples[:, :, i, :] = beta_0 * knot_samples[:, :, i, :] + beta_1 * \
+        #         knot_samples[:, :, i-1, :] + beta_2 * knot_samples[:, :, i-2, :]
+
+
         self.samples = torch.zeros(
-            (sample_shape[0], self.horizon, self.d_action), **self.tensor_args)
+            (sample_shape[0], self.horizon, self.d_action), device=self.device)
+        
         for i in range(sample_shape[0]):
             for j in range(self.d_action):
                 self.samples[i, :, j] = bspline(
@@ -183,27 +215,28 @@ class KnotSampleLib(object):
 
 
 class RandomSampleLib(SampleLib):
-    def __init__(self, num_instances=1, horizon=0, d_action=0, seed=0, mean=None, scale_tril=None, covariance_matrix=None,
-                 tensor_args={'device': "cpu", 'dtype': torch.float32}, fixed_samples=False, filter_coeffs=None, **kwargs):
-        super(RandomSampleLib, self).__init__(num_instances=num_instances, horizon=horizon, d_action=d_action, seed=seed, tensor_args=tensor_args,
+    def __init__(self, num_instances:int=1, horizon:int=0, d_action:int=0, seed:int=0, mean=None, scale_tril=None, covariance_matrix=None,
+                 device:torch.device=torch.device('cpu'), fixed_samples:bool=False, filter_coeffs=None, **kwargs):
+        
+        super(RandomSampleLib, self).__init__(num_instances=num_instances, horizon=horizon, d_action=d_action, seed=seed, device=device,
                                               fixed_samples=fixed_samples, filter_coeffs=filter_coeffs)
 
-        if(self.scale_tril is None):
-            self.scale_tril = torch.eye(self.ndims, **tensor_args)
+        if self.scale_tril is None:
+            self.scale_tril = torch.eye(self.ndims, device=device)
 
         self.mvn = MultivariateNormal(loc=self.Z, scale_tril=self.scale_tril)
 
     def get_samples(self, sample_shape, base_seed=None, filter_smooth=False, **kwargs):
 
-        if(base_seed is not None and base_seed != self.seed_val):
+        if base_seed is not None and base_seed != self.seed_val:
             self.seed_val = base_seed
             torch.manual_seed(self.seed_val)
-        if(self.sample_shape != sample_shape or not self.fixed_samples):
+        if self.sample_shape != sample_shape or not self.fixed_samples:
             self.sample_shape = sample_shape
             self.samples = self.mvn.sample(sample_shape=self.sample_shape)
             self.samples = self.samples.view(
                 self.samples.shape[0], self.horizon, self.d_action)
-            if(filter_smooth):
+            if filter_smooth:
                 self.samples = self.filter_smooth(self.samples)
             else:
                 self.samples = self.filter_samples(self.samples)
@@ -299,7 +332,7 @@ class StompSampleLib(SampleLib):
 
 class MultipleSampleLib(SampleLib):
     def __init__(self, num_instances:int=1, horizon:int=0, d_action=0, seed=0, mean=None, covariance_matrix=None,
-                 tensor_args={'device': "cpu", 'dtype': torch.float32}, fixed_samples=False,
+                 device:torch.device=torch.device('cpu'), fixed_samples=False,
                  sample_ratio={'halton': 0.2, 'halton-knot': 0.2, 'random': 0.2, 'random-knot': 0.2}, 
                  knot_scale=10, bspline_degree=3, filter_coeffs=None, **kwargs):
 
@@ -307,22 +340,25 @@ class MultipleSampleLib(SampleLib):
         # halton
         self.halton_sample_lib = HaltonSampleLib(num_instances=num_instances, horizon=horizon, 
                                                  d_action=d_action, seed=seed,
-                                                 tensor_args=tensor_args,
+                                                 device=device,
                                                  fixed_samples=fixed_samples,
                                                  filter_coeffs=filter_coeffs)
 
         self.knot_halton_sample_lib = KnotSampleLib(
-            num_instances=num_instances, horizon=horizon, d_action=d_action, n_knots=horizon//knot_scale, degree=bspline_degree, sample_method='halton', tensor_args=tensor_args)
+            num_instances=num_instances, horizon=horizon, d_action=d_action, 
+            n_knots=horizon//knot_scale, degree=bspline_degree, sample_method='halton', device=device)
 
         #random
         self.random_sample_lib = RandomSampleLib(num_instances=num_instances, horizon=horizon, 
                                                  d_action=d_action, seed=seed,
-                                                 tensor_args=tensor_args,
+                                                 device=device,
                                                  fixed_samples=fixed_samples,
                                                  filter_coeffs=filter_coeffs)
 
         self.knot_random_sample_lib = KnotSampleLib(
-            num_instances=num_instances, horizon=horizon, d_action=d_action, n_knots=horizon//knot_scale, degree=bspline_degree, sample_method='random', covariance_matrix=covariance_matrix, tensor_args=tensor_args)
+            num_instances=num_instances, horizon=horizon, d_action=d_action, 
+            n_knots=horizon//knot_scale, degree=bspline_degree, sample_method='random', 
+            covariance_matrix=covariance_matrix, device=device)
 
         self.sample_ratio = sample_ratio
         self.sample_fns = []
@@ -330,7 +366,7 @@ class MultipleSampleLib(SampleLib):
                            'halton-knot': self.knot_halton_sample_lib.get_samples,
                            'random': self.random_sample_lib.get_samples,
                            'random-knot': self.knot_random_sample_lib.get_samples}
-        self.tensor_args = tensor_args
+        self.device=device
         self.fixed_samples = fixed_samples
         self.samples = None
 

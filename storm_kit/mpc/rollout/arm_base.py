@@ -49,9 +49,8 @@ class ArmBase(RolloutBase):
         self.dtype = dtype
         self.cfg = cfg
         self.viz_rollouts = viz_rollouts
-        # mppi_params = cfg['mppi']
         model_params = cfg['model']
-        robot_params = model_params # cfg['robot_params']
+        robot_params = model_params
         self.batch_size = cfg['batch_size']
         self.horizon = cfg['horizon']
         self.num_instances = cfg['num_instances']
@@ -85,26 +84,26 @@ class ArmBase(RolloutBase):
         #                                   float_dtype=float_dtype,
         #                                   retract_weight=cfg['cost']['retract_weight'])
         
-        self.null_cost = ProjectedDistCost(ndofs=self.n_dofs, device=device, float_dtype=dtype,
+        self.null_cost = ProjectedDistCost(ndofs=self.n_dofs, device=device, 
                                            **cfg['cost']['null_space'])
         
         self.manipulability_cost = ManipulabilityCost(ndofs=self.n_dofs, device=device,
-                                                      float_dtype=dtype,
                                                       **cfg['cost']['manipulability'])
 
-        self.zero_vel_cost = ZeroCost(device=device, float_dtype=dtype, **cfg['cost']['zero_vel'])
+        self.zero_vel_cost = ZeroCost(device=device,  **cfg['cost']['zero_vel'])
 
-        self.zero_acc_cost = ZeroCost(device=device, float_dtype=dtype, **cfg['cost']['zero_acc'])
-
-        tensor_args = {'device': self.device, 'dtype': self.dtype}
+        self.zero_acc_cost = ZeroCost(device=device,  **cfg['cost']['zero_acc'])
         
         self.stop_cost = StopCost(**cfg['cost']['stop_cost'],
-                                  tensor_args=tensor_args,
+                                  device=self.device,
                                   traj_dt=self.traj_dt)
         
         self.stop_cost_acc = StopCost(**cfg['cost']['stop_cost_acc'],
-                                      tensor_args=tensor_args,
+                                      device=self.device,
                                       traj_dt=self.traj_dt)
+
+        self.ee_vel_cost = EEVelCost(ndofs=self.n_dofs, device=device, **cfg['cost']['ee_vel'])
+
 
         self.retract_state = torch.tensor([self.cfg['cost']['retract_state']], device=device, dtype=dtype)
 
@@ -125,24 +124,22 @@ class ArmBase(RolloutBase):
         #     config=model_params['robot_collision_params'], batch_size=self.num_instances * self.batch_size * self.horizon,
         #     device=self.device, **self.cfg['cost']['robot_self_collision'])
 
-        self.ee_vel_cost = EEVelCost(ndofs=self.n_dofs,device=device, float_dtype=dtype,**cfg['cost']['ee_vel'])
 
         bounds = torch.cat([self.dynamics_model.state_lower_bounds[:2*self.n_dofs].unsqueeze(0), 
                             self.dynamics_model.state_upper_bounds[:2*self.n_dofs].unsqueeze(0)], dim=0).T
         
         self.bound_cost = BoundCost(**cfg['cost']['state_bound'],
-                                    tensor_args=tensor_args,
+                                    device=self.device,
                                     bounds=bounds)
 
-        self.link_pos_seq = torch.zeros((self.num_instances, self.num_links, 3), dtype=self.dtype, device=self.device)
-        self.link_rot_seq = torch.zeros((self.num_instances, self.num_links, 3, 3), dtype=self.dtype, device=self.device)
+        self.link_pos_seq = torch.zeros((self.num_instances, self.num_links, 3), device=self.device)
+        self.link_rot_seq = torch.zeros((self.num_instances, self.num_links, 3, 3), device=self.device)
     
     def compute_cost(
             self, 
             state_dict: Dict[str, torch.Tensor], 
             action_batch: Optional[torch.Tensor]=None,
             termination: Optional[Dict[str, torch.Tensor]]=None, 
-            # no_coll:bool=False, 
             horizon_cost:bool=True):
 
         cost_terms = {}
@@ -183,16 +180,9 @@ class ArmBase(RolloutBase):
             with record_function('manipulability_cost'):
                 cost += self.manipulability_cost.forward(J_full)
 
-        if self.cfg['cost']['state_bound']['weight'] > 0:
-            with record_function('bound_cost'):
-                cost += self.bound_cost.forward(state_batch[:,:,:2*self.n_dofs])
-
         if self.cfg['cost']['ee_vel']['weight'] > 0:
             with record_function('ee_vel_cost'):
                 cost += self.ee_vel_cost.forward(state_batch, lin_jac_batch)
-
-        # if no_coll and (not horizon_cost):
-        #     return cost, state_dict
 
         if horizon_cost:
             if self.cfg['cost']['stop_cost']['weight'] > 0:
@@ -233,13 +223,6 @@ class ArmBase(RolloutBase):
         #         cost += coll_cost
         #         print('self', time.time()-st)
 
-        # if self.cfg['cost']['primitive_collision']['weight'] > 0:
-
-
-        #     if self.cfg['cost']['voxel_collision']['weight'] > 0:
-        #         with record_function('voxel_collision'):
-        #             coll_cost = self.voxel_collision_cost.forward(link_pos_batch, link_rot_batch)
-        #             cost += coll_cost
 
         cost = cost.view(self.num_instances, self.batch_size, self.horizon)
 
@@ -285,13 +268,10 @@ class ArmBase(RolloutBase):
             coll_cost = self.primitive_collision_cost.forward(link_pos_batch, link_rot_batch)
             termination += coll_cost > 0
 
-        # if self.cfg['cost']['state_bound']['weight'] > 0:
-        #     with record_function('bound_cost'):
-        #         bound_cost = self.bound_cost.forward(
-        #             state_batch[:,:,:2*self.n_dofs]).view(self.num_instances, self.batch_size, self.horizon)
-        #         termination += bound_cost > 0.
-        #         print(bound_cost)
-        #         print(termination)
+        with record_function('bound_cost'):
+            bound_cost = self.bound_cost.forward(state_batch[:,:,:2*self.n_dofs])
+            termination += bound_cost > 0.
+
 
         # if self.cfg['cost']['robot_self_collision']['weight'] > 0:
         #     #coll_cost = self.robot_self_collision_cost.forward(link_pos_batch, link_rot_batch)
@@ -300,13 +280,6 @@ class ArmBase(RolloutBase):
         #         self_coll_cost = self.robot_self_collision_cost.forward(state_batch[:,:,:self.n_dofs], link_pos_seq=link_pos_batch, link_rot_seq=link_rot_batch)
         #         self_coll_cost = self_coll_cost.view(self.num_instances, self.batch_size, self.horizon)
         #         termination += self_coll_cost > 0.
-
-        
-        # if self.cfg['cost']['primitive_collision']['weight'] > 0:
-        #     with record_function('primitive_collision'):
-        #         env_coll_cost = self.primitive_collision_cost.forward(link_pos_batch, link_rot_batch)
-        #         env_coll_cost = env_coll_cost.view(self.num_instances, self.batch_size, self.horizon)
-        #         termination += env_coll_cost > 0.
 
         termination = (termination > 0)
         

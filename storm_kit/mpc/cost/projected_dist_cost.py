@@ -34,13 +34,12 @@ eps = 0.01
 
 
 class ProjectedDistCost(DistCost):
-    def __init__(self, ndofs, weight=None, vec_weight=None, gaussian_params={}, device=torch.device('cpu'), float_dtype=torch.float32):
-        super(ProjectedDistCost, self).__init__(weight, gaussian_params=gaussian_params, device=device)
+    def __init__(self, ndofs, weight=None, vec_weight=None, device=torch.device('cpu')):
+        super(ProjectedDistCost, self).__init__(weight, device=device)
         self.ndofs = ndofs
-        self.float_dtype = float_dtype
-        self.I = torch.eye(ndofs, device=device, dtype=self.float_dtype)
-        self.task_I = torch.eye(6, device=device, dtype=self.float_dtype)
-        self.vec_weight = torch.as_tensor(vec_weight, device=device, dtype=float_dtype)
+        self.I = torch.eye(ndofs, device=device)
+        self.task_I = torch.eye(6, device=device)
+        self.vec_weight = torch.as_tensor(vec_weight, device=device)
     
     def forward(self, disp_vec, jac_batch, proj_type="transpose", dist_type="squared_l2", beta=1.0):
         inp_device = disp_vec.device
@@ -61,8 +60,6 @@ class ProjectedDistCost(DistCost):
         J_J_t = torch.matmul(jac_batch, jac_batch.transpose(-2,-1))
         score = 1.0 / (torch.sqrt(torch.det(J_J_t)) + 0.0001)
         return score
-
-
 
     def get_pinv_null_disp(self, disp_vec, jac_batch):
     

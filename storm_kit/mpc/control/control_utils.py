@@ -49,8 +49,7 @@ def scale_ctrl(ctrl, action_lows, action_highs, squash_fn='clamp'):
 ## STOMP Covariance  ##
 #######################
 
-def get_stomp_cov(horizon, d_action,
-                  tensor_args={'device':torch.device('cpu'),'dtype':torch.float32},
+def get_stomp_cov(horizon, d_action, device:torch.device = torch.device('cpu'),
                   cov_mode='vel', RETURN_R=False):
     """ Computes the covariance matrix following STOMP motion planner
 
@@ -69,36 +68,33 @@ def get_stomp_cov(horizon, d_action,
     vel_fd_array = [0, 0 , 1, -2       , 1,0, 0       ]
     
     fd_array = acc_fd_array
-    A = torch.zeros((d_action * horizon, d_action * horizon), device=tensor_args['device'],dtype=torch.float64)
+    A = torch.zeros((d_action * horizon, d_action * horizon), device=device,dtype=torch.float64)
 
 
-    if(cov_mode == 'vel'):
+    if cov_mode == 'vel':
         for k in range(d_action):
             for i in range(0, horizon):
                 for j in range(-3,4):
-                    #print(j)
                     index = i + j
-                    if(index < 0):
+                    if index < 0:
                         index = 0
                         continue
-                    if(index >= horizon):
+                    if index >= horizon:
                         index = horizon - 1
                         continue
                     A[k * horizon + i,k * horizon + index] = fd_array[j + 3]
-    elif(cov_mode == 'acc'):
+    elif cov_mode == 'acc':
         for k in range(d_action):
             for i in range(0, horizon):
                 for j in range(-3,4):
-                    #print(j)
                     index = i + j
-                    if(index < 0):
+                    if index < 0:
                         index = 0
                         continue
-                    if(index >= horizon):
+                    if index >= horizon:
                         index = horizon - 1
                         continue
-                    if(index >= horizon/2):
-                        #print(k * horizon + index - horizon//2)
+                    if index >= horizon/2:
                         A[k * horizon + i,k * horizon - index - horizon//2 -1] = fd_array[j + 3] #* float((horizon-index) / horizon)
                     else:
                         A[k * horizon + i,k * horizon + index] = fd_array[j + 3] #* float(index/horizon) 
@@ -118,7 +114,7 @@ def get_stomp_cov(horizon, d_action,
     #plt.show()
 
     # also compute the cholesky decomposition:
-    scale_tril = torch.zeros((d_action * horizon, d_action * horizon), **tensor_args)
+    scale_tril = torch.zeros((d_action * horizon, d_action * horizon), device=device)
     scale_tril = torch.linalg.cholesky(cov)
     '''
     k = 0
@@ -130,10 +126,11 @@ def get_stomp_cov(horizon, d_action,
         
         scale_tril[k * horizon:k * horizon + horizon,k * horizon:k * horizon + horizon] = local_cholesky
     '''
-    cov = cov.to(**tensor_args)
-    scale_tril = scale_tril.to(**tensor_args) #* 0.1
+    cov = cov.to(device)
+    scale_tril = scale_tril.to(device) #* 0.1
     scale_tril = scale_tril / torch.max(scale_tril)
-    if(RETURN_R):
+    
+    if RETURN_R:
         return cov, scale_tril, R
     return cov, scale_tril
     
@@ -228,9 +225,9 @@ def generate_van_der_corput_samples_batch(idx_batch, base):
     
 #     return r
 
-def generate_halton_samples(num_samples, ndims, bases=None, use_ghalton=True, seed_val=123, device=torch.device('cpu'), float_dtype=torch.float32):
+def generate_halton_samples(num_samples, ndims, bases=None, use_ghalton=True, seed_val=123, device=torch.device('cpu')): #, float_dtype=torch.float32):
     if not use_ghalton:
-        samples = torch.zeros(num_samples, ndims, device=device, dtype=float_dtype)
+        samples = torch.zeros(num_samples, ndims, device=device) #, dtype=float_dtype)
         if not bases:
             bases = generate_prime_numbers(ndims)
         idx_batch = torch.arange(1,num_samples+1, device=device)
@@ -243,23 +240,23 @@ def generate_halton_samples(num_samples, ndims, bases=None, use_ghalton=True, se
             sequencer = ghalton.GeneralizedHalton(perms)
         else:
             sequencer = ghalton.GeneralizedHalton(ndims, seed_val)
-        samples = torch.tensor(sequencer.get(num_samples), device=device, dtype=float_dtype)
+        samples = torch.tensor(sequencer.get(num_samples), device=device) #, dtype=float_dtype)
     return samples
 
 
-def generate_gaussian_halton_samples(num_samples, ndims, bases=None, use_ghalton=True, seed_val=123, device=torch.device('cpu'), float_dtype=torch.float64):
-    uniform_halton_samples = generate_halton_samples(num_samples, ndims, bases, use_ghalton, seed_val, device, float_dtype)
+def generate_gaussian_halton_samples(num_samples, ndims, bases=None, use_ghalton=True, seed_val=123, device=torch.device('cpu')): #, float_dtype=torch.float64):
+    uniform_halton_samples = generate_halton_samples(num_samples, ndims, bases, use_ghalton, seed_val, device) #, float_dtype)
 
-    gaussian_halton_samples = torch.sqrt(torch.tensor([2.0],device=device,dtype=float_dtype)) * torch.erfinv(2 * uniform_halton_samples - 1)
+    gaussian_halton_samples = torch.sqrt(torch.tensor([2.0],device=device)) * torch.erfinv(2 * uniform_halton_samples - 1) #,dtype=float_dtype
     
     return gaussian_halton_samples
 
 
-def generate_gaussian_sobol_samples(num_samples, ndims, seed_val, device=torch.device('cpu'), float_dtype=torch.float64):
+def generate_gaussian_sobol_samples(num_samples, ndims, seed_val, device=torch.device('cpu')): #, float_dtype=torch.float64):
     soboleng = torch.quasirandom.SobolEngine(dimension=ndims, scramble=True, seed=seed_val)
     uniform_sobol_samples = soboleng.draw(num_samples).to(device)
 
-    gaussian_sobol_samples = torch.sqrt(torch.tensor([2.0],device=device,dtype=float_dtype)) * torch.erfinv(2 * uniform_sobol_samples - 1)
+    gaussian_sobol_samples = torch.sqrt(torch.tensor([2.0],device=device)) * torch.erfinv(2 * uniform_sobol_samples - 1) #dtype=float_dtype
     return gaussian_sobol_samples
     
 ########################

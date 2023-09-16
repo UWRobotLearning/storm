@@ -19,30 +19,24 @@
 # THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 # LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
 # FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
-# DEALINGS IN THE SOFTWARE.#
-import matplotlib
-matplotlib.use('tkagg')
-import matplotlib.pyplot as plt
-
+# DEALINGS IN THE SOFTWARE.
 import torch
 import torch.nn as nn
-# import torch.nn.functional as F
-from .gaussian_projection import GaussianProjection
 from ..model.integration_utils import build_fd_matrix
-class FiniteDifferenceCost(nn.Module):
-    def __init__(self, tensor_args={'device':torch.device('cpu'), 'dtype':torch.float32}, weight=1.0, order=1, gaussian_params={}, **kwargs):
-        super(FiniteDifferenceCost, self).__init__()
 
+class FiniteDifferenceCost(nn.Module):
+    def __init__(self, device:torch.device('cpu'), weight=1.0, order=1, **kwargs):
+        super(FiniteDifferenceCost, self).__init__()
+        self.device = device
         self.order = order
         for _ in range(order):
             weight *= weight
         self.weight = weight
-        self.tensor_args = tensor_args
+        self.device = device
         # build FD matrix
-        
         self.fd_mat = None
-        self.proj_gaussian = GaussianProjection(gaussian_params=gaussian_params)
         self.t_mat = None
+
     def forward(self, ctrl_seq, dt):
         """
         ctrl_seq: [B X H X d_act]
@@ -64,25 +58,19 @@ class FiniteDifferenceCost(nn.Module):
         #    dt = dt * dt
         #print(dt)
         inp_device = ctrl_seq.device
-        ctrl_seq = ctrl_seq.to(**self.tensor_args)
+        ctrl_seq = ctrl_seq.to(device=self.device)
         
-        B, H, _ = ctrl_seq.shape
+        _, H, _ = ctrl_seq.shape
         H = H - self.order
         dt = dt[:H]
         #
-        if(self.fd_mat is None or self.fd_mat.shape[0] != H):
-            self.fd_mat = build_fd_matrix(H,device=self.tensor_args['device'], dtype=self.tensor_args['dtype'], order=self.order, PREV_STATE=True)
+        if self.fd_mat is None or self.fd_mat.shape[0] != H:
+            self.fd_mat = build_fd_matrix(H,device=self.device, order=self.order, PREV_STATE=True)
             
-        
-        
         diff = torch.matmul(self.fd_mat,ctrl_seq)
-        
         res = torch.abs(diff)
-        
         cost = res[:,:,-1]
-            
         cost[cost < 0.0001] = 0.0
         cost = self.weight * cost 
-        
         
         return cost

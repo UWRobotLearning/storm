@@ -23,13 +23,9 @@
 import torch
 import torch.nn as nn
 from torch.profiler import record_function
-# import torch.nn.functional as F
 from ...geom.sdf.robot_world import RobotWorldCollisionPrimitive
-from .gaussian_projection import GaussianProjection
 
 class PrimitiveCollisionCost(nn.Module):
-    # def __init__(self, weight=None, world_params=None, robot_params=None, gaussian_params={},
-    #              distance_threshold=0.1, tensor_args={'device':torch.device('cpu'), 'dtype':torch.float32}):
     def __init__(self, weight=None, world_params=None, robot_params=None, batch_size:int=1,
                  distance_threshold=0.1, device:torch.device=torch.device('cpu')):
 

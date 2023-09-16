@@ -219,11 +219,13 @@ class FrankaEnv(): #VecTask
         robot_asset, robot_dof_props = self.load_robot_asset()
         table_asset, table_dims, table_color = self.load_table_asset()
         self.num_object_bodies = 0
+        self.num_object_shapes = 0
         if self.num_objects > 0:
             object_assets = []
             for _ in range(self.num_objects):
                 object_asset, object_color = self.load_object_asset(disable_gravity=False)
                 self.num_object_bodies += self.gym.get_asset_rigid_body_count(object_asset)
+                self.num_object_shapes = self.gym.get_asset_rigid_shape_count(object_asset)
                 object_assets.append(object_asset)
 
 
@@ -261,7 +263,7 @@ class FrankaEnv(): #VecTask
 
         # compute aggregate size
         max_agg_bodies = self.num_robot_bodies + 1 + self.num_object_bodies # #+ self.num_props * num_prop_bodies
-        max_agg_shapes = self.num_robot_shapes + 1 + self.num_object_bodies #+ num_target_shapes #+ self.num_props * num_prop_shapes
+        max_agg_shapes = self.num_robot_shapes + 1 + self.num_object_shapes #+ num_target_shapes #+ self.num_props * num_prop_shapes
 
         # self.tables = []
         self.robots = []

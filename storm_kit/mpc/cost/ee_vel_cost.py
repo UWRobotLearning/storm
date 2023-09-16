@@ -24,26 +24,22 @@
 
 import torch
 import torch.nn as nn
-from .gaussian_projection import GaussianProjection
+
 class EEVelCost(nn.Module):
-    def __init__(self, ndofs, device, float_dtype, weight=1.0, vec_weight=[], gaussian_params={}):
+    def __init__(self, ndofs, device, weight=1.0, vec_weight=[]):
         super(EEVelCost, self).__init__()
         self.ndofs = ndofs
         self.device = device
-        self.float_dtype = float_dtype
         self.vel_idxs = torch.arange(self.ndofs,2*self.ndofs, dtype=torch.long, device=self.device)
-        # self.I = torch.eye(6, device=device)
-        self.I = torch.eye(ndofs, device=device, dtype=self.float_dtype)
-        self.vec_weight = torch.as_tensor(vec_weight, device=device, dtype=float_dtype)
+        self.I = torch.eye(ndofs, device=device)
+        self.vec_weight = torch.as_tensor(vec_weight, device=device)
         self.weight = weight
-        self.gaussian_projection = GaussianProjection(gaussian_params=gaussian_params)
         
     
     def forward(self, state_batch, jac_batch):
         
         inp_device = state_batch.device
         jac_batch = jac_batch.to(self.device)
-        
         
         #use jacobian to get desired delta_q
         J = jac_batch

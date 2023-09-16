@@ -30,23 +30,18 @@ from ...differentiable_robot_model.coordinate_transform import CoordinateTransfo
 
 from ...util_file import get_assets_path, join_path
 from ...geom.sdf.robot import RobotSphereCollision
-from .gaussian_projection import GaussianProjection
 from storm_kit.geom.nn_model.robot_self_collision_net import RobotSelfCollisionNet
 
 class RobotSelfCollisionCost(nn.Module):
     def __init__(self, weight, config=None,
-                 gaussian_params={}, distance_threshold=0.01, 
-                 batch_size=2, device=torch.device('cpu')):
-                #  tensor_args={'device':torch.device('cpu'), 'dtype':torch.float32}):
+                distance_threshold=0.01, 
+                batch_size=2, device=torch.device('cpu')):
+
         super(RobotSelfCollisionCost, self).__init__()
-        # self.tensor_args = tensor_args
-        self.device = device # tensor_args['device']
+        self.device = device
         self.config = config
-        # self.float_dtype = tensor_args['dtype']
-        self.tensor_args={'device':self.device, 'dtype':torch.float32}
         self.distance_threshold = distance_threshold
         self.weight = torch.as_tensor(weight, device=self.device)
-        # self.proj_gaussian = GaussianProjection(gaussian_params=gaussian_params)
 
 
         # load robot model:
@@ -78,8 +73,6 @@ class RobotSelfCollisionCost(nn.Module):
             self.nn_collision_model.eval()
         except:
             pass
-        # self.res = None
-        # self.t_mat = None
 
     def distance(self, link_pos_seq, link_rot_seq):
         """

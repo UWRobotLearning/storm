@@ -72,6 +72,7 @@ class PointRobotEnv():
         self.dt = self.cfg["sim"]["dt"]
         self.world_params = self.cfg["world"]
         self.world_model = self.world_params["world_model"]
+        self.num_objects = self.cfg["env"]["num_objects"]
         self.control_freq_inv = self.cfg["env"].get("controlFrequencyInv", 1)
                 
         self.render_fps: int = self.cfg["env"].get("renderFPS", -1)
@@ -207,7 +208,6 @@ class PointRobotEnv():
 
         robot_asset, robot_dof_props = self.load_robot_asset()
         table_asset, table_dims, table_color = self.load_table_asset()
-        ball_asset, ball_color = self.load_object_asset(disable_gravity=False)
 
         table_pose_world = gymapi.Transform()
         table_pose_world.p = gymapi.Vec3(0, 0, 0 + table_dims.z)
@@ -220,12 +220,23 @@ class PointRobotEnv():
 
         self.robot_pose_world =  table_pose_world * robot_start_pose_table #convert from franka to world frame
 
-        ball_start_pose_table = gymapi.Transform()
-        # ball_start_pose_table.p = gymapi.Vec3(-table_dims.x/2.0 + 0.3 + 0.02 + 0.01 + 0.01, 0.0, table_dims.z/2.0 + 0.02) #0.3
-        ball_start_pose_table.p = gymapi.Vec3(0.02 + 0.01 + 0.01, 0.0, table_dims.z/2.0 + 0.02) #0.3
-        ball_start_pose_table.r = gymapi.Quat(0.0, 0.0, 0.0, 1.0)
+        self.num_object_bodies = 0
+        self.num_object_shapes = 0
 
-        self.ball_start_pose_world =  table_pose_world * ball_start_pose_table #convert from franka to world frame
+        if self.num_objects > 0:
+            object_assets = []
+            for _ in range(self.num_objects):
+                object_asset, object_color = self.load_object_asset(disable_gravity=False)
+                self.num_object_bodies += self.gym.get_asset_rigid_body_count(object_asset)
+                self.num_object_shapes = self.gym.get_asset_rigid_shape_count(object_asset)
+
+                object_assets.append(object_asset)
+                ball_start_pose_table = gymapi.Transform()
+                # ball_start_pose_table.p = gymapi.Vec3(-table_dims.x/2.0 + 0.3 + 0.02 + 0.01 + 0.01, 0.0, table_dims.z/2.0 + 0.02) #0.3
+                ball_start_pose_table.p = gymapi.Vec3(0.02 + 0.01 + 0.01, 0.0, table_dims.z/2.0 + 0.02) #0.3
+                ball_start_pose_table.r = gymapi.Quat(0.0, 0.0, 0.0, 1.0)
+
+            self.ball_start_pose_world =  table_pose_world * ball_start_pose_table #convert from franka to world frame
 
         trans = torch.tensor([
             self.robot_pose_world.p.x,
@@ -244,15 +255,17 @@ class PointRobotEnv():
         self.world_pose_robot = temp.inverse() #convert from world frame to robot
 
         # compute aggregate size
-        max_agg_bodies = self.num_robot_bodies + 3 # #+ self.num_props * num_prop_bodies
-        max_agg_shapes = self.num_robot_shapes + 3 #+ num_target_shapes #+ self.num_props * num_prop_shapes
+        max_agg_bodies = self.num_robot_bodies + 1 + self.num_object_bodies #+ self.num_props * num_prop_bodies
+        max_agg_shapes = self.num_robot_shapes + 1 + self.num_object_shapes #+ num_target_shapes #+ self.num_props * num_prop_shapes
 
         # self.tables = []
         self.robots = []
         self.envs = []
+        self.objects = []
 
         for i in range(self.num_envs):
             # create env instance
+            env_objects = []
             env_ptr = self.gym.create_env(
                 self.sim, lower, upper, num_per_row
             )
@@ -269,18 +282,30 @@ class PointRobotEnv():
             if self.aggregate_mode == 1:
                 self.gym.begin_aggregate(env_ptr, max_agg_bodies, max_agg_shapes, True)
 
-            self.ball_actor = self.gym.create_actor(env_ptr, ball_asset, self.ball_start_pose_world, "ball", i, 0, 0)
-            self.gym.set_rigid_body_color(env_ptr, self.ball_actor, 0, gymapi.MESH_VISUAL_AND_COLLISION, ball_color)
-            body_props = self.gym.get_actor_rigid_body_properties(env_ptr, self.ball_actor)
-            for b in range(len(body_props)):
-                body_props[b].flags = gymapi.RIGID_BODY_NONE
-            self.gym.set_actor_rigid_body_properties(env_ptr, self.ball_actor, body_props)
+            if self.num_objects > 0:
+                for i, object_asset in enumerate(object_assets):
+                    object_actor = self.gym.create_actor(env_ptr, object_asset, self.ball_start_pose_world, "ball_{}".format(i), i, 0, 0)
+                    self.gym.set_rigid_body_color(env_ptr, object_actor, 0, gymapi.MESH_VISUAL_AND_COLLISION, object_color)
+                    body_props = self.gym.get_actor_rigid_body_properties(env_ptr, object_actor)
+                    for b in range(len(body_props)):
+                        body_props[b].flags = gymapi.RIGID_BODY_NONE
+                    self.gym.set_actor_rigid_body_properties(env_ptr, object_actor, body_props)
+                    env_objects.append(object_actor)
+
+            # self.ball_actor = self.gym.create_actor(env_ptr, ball_asset, self.ball_start_pose_world, "ball", i, 0, 0)
+            # self.gym.set_rigid_body_color(env_ptr, self.ball_actor, 0, gymapi.MESH_VISUAL_AND_COLLISION, ball_color)
+            # body_props = self.gym.get_actor_rigid_body_properties(env_ptr, self.ball_actor)
+            # for b in range(len(body_props)):
+            #     body_props[b].flags = gymapi.RIGID_BODY_NONE
+            # self.gym.set_actor_rigid_body_properties(env_ptr, self.ball_actor, body_props)
 
             if self.aggregate_mode > 0:
                 self.gym.end_aggregate(env_ptr)
 
             self.envs.append(env_ptr)
             self.robots.append(robot_actor)
+            self.objects.append(env_objects)
+
         
         self.init_data()
     
@@ -310,6 +335,8 @@ class PointRobotEnv():
         self.tstep = torch.ones(self.num_envs, 1, device=self.device)
 
         self.robot_state = self.rigid_body_states[:, 2]
+
+        #Note: this needs to change to support more than one object!!!
         self.object_state = self.root_state[:,-1]
         self.init_object_state = torch.zeros(self.num_envs, 13, device=self.device)
         self.init_object_state[:,0] = self.ball_start_pose_world.p.x
@@ -549,11 +576,6 @@ class PointRobotEnv():
         # self.robot_q_acc_buff[:] = self.robot_dof_acc
         tstep = self.gym.get_sim_time(self.sim)
         tstep *= self.tstep
-        object_pos = self.object_state[:,0:3]
-        object_rot = self.object_state[:,3:7]
-        object_vel = self.object_state[:,7:10]
-        object_ang_vel = self.object_state[:,10:13]
-
         robot_pos = self.robot_state[:, 0:3]
         robot_vel = self.robot_state[:, 7:10]
         robot_acc = self.robot_dof_acc
@@ -562,12 +584,21 @@ class PointRobotEnv():
             'q_pos': robot_pos[:,0:2].to(self.rl_device),
             'q_vel': robot_vel[:,0:2].to(self.rl_device),
             'q_acc': robot_acc[:,0:2].to(self.rl_device),
-            'object_pos': object_pos[:,0:2].to(self.rl_device),
-            'object_rot': object_rot[:,0:2].to(self.rl_device),
-            'object_vel': object_vel[:,0:2].to(self.rl_device),
-            'object_ang_vel': object_ang_vel[:,0:2].to(self.rl_device),
             'tstep': tstep
         }
+
+        if self.num_objects > 0:
+            #Note: This won't work for more than one object
+            object_pos = self.object_state[:,0:3]
+            object_rot = self.object_state[:,3:7]
+            object_vel = self.object_state[:,7:10]
+            object_ang_vel = self.object_state[:,10:13]
+
+            state_dict['object_pos'] = object_pos[:,0:2].to(self.rl_device)
+            state_dict['object_rot'] = object_rot[:,0:2].to(self.rl_device)
+            state_dict['object_vel'] = object_vel[:,0:2].to(self.rl_device)
+            state_dict['object_ang_vel'] = object_ang_vel[:,0:2].to(self.rl_device)
+
         return state_dict
 
     def reset(self, reset_data=None):

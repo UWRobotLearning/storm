@@ -24,14 +24,10 @@ from typing import Optional, Tuple, Dict, List
 import torch
 import torch.nn as nn
 
-# import torch.nn.functional as F
-# from .gaussian_projection import GaussianProjection
-
 class DistCost(nn.Module):
     def __init__(self, 
                  weight:float, 
                  vec_weight:Optional[List]=None, 
-                 gaussian_params: Dict[str, float]={}, 
                  device: torch.device =torch.device('cpu')):
         
         super(DistCost, self).__init__()
@@ -41,7 +37,6 @@ class DistCost(nn.Module):
             self.vec_weight = torch.as_tensor(vec_weight, device=device)
         else:
             self.vec_weight = 1.0
-        # self.proj_gaussian = GaussianProjection(gaussian_params=gaussian_params)
     
     def forward(self, disp_vec: torch.Tensor, dist_type: str = "l2", norm_vec: Optional[torch.Tensor] = None) -> Tuple[torch.Tensor, torch.Tensor]:
         inp_device = disp_vec.device
@@ -55,9 +50,6 @@ class DistCost(nn.Module):
             norm_magn = self.compute_norm(norm_vec, dist_type)
         
         normalized_distance = dist / norm_magn
-
-
-
         # cost = self.weight * self.proj_gaussian(dist)
         # cost = self.weight * dist
         cost = self.weight * normalized_distance
@@ -65,7 +57,6 @@ class DistCost(nn.Module):
         return cost.to(inp_device), dist.to(inp_device)
 
     def compute_norm(self, disp_vec: torch.Tensor, norm_type: str = "l2"):
-
         if norm_type == 'l2':
             dist = torch.norm(disp_vec, p=2, dim=-1,keepdim=False)
         elif norm_type == 'squared_l2':

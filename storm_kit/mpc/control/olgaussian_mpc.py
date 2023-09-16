@@ -101,10 +101,8 @@ class OLGaussianMPC(Controller):
 
         self.null_act_frac = null_act_frac
         self.num_null_particles = round(int(null_act_frac * self.num_particles * 1.0))
-        self.num_neg_particles = round(int(null_act_frac * self.num_particles)) - self.num_null_particles
-        self.num_nonzero_particles = self.num_particles - self.num_null_particles - self.num_neg_particles
-
-        #print(self.num_null_particles, self.num_neg_particles)
+        # self.num_neg_particles = round(int(null_act_frac * self.num_particles)) - self.num_null_particles
+        self.num_nonzero_particles = self.num_particles - self.num_null_particles# - self.num_neg_particles
 
         self.sample_params = sample_params
         self.sample_type = sample_params['type']
@@ -115,18 +113,24 @@ class OLGaussianMPC(Controller):
             self.i_ha = torch.eye(self.d_action, **self.tensor_args).repeat(1, self.horizon)
 
         elif sample_params['type'] == 'halton':
-            self.sample_lib = HaltonSampleLib(self.num_instances,
-                                              self.horizon, 
-                                              self.d_action,
-                                              tensor_args=self.tensor_args,
-                                              **self.sample_params)
+            self.sample_lib = HaltonSampleLib(
+                self.num_instances, self.horizon, 
+                self.d_action, device=self.tensor_args['device'],
+                **self.sample_params)
             self.sample_shape = torch.Size([self.num_nonzero_particles - 2])
+
         elif sample_params['type'] == 'random':
-            self.sample_lib = RandomSampleLib(self.num_instances, self.horizon, self.d_action, tensor_args=self.tensor_args,
-                                              **self.sample_params)
+            self.sample_lib = RandomSampleLib(
+                self.num_instances, self.horizon, 
+                self.d_action, device=self.tensor_args['device'],
+                **self.sample_params)
             self.sample_shape = torch.Size([self.num_nonzero_particles - 2])
+
         elif sample_params['type'] == 'multiple':
-            self.sample_lib = MultipleSampleLib(self.num_instances, self.horizon, self.d_action, tensor_args=self.tensor_args, **self.sample_params)
+            self.sample_lib = MultipleSampleLib(
+                self.num_instances, self.horizon, 
+                self.d_action, device=self.tensor_args['device'], 
+                **self.sample_params)
             self.sample_shape = torch.Size([self.num_nonzero_particles - 2])
 
         self.stomp_matrix = None #self.sample_lib.stomp_cov_matrix
@@ -139,6 +143,7 @@ class OLGaussianMPC(Controller):
         self.Z_seq = torch.zeros(self.num_instances, 1, self.horizon, self.d_action, **self.tensor_args)
 
         self.reset_distribution()
+        
         if self.num_null_particles > 0:
             self.null_act_seqs = torch.zeros(self.num_instances, self.num_null_particles, self.horizon, self.d_action, **self.tensor_args)
             
@@ -168,7 +173,6 @@ class OLGaussianMPC(Controller):
         
     def sample_actions(self, state=None):
         delta = self.sample_lib.get_samples(sample_shape=self.sample_shape, base_seed=self.seed_val + self.num_steps)
-
         #add zero-noise seq so mean is always a part of samples
         delta = torch.cat((delta, self.Z_seq), dim=1)
         #TODO: Is this right?

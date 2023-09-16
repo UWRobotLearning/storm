@@ -24,6 +24,7 @@ from typing import Optional, Dict, Tuple
 import torch
 from torch.profiler import record_function
 import time
+import matplotlib.pyplot as plt
 
 from ..cost import DistCost, PoseCost, ProjectedDistCost, JacobianCost, ZeroCost, EEVelCost, StopCost, FiniteDifferenceCost
 from ..cost.bound_cost import BoundCost
@@ -387,6 +388,9 @@ class PointRobotPusher(RolloutBase):
                 self.vis["world"]["robot"][str(h)].set_object(meshcat_g.Sphere(self.robot_radius), robot_material)
                 self.vis["world"]["object"][str(h)].set_object(meshcat_g.Sphere(self.object_radius), object_material)
                 self.vis["world"]["goal"][str(h)].set_object(meshcat_g.Sphere(self.object_radius), goal_material)
+
+            self.fig, self.ax = plt.subplots(self.action_dim)
+        
     
     def visualize_rollouts(self, rollout_data):
         self.init_viewer()
@@ -415,7 +419,29 @@ class PointRobotPusher(RolloutBase):
             self.vis["world"]["robot"][str(i)].set_transform(meshcat_tf.translation_matrix(top_robot_pos[0,i]))
             self.vis["world"]["object"][str(i)].set_transform(meshcat_tf.translation_matrix(top_object_pos[0,i]))
             self.vis["world"]["goal"][str(i)].set_transform(meshcat_tf.translation_matrix(object_goal[0]))
-        time.sleep(0.01)
+        
+        #Pliot the actions as well
+        actions = rollout_data['actions'].cpu().numpy()
+        _, b, h, nd = actions.shape 
+            # fig, ax = plt.subplots(nd)
+
+        for d_i in range(nd):
+            self.ax[d_i].clear()
+            for b_i in range(b):
+                data = actions[0, b_i, :, d_i]
+                self.ax[d_i].plot(data)
+        plt.pause(0.01)
+        plt.draw()
+
+
+
+            # print(self.samples.shape, torch.max(self.samples, dim=2)[0], torch.min(self.samples, dim=2)[0], torch.mean(self.samples, dim=2))
+            # exit()
+
+        
+        
+        
+        # time.sleep(0.01)
 
 
     @property

@@ -24,8 +24,6 @@ import torch
 import torch.nn as nn
 # import torch.nn.functional as F
 
-from .gaussian_projection import GaussianProjection
-
 class PoseCost(nn.Module):
     """ Rotation cost 
 
@@ -36,60 +34,33 @@ class PoseCost(nn.Module):
 
     
     """
-    # def __init__(self, weight, vec_weight=[], position_gaussian_params={}, orientation_gaussian_params={}, tensor_args={'device':"cpu", 'dtype':torch.float32}, hinge_val=100.0,
-    #              convergence_val=[0.0,0.0]):
-    def __init__(self, weight, vec_weight=[], position_gaussian_params={}, orientation_gaussian_params={}, device=torch.device("cpu"), hinge_val=100.0,
+    def __init__(self, weight, vec_weight=[], device=torch.device("cpu"), hinge_val=100.0,
                  convergence_val=[0.0,0.0]):
         super(PoseCost, self).__init__()
-        # self.tensor_args = tensor_args
         self.device = device
 
-        # self.I = torch.eye(3,3, **tensor_args)
         self.I = torch.eye(3,3, device=self.device)
 
         self.weight = weight
-        # self.vec_weight = torch.as_tensor(vec_weight, **tensor_args)
         self.vec_weight = torch.as_tensor(vec_weight, device=self.device)
 
         self.rot_weight = self.vec_weight[0:3]
         self.pos_weight = self.vec_weight[3:6]
 
-        # self.px = torch.tensor([1.0,0.0,0.0], **self.tensor_args).T
-        # self.py = torch.tensor([0.0,1.0,0.0], **self.tensor_args).T
-        # self.pz = torch.tensor([0.0,0.0,1.0], **self.tensor_args).T
         self.px = torch.tensor([1.0,0.0,0.0], device=self.device).T
         self.py = torch.tensor([0.0,1.0,0.0], device=self.device).T
         self.pz = torch.tensor([0.0,0.0,1.0], device=self.device).T
 
-
-        # self.I = torch.eye(3,3,**self.tensor_args)
-        # self.Z = torch.zeros(1, **self.tensor_args)
-
         self.I = torch.eye(3,3,device=self.device)
         self.Z = torch.zeros(1, device=self.device)
 
-
-        # self.position_gaussian = GaussianProjection(gaussian_params=position_gaussian_params)
-        # self.orientation_gaussian = GaussianProjection(gaussian_params=orientation_gaussian_params)
         self.hinge_val = hinge_val
         self.convergence_val = convergence_val
-        # self.dtype = self.tensor_args['dtype']
-        # self.device = self.tensor_args['device']
-
 
 
     def forward(self, ee_pos_batch, ee_rot_batch, ee_goal_pos, ee_goal_rot):
 
-        
         inp_device = ee_pos_batch.device
-        # ee_pos_batch = ee_pos_batch.to(device=self.device,
-        #                                dtype=self.dtype)
-        # ee_rot_batch = ee_rot_batch.to(device=self.device,
-        #                                dtype=self.dtype)
-        # ee_goal_pos = ee_goal_pos.to(device=self.device,
-        #                              dtype=self.dtype)
-        # ee_goal_rot = ee_goal_rot.to(device=self.device,
-        #                              dtype=self.dtype)
 
         ee_pos_batch = ee_pos_batch.to(device=self.device)
         ee_rot_batch = ee_rot_batch.to(device=self.device)
@@ -123,11 +94,8 @@ class PoseCost(nn.Module):
 
         rot_err[rot_err < self.convergence_val[0]] = 0.0
         position_err[position_err < self.convergence_val[1]] = 0.0
-        # cost = self.weight[0] * self.orientation_gaussian(torch.sqrt(rot_err)) + self.weight[1] * self.position_gaussian(torch.sqrt(position_err))
         cost = self.weight[0] * torch.sqrt(rot_err) + self.weight[1] * torch.sqrt(position_err)
-
-        # cost = self.weight[0] * self.orientation_gaussian(rot_err) + self.weight[1] * self.position_gaussian(position_err)
-
+        
         # dimension should be bacth * traj_length
         return cost.to(inp_device), rot_err_norm, goal_dist
 
