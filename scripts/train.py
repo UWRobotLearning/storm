@@ -14,30 +14,16 @@ from storm_kit.learning.replay_buffers import ReplayBuffer, RobotBuffer
 from storm_kit.learning.learning_utils import Log, buffer_from_folder
 from storm_kit.util_file import get_data_path
 from storm_kit.learning.learning_utils import episode_runner
-
-def get_env_and_task(cfg):
-    task_name = cfg.task.name
-    if task_name == 'FrankaReacher':
-        from storm_kit.envs import FrankaEnv
-        from storm_kit.mpc.rollout import ArmReacher
-        env_cls = FrankaEnv
-        task_cls = ArmReacher
-
-    elif task_name == 'PointRobotPusher':
-        from storm_kit.envs import PointRobotEnv
-        from storm_kit.mpc.rollout import PointRobotPusher
-        env_cls = PointRobotEnv
-        task_cls = PointRobotPusher
-    
-    return env_cls, task_cls
+from task_map import task_map
 
 
 @hydra.main(config_name="config", config_path="../content/configs/gym")
 def main(cfg: DictConfig):
     torch.set_default_dtype(torch.float32)
-
-    env_cls, task_cls = get_env_and_task(cfg)
-
+    
+    task_details = task_map[cfg.task.name]
+    env_cls = task_details['env_cls']
+    task_cls = task_details['task_cls']
     envs = env_cls(
         cfg.task, 
         cfg.rl_device, 
@@ -60,9 +46,6 @@ def main(cfg: DictConfig):
     log = Log(log_dir, cfg)
     log(f'Log dir: {log.dir}')
     writer = SummaryWriter(log.dir)
-
-    # cfg.mpc.world = cfg.task.world
-    # cfg.mpc.control_dt = cfg.task.sim.dt
 
     obs_dim = task.obs_dim
     act_dim = task.action_dim
@@ -94,12 +77,14 @@ def main(cfg: DictConfig):
         agent = SACAgent(cfg.train.agent, envs=envs, task=task, obs_dim=obs_dim, action_dim=act_dim, 
                          buffer=buffer, policy=policy, critic=critic, runner_fn=episode_runner, 
                          logger=log, tb_writer=writer, device=cfg.rl_device)
+    
     elif cfg.train.agent.name == 'MPO':
         buffer = ReplayBuffer(capacity=int(2e6), obs_dim=obs_dim, act_dim=act_dim, device=torch.device('cpu'))
         policy = GaussianPolicy(obs_dim=obs_dim, act_dim=act_dim, config=cfg.train.policy, device=cfg.rl_device)
         critic = QFunction(obs_dim=obs_dim, act_dim=act_dim, config=cfg.train.critic, device=cfg.rl_device)
         agent = MPOAgent(cfg.train.agent, envs=envs, obs_space=envs.obs_space, action_space=envs.action_space, 
                         buffer=buffer, policy=policy, critic=critic, logger=log, tb_writer=writer, device=cfg.rl_device)
+    
     elif cfg.train.agent.name == 'MPQ':
         nn_policy = GaussianPolicy(obs_dim=obs_dim, act_dim=act_dim, config=cfg.train.nn_policy, device=cfg.rl_device)
         critic = TwinQFunction(obs_dim=obs_dim, act_dim=act_dim, config=cfg.train.critic, device=cfg.rl_device)

@@ -13,40 +13,17 @@ from storm_kit.learning.policies import MPCPolicy, JointControlWrapper
 from storm_kit.learning.agents import MPCAgent
 from storm_kit.learning.replay_buffers import RobotBuffer
 from storm_kit.learning.learning_utils import episode_runner
+from task_map import task_map
 
-def get_env_and_task(cfg):
-    task_name = cfg.task.name
-    if task_name == 'FrankaReacher':
-        from storm_kit.envs import FrankaEnv
-        from storm_kit.mpc.rollout import ArmReacher
-        env_cls = FrankaEnv
-        task_cls = ArmReacher
-    
-    elif task_name == 'FrankaPusher':
-        from storm_kit.envs import FrankaEnv
-        from storm_kit.mpc.rollout import ArmReacher
-        env_cls = FrankaEnv
-        task_cls = ArmReacher
-
-    elif task_name == 'PointRobotPusher':
-        from storm_kit.envs import PointRobotEnv
-        from storm_kit.mpc.rollout import PointRobotPusher
-        env_cls = PointRobotEnv
-        task_cls = PointRobotPusher
-    
-    return env_cls, task_cls
 
 
 @hydra.main(config_name="config", config_path="../content/configs/gym")
 def main(cfg: DictConfig):
     torch.set_default_dtype(torch.float32)
-    # import isaacgymenvs
-    # import storm_kit.envs
-    from storm_kit.envs import FrankaEnv
-    from storm_kit.mpc.rollout import ArmReacher
 
-    env_cls, task_cls = get_env_and_task(cfg)
-
+    task_details = task_map[cfg.task.name]
+    env_cls = task_details['env_cls']
+    task_cls = task_details['task_cls']    
     envs = env_cls(
         cfg.task, 
         cfg.rl_device, 
@@ -64,10 +41,7 @@ def main(cfg: DictConfig):
     if not os.path.exists(model_dir):
         os.makedirs(model_dir)
 
-    # cfg.mpc.env_control_space = cfg.task.env.controlSpace
     cfg.task.mpc.world = cfg.task.world
-    # cfg.mpc.control_dt = cfg.task.sim.dt
-
     obs_dim = task.obs_dim
     act_dim = task.action_dim
 

@@ -1,9 +1,0 @@
-use_cuda: True
-cuda_device_num: 0
-
-control_dt: 0.02
-run_open_loop: False
-control_space: 'acc'
-float_dtype: 'float32'
-state_filter_coeff: {'position':0.1, 'velocity':0.0, 'acceleration':0.0}
-cmd_filter_coeff: {'position':1.0, 'velocity':1.0, 'acceleration':0.0}

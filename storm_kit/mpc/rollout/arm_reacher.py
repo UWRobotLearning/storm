@@ -20,7 +20,7 @@
 # LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
 # FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 # DEALINGS IN THE SOFTWARE.#
-from typing import Dict, Optional
+from typing import Dict, Optional, Tuple
 import torch
 from torch.profiler import record_function
 
@@ -54,7 +54,8 @@ class ArmReacher(ArmBase):
         #                                     quat_inputs=False)
 
         self.goal_cost = PoseCost(**cfg['cost']['goal_pose'], device=self.device)
-        self.default_ee_goal = torch.tensor([0.0, 0.0, 0.3, 0.0, 0.707, 0.707, 0.0], device=self.device)
+        self.task_specs = cfg['task_specs']
+        self.default_ee_goal = torch.tensor(self.task_specs['default_ee_target'], device=self.device)
         self.init_buffers()
 
     def init_buffers(self):
@@ -127,8 +128,21 @@ class ArmReacher(ArmBase):
         return self.reset_idx(env_ids)
 
     def reset_idx(self, env_ids):
+        goal_position_noise = self.task_specs['target_position_noise']
+        goal_rotation_noise = self.task_specs['target_rotation_noise']
 
         self.ee_goal_buff[env_ids] = self.default_ee_goal
+
+        if goal_position_noise > 0.:
+            #randomize goal position around the default
+            self.ee_goal_buff[env_ids, 0] = self.ee_goal_buff[env_ids, 0] +  2.0* goal_position_noise * (torch.rand_like(self.ee_goal_buff[env_ids, 0], device=self.device) - 0.5)
+            self.ee_goal_buff[env_ids, 1] = self.ee_goal_buff[env_ids, 1] +  2.0* goal_position_noise * (torch.rand_like(self.ee_goal_buff[env_ids, 1], device=self.device) - 0.5)
+            self.ee_goal_buff[env_ids, 2] = self.ee_goal_buff[env_ids, 2] +  2.0* goal_position_noise * (torch.rand_like(self.ee_goal_buff[env_ids, 2], device=self.device) - 0.5)
+        
+        if goal_rotation_noise > 0.:
+            #randomize goal orientation
+            raise NotImplementedError('oritentation randomization not implemented')
+
         self.goal_ee_pos = self.ee_goal_buff[..., 0:3]
         self.goal_ee_quat = self.ee_goal_buff[..., 3:7]
         self.goal_ee_rot = quaternion_to_matrix(self.goal_ee_quat)
@@ -229,7 +243,7 @@ class ArmReacher(ArmBase):
         #     goal_ee_pos - state_dict['ee_pos_seq']), dim=-1)
         obs = torch.cat((
             obs, 
-            self.ee_goal_buff,
+            self.ee_goal_buff[:, 0:3],
             state_dict['ee_pos_seq'],
             self.ee_goal_buff[:, 0:3] - state_dict['ee_pos_seq']), dim=-1)
 
@@ -275,8 +289,14 @@ class ArmReacher(ArmBase):
 
     @property
     def obs_dim(self)->int:
-        return 27
+        return 23
 
     @property
     def action_dim(self)->int:
         return self.n_dofs
+
+    @property
+    def action_lims(self)->Tuple[torch.Tensor, torch.Tensor]:
+        act_highs = torch.tensor([self.cfg['model']['max_acc']] * self.action_dim,  device=self.device)
+        act_lows = torch.tensor([-1.0 * self.cfg['model']['max_acc']] * self.action_dim, device=self.device)
+        return act_lows, act_highs

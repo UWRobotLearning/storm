@@ -1,0 +1,128 @@
+# used to create the object
+name: PointRobotReacher
+
+physics_engine: ${..physics_engine}
+
+# if given, will override the device setting in gym. 
+env:
+  num_envs: ${resolve_default:1,${...num_envs}}
+  envSpacing: 1.5
+  episodeLength: 200
+  enableDebugVis: False
+  targetRandomizeMode: "fixed_target"
+  clipObservations: 5.0
+  startPositionNoise: 0.0
+  startRotationNoise: 0.0
+  # numProps: 16
+  aggregateMode: 3
+  num_objects: 0
+
+  # actionScale: 1.0 #7.5
+  # dofVelocityScale: 0.1
+
+  asset:
+    assetRoot: "../../content/assets"
+    assetFileNameRobot: "urdf/point_robot.urdf"
+
+  # # set to True if you use camera sensors in the environment
+  # enableCameraSensors: False
+
+rollout:
+  num_instances: ${task.env.num_envs}
+  batch_size: 1
+  horizon: 1
+  control_dt: 0.015
+  control_space: 'acc'
+  n_dofs: 2
+  state_filter_coeff: {'q_pos':1.0, 'q_vel':1.0, 'q_acc':0.0}
+
+  model:
+    urdf_path: "urdf/point_robot.urdf"
+    name: "point_robot"
+    max_acc: 10.0 
+    dt_traj_params:
+      base_dt:  0.015
+      base_ratio: 0.8
+      max_dt: 0.15 #0.15
+    init_state: [0., 0.]
+    link_names: ['robot', 'robot_y']
+    
+  cost:
+    # goal_pose:
+    #   # vec_weight: [1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
+    #   weight: [50.0, 100.0] #[15.0, 100.0]
+    #   # position_gaussian_params: {'n':0, 'c':0.0, 's':0.0, 'r':10.0}
+    #   # orientation_gaussian_params: {'n':0, 'c':0.0, 's':0.0, 'r':10.0}
+    #   hinge_val: -1
+    #   convergence_val: [0.0, 0.0] # orientation, position
+
+
+mpc:
+  rollout: ${task.rollout}
+  world: ${task.world}
+  viz_rollouts: true
+
+  mppi:
+    num_instances     : ${task.env.num_envs}
+    horizon           : 50
+    init_cov          : 1.0 #.5 #.5
+    gamma             : 0.99 #0.98
+    n_iters           : 1
+    step_size_mean    : 0.98 #0.98
+    step_size_cov     : 0.7
+    beta              : 0.1
+    alpha             : 1
+    num_particles     : 100 #10000
+    update_cov        : False
+    cov_type          : 'diag_AxA' # 
+    kappa             : 0.005
+    null_act_frac     : 0.01
+    sample_mode       : 'mean'
+    base_action       : 'repeat'
+    squash_fn         : 'clamp'
+    hotstart          : True
+    visual_traj       : null
+    sample_params:
+      type: 'multiple'
+      fixed_samples: True
+      sample_ratio: {'halton':0.0, 'halton-knot':1.0, 'random':0.0, 'random-knot':0.0}
+      seed: 0
+      filter_coeffs: [1.0, 0.1, 0.1]
+      knot_scale: 10
+      bspline_degree: 3
+
+train:
+  agent:
+    name: 'MPC'
+    num_episodes: 10
+    save_buffer: false
+    log_freq: 50
+    eval_freq: 100
+    checkpoint_freq: 10000
+
+sim:
+  dt: 0.0166 # 1/60
+  substeps: 1
+  up_axis: "z"
+  use_gpu_pipeline: ${eq:${...pipeline},"gpu"}
+  gravity: [0.0, 0.0, -9.81]
+  physx:
+    num_threads: ${....num_threads}
+    solver_type: ${....solver_type}
+    use_gpu: ${contains:"cuda",${....sim_device}} # set to False to run on CPU
+    num_position_iterations: 12
+    num_velocity_iterations: 1
+    contact_offset: 0.005
+    rest_offset: 0.0
+    bounce_threshold_velocity: 0.2
+    max_depenetration_velocity: 1000.0
+    default_buffer_size_multiplier: 5.0
+    max_gpu_contact_pairs: 1048576 # 1024*1024
+    num_subscenes: ${....num_subscenes}
+    contact_collection: 0 # 0: CC_NEVER (don't collect contact info), 1: CC_LAST_SUBSTEP (collect only contacts on last substep), 2: CC_ALL_SUBSTEPS (broken - do not use!)
+
+task:
+  randomize: False
+
+defaults:
+  - world: TableWorld

@@ -61,7 +61,6 @@ class FrankaEnv(): #VecTask
 
         self.force_render = force_render
         self.max_episode_length = self.cfg["env"]["episodeLength"]
-        self.action_scale = self.cfg["env"]["actionScale"]
         self.aggregate_mode = self.cfg["env"]["aggregateMode"]
         self.control_space = self.cfg["env"]["controlSpace"]
         self.num_environments = self.cfg["env"]["num_envs"]
@@ -72,7 +71,6 @@ class FrankaEnv(): #VecTask
         self.dt = self.cfg["sim"]["dt"]
         self.world_params = self.cfg["world"]
         self.world_model = self.world_params["world_model"]
-
 
         self.control_freq_inv = self.cfg["env"].get("controlFrequencyInv", 1)
                 
@@ -488,12 +486,12 @@ class FrankaEnv(): #VecTask
             # actions = action_dict['q_vel']
             # actions = actions.clone().to(self.device)
             targets = self.robot_dof_targets[:, :self.num_robot_dofs] + \
-                  self.robot_dof_speed_scales * self.dt * q_vel_des * self.action_scale
+                  self.robot_dof_speed_scales * self.dt * q_vel_des #* self.action_scale
 
         elif self.control_space == "vel_2":
             # actions = action_dict['q_vel'].clone().to(self.device)
             targets = self.robot_dof_pos + \
-                self.robot_dof_speed_scales * self.dt * q_vel_des * self.action_scale
+                self.robot_dof_speed_scales * self.dt * q_vel_des #* self.action_scale
 
         elif self.control_space == "acc":
             raise NotImplementedError
