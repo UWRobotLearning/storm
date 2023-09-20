@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 from dataclasses import dataclass
 from storm_kit.geom.shapes import Sphere
-from storm_kit.geom.sdf.primitives_new import sphere_sphere_collision
+# from storm_kit.geom.sdf.primitives_new import sphere_sphere_collision
 from storm_kit.differentiable_robot_model.coordinate_transform import CoordinateTransform
 import torch
 import numpy as np

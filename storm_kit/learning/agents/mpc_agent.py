@@ -26,7 +26,7 @@ class MPCAgent(Agent):
         )
 
 
-    def collect_experience(self, num_episodes: int, update_buffer:bool = True):
+    def collect_experience(self, num_episodes: int, update_buffer:bool = True, debug: bool = False):
         
         buff = None
         if update_buffer:
@@ -38,6 +38,7 @@ class MPCAgent(Agent):
             policy = self.policy,
             task = self.task,
             buffer = buff,
+            debug = debug,
             device=self.device
         )
 

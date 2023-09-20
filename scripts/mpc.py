@@ -51,7 +51,7 @@ def main(cfg: DictConfig):
     agent = MPCAgent(cfg.task.train.agent, envs=envs, task=task, obs_dim=obs_dim, action_dim=act_dim, 
                      buffer=buffer, policy=policy, runner_fn=episode_runner, device=cfg.rl_device)
     st=time.time()
-    metrics = agent.collect_experience(num_episodes=cfg.task.train.agent.num_episodes, update_buffer=True)
+    metrics = agent.collect_experience(num_episodes=cfg.task.train.agent.num_episodes, update_buffer=True, debug=True)
     print(metrics)
     print('Time taken = {}'.format(time.time() - st))
     print('Saving agent. Buffer save = {}'.format(cfg.train.agent.save_buffer))

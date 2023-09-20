@@ -10,7 +10,7 @@ env:
   episodeLength: 500
   enableDebugVis: False
   controlSpace: "vel_2"
-  num_objects: 0
+  num_objects: 1
   # clipObservations: 5.0
   # # clipActions: 1.0
   aggregateMode: 3

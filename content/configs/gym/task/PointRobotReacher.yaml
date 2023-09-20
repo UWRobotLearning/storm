@@ -60,11 +60,11 @@ rollout:
 mpc:
   rollout: ${task.rollout}
   world: ${task.world}
-  viz_rollouts: true
+  viz_rollouts: false
 
   mppi:
     num_instances     : ${task.env.num_envs}
-    horizon           : 50
+    horizon           : 20
     init_cov          : 1.0 #.5 #.5
     gamma             : 0.99 #0.98
     n_iters           : 1
@@ -87,9 +87,9 @@ mpc:
       fixed_samples: True
       sample_ratio: {'halton':0.0, 'halton-knot':1.0, 'random':0.0, 'random-knot':0.0}
       seed: 0
-      filter_coeffs: [1.0, 0.1, 0.1]
-      knot_scale: 10
-      bspline_degree: 3
+      filter_coeffs: [1.0, 0.0, 0.0]
+      knot_scale: 5
+      bspline_degree: 2
 
 train:
   agent:

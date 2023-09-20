@@ -134,6 +134,8 @@ class ArmBase(RolloutBase):
 
         self.link_pos_seq = torch.zeros((self.num_instances, self.num_links, 3), device=self.device)
         self.link_rot_seq = torch.zeros((self.num_instances, self.num_links, 3, 3), device=self.device)
+
+        self.vis_initialized = False
     
     def compute_cost(
             self, 
@@ -194,9 +196,14 @@ class ArmBase(RolloutBase):
                     cost += self.stop_cost_acc.forward(state_batch[:, 2*self.n_dofs :3*self.n_dofs])
 
 
+        # with record_function('bound_cost'):
+        #     bound_cost = self.bound_cost.forward(state_batch[:,:,:2*self.n_dofs])
+        #     cost += bound_cost
+
+
         if termination is not None:
             termination = termination.view(self.num_instances*self.batch_size, self.horizon)
-            termination_cost = 1000.0 * termination 
+            termination_cost = 5000.0 * termination 
             cost += termination_cost
             cost_terms['termination'] = termination_cost
 
@@ -266,11 +273,11 @@ class ArmBase(RolloutBase):
 
         with record_function('primitive_collision'):
             coll_cost = self.primitive_collision_cost.forward(link_pos_batch, link_rot_batch)
-            termination += coll_cost > 0
+            termination = coll_cost > 0
 
         # with record_function('bound_cost'):
         #     bound_cost = self.bound_cost.forward(state_batch[:,:,:2*self.n_dofs])
-        #     termination += bound_cost > 0.
+        #     termination += bound_cost > 0
 
 
         # if self.cfg['cost']['robot_self_collision']['weight'] > 0:
@@ -315,6 +322,9 @@ class ArmBase(RolloutBase):
             #link_rot_seq=link_rot_seq,
             rollout_time=0.0
         )
+
+        if self.viz_rollouts:
+            self.visualize_rollouts(sim_trajs)
         
         return sim_trajs
 
@@ -386,18 +396,68 @@ class ArmBase(RolloutBase):
         return True
 
 
-    # def get_ee_pose(self, current_state: torch.Tensor):
-    #     current_state = current_state.to(device=self.device, dtype=self.dtype)
-         
-        
-    #     ee_pos_batch, ee_rot_batch, lin_jac_batch, ang_jac_batch = self.dynamics_model.robot_model.compute_fk_and_jacobian(
-    #         current_state[:,:self.dynamics_model.n_dofs], current_state[:, self.dynamics_model.n_dofs: self.dynamics_model.n_dofs * 2], self.cfg['model']['ee_link_name'])
+    def init_viewer(self):
+        pass
+        # if not self.vis_initialized:
+        #     print('Initializing rollout viewer')
+        #     import meshcat
+        #     import meshcat.geometry as meshcat_g
 
-    #     ee_quat = matrix_to_quaternion(ee_rot_batch)
-    #     state = {'ee_pos_seq': ee_pos_batch, 'ee_rot_seq': ee_rot_batch,
-    #              'lin_jac_seq': lin_jac_batch, 'ang_jac_seq': ang_jac_batch,
-    #              'ee_quat_seq': ee_quat}
-    #     return state
+        #     self.vis = meshcat.Visualizer() #if self.vis is None else self.vis
+        #     self.vis_initialized = True
+
+        #     for h in range(self.horizon):
+        #         robot_material = meshcat_g.MeshBasicMaterial(
+        #             color=0xff0000, transparent=True, opacity=1.0 / (1.0 + 0.1*h))
+        #         goal_material = meshcat_g.MeshBasicMaterial(
+        #             color=0x00FF00, transparent=True, opacity=1.0 / (1.0 + 0.1*h))
+                
+        #         self.vis["world"]["robot"][str(h)].set_object(meshcat_g.Sphere(self.robot_radius), robot_material)
+        #         self.vis["world"]["goal"][str(h)].set_object(meshcat_g.Sphere(self.robot_radius), goal_material)
+
+        #     self.fig, self.ax = plt.subplots(self.action_dim)
+        
+    
+    def visualize_rollouts(self, rollout_data):
+        pass
+        # self.init_viewer()
+        #     # self.fig.canvas.restore_region(self.bg)
+        # import meshcat.transformations as meshcat_tf
+
+        # robot_pos = rollout_data['states']['q_pos']
+        # costs = rollout_data['costs']
+        # _, _, horizon = costs.shape
+        # gamma_seq = torch.cumprod(torch.tensor([1.0] + [0.99] * (horizon - 1)),dim=0).reshape(1, horizon)
+        # gamma_seq = gamma_seq.to(self.device)
+        # total_costs = cost_to_go(costs, gamma_seq)[:, :, 0]
+        # top_values, top_idx = torch.topk(total_costs, 10, dim=-1)
+        # top_idx = top_idx.squeeze(0)
+
+        # top_robot_pos = torch.index_select(robot_pos, 1, top_idx).squeeze(0).cpu() #.squeeze(0)
+        # top_robot_pos = torch.cat((top_robot_pos, torch.zeros(10, horizon, 1)), dim=-1)
+
+        # robot_goal = self.robot_goal_buff.clone().cpu()
+        # robot_goal = torch.cat((robot_goal, torch.zeros(self.num_instances, 1)), dim=-1).numpy()
+
+        # for i in range(horizon):
+        #     self.vis["world"]["robot"][str(i)].set_transform(meshcat_tf.translation_matrix(top_robot_pos[0,i]))
+        #     self.vis["world"]["goal"][str(i)].set_transform(meshcat_tf.translation_matrix(robot_goal[0]))
+        
+        # #Pliot the actions as well
+        # actions = rollout_data['actions'].cpu().numpy()
+        # _, b, h, nd = actions.shape 
+        #     # fig, ax = plt.subplots(nd)
+
+        # for d_i in range(nd):
+        #     self.ax[d_i].clear()
+        #     for b_i in range(b):
+        #         data = actions[0, b_i, :, d_i]
+        #         self.ax[d_i].plot(data)
+        # plt.pause(0.01)
+        # plt.draw()
+
+
+
 
     def __call__(self, start_state, act_seq):
         return self.rollout_fn(start_state, act_seq)

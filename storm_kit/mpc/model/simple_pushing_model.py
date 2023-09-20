@@ -4,8 +4,6 @@ from torch.profiler import record_function
 from typing import Optional, Dict, List
 from storm_kit.mpc.model.integration_utils import build_int_matrix, build_fd_matrix, tensor_step_acc, tensor_step_vel, tensor_step_pos, tensor_step_jerk
 from storm_kit.differentiable_robot_model.coordinate_transform import CoordinateTransform
-from storm_kit.geom.shapes import Sphere
-from storm_kit.geom.sdf.primitives_new import sphere_sphere_collision
 
 class SimplePushingModel(nn.Module):
     def __init__(
@@ -61,7 +59,6 @@ class SimplePushingModel(nn.Module):
         self._traj_tstep = torch.matmul(self._integrate_matrix, self._dt_h)
 
         #TODO: This hardcoding will be removed
-        # self.robot_mass = 0.01
         self.object_mass = 0.005
         self.object_radius = 0.03
         self.robot_radius = 0.05 #0.01
@@ -75,24 +72,9 @@ class SimplePushingModel(nn.Module):
             'mass': self.object_mass,
             'inv_mass': 1.0 / self.object_mass
         }
-        # self.robot_pose = CoordinateTransform(
-        #     trans = self.ee_state_seq[:,:,:,0:self.n_dofs]
-        # )
-        # self.object_pose = CoordinateTransform(
-        #     trans=self.object_state_seq[:,:,:,0:self.n_dofs]
-        # )
 
-        self.robot_sphere = Sphere(
-            pose=None,
-            radius=torch.tensor([self.robot_radius], device=self.device),
-            device=self.device
-        )
-
-        self.object_sphere = Sphere(
-            pose=None,
-            radius=torch.tensor([self.object_radius], device=self.device),
-            device=self.device
-        )
+        self.initial_step = True
+        self.prev_state_buffer = {}
 
 
     def forward(self, state_dict: Dict[str, torch.Tensor], act:torch.Tensor, dt) -> Dict[str,torch.Tensor]: 
@@ -153,9 +135,12 @@ class SimplePushingModel(nn.Module):
         act_seq = act_seq.to(self.device)
     
         # add start state to prev state buffer:
-        # if self.initial_step is None:
+        if self.initial_step:
+            for k in start_state_dict.keys():
+                self.prev_state_buffer[k] = torch.zeros((self.num_instances, 10, start_state_dict[k].shape[-1]), device=self.device)
         #     # self.prev_state_buffer = torch.zeros((self.num_instances, 10, self.d_state), device=self.device, dtype=self.dtype)
-        #     self.prev_state_buffer[:,:,:] = start_state.unsqueeze(1)
+                self.prev_state_buffer[k][:,:,:] = start_state_dict[k].unsqueeze(1)
+                self.initial_step = False
         # self.prev_state_buffer = self.prev_state_buffer.roll(-1, dims=1)
         # self.prev_state_buffer[:,-1,:] = start_state
 
@@ -190,15 +175,9 @@ class SimplePushingModel(nn.Module):
 
         #run for loop to generate object states
         for t in range(0, self.horizon-1):
-            self.robot_sphere.set_pose(
-                CoordinateTransform(
-                    trans=ee_pos[:,:,t])
-            )
-            self.object_sphere.set_pose(
-                CoordinateTransform(
-                    trans=object_pos[:,:,t])
-            )
-            coll_data = sphere_sphere_collision(self.robot_sphere, self.object_sphere)
+
+            coll_data = self.compute_sphere_collision(ee_pos[:, :, t], self.robot_radius, object_pos[:,:,t], self.object_radius)
+
             in_coll = coll_data['collision_count']
             normal = coll_data['normal']
 
@@ -225,8 +204,8 @@ class SimplePushingModel(nn.Module):
             #note: could also take averae of the two mu's (actually that might be more interprettable)
             # mu_static = np.sqrt(bodyA.material.mu_static ** 2 + bodyB.material.mu_static ** 2)            
             # mu_dynamic = np.sqrt(bodyA.material.mu_dynamic ** 2 + bodyB.material.mu_dynamic ** 2)            
-            mu_static = 0.01 #0.005
-            mu_dynamic = 0.01 #0.005
+            mu_static = 0.05 #0.005
+            mu_dynamic = 0.05 #0.005
 
             friction_impulse_magn = - v_rel_tangent
             friction_impulse_magn /= (self.robot_mass_data['inv_mass'] + self.obj_mass_data['inv_mass'])
@@ -290,4 +269,29 @@ class SimplePushingModel(nn.Module):
         return state_dict
 
 
+    def compute_sphere_collision(self, sphere1_center, sphere1_radius, sphere2_center, sphere2_radius):
+        #find contact frame
+        normal = sphere2_center - sphere1_center
+        r = sphere1_radius + sphere2_radius
+        dist = torch.linalg.vector_norm(normal, ord=2, dim=-1, keepdims=True)
+        
+        collision_count = torch.where(dist < r, 1.0, 0.0)
+        penetration = torch.where(dist == 0.0, sphere1_radius, r - dist)
+        
+        I = torch.eye(normal.shape[-2], normal.shape[-1], device=self.device)
+        collision_normal = torch.where(dist==0.0, I, normal/dist)
+        
+        #TODO?: Add contact point calculation
+
+        return {
+            'normal': collision_normal,
+            'penetration': penetration,
+            'collision_count': collision_count,
+            'dist': dist
+        }
+   
+
+    def reset(self):
+        self.prev_state_buffer = {}
+        self.initial_step = True
 

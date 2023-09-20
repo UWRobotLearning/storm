@@ -49,6 +49,7 @@ class SACAgent(Agent):
         self.automatic_entropy_tuning = self.cfg['automatic_entropy_tuning']
         self.backup_entropy = self.cfg['backup_entropy']
         self.min_buffer_size = int(self.cfg['min_buffer_size'])
+        self.reward_scale = self.cfg['reward_scale']
 
         if self.automatic_entropy_tuning:
             self.log_alpha = nn.Parameter(torch.tensor(self.cfg['init_log_alpha']))
@@ -59,7 +60,7 @@ class SACAgent(Agent):
             self.log_alpha = torch.log(self.alpha)
 
 
-    def train(self, model_dir=None):
+    def train(self, debug:bool=False, model_dir=None):
         num_epochs = int(self.cfg['num_epochs'])
         total_env_steps = 0
 
@@ -70,7 +71,7 @@ class SACAgent(Agent):
         pbar = tqdm(range(int(num_epochs)), desc='train')
         for i in pbar:
             #collect new experience
-            play_metrics = self.collect_experience()
+            play_metrics = self.collect_experience(debug=debug)
             print(play_metrics)
             num_steps_collected = play_metrics['num_steps_collected'] 
             total_env_steps += num_steps_collected
@@ -111,7 +112,7 @@ class SACAgent(Agent):
             #     self.policy.train()
             #     pbar.set_postfix(eval_metrics)
 
-    def collect_experience(self):
+    def collect_experience(self, debug:bool = False):
 
         self.buffer, play_metrics = self.runner_fn(
             envs=self.envs,
@@ -119,6 +120,7 @@ class SACAgent(Agent):
             policy=self.policy,
             task=self.task,
             buffer=self.buffer,
+            debug = debug,
             device=self.device
         )
         return play_metrics
@@ -214,7 +216,7 @@ class SACAgent(Agent):
             else:
                 q_pred_next = target_pred
 
-            q_target = rew_batch +  (1. - done_batch) * self.discount * q_pred_next
+            q_target = self.reward_scale * rew_batch +  (1. - done_batch) * self.discount * q_pred_next
 
         qf_all = self.critic.all({'obs': obs_batch}, act_batch)
         q_target = q_target.unsqueeze(-1).repeat(1, qf_all.shape[-1])

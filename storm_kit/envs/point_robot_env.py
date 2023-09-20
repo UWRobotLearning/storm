@@ -629,7 +629,7 @@ class PointRobotEnv():
                 if self.num_objects > 0:
                     #reset object
                     self.object_state[env_ids, 0:2] = self.start_buf[env_ids][env_ids, 0:2].clone()
-                    self.object_state[env_ids, 0:2] = torch.zeros_like(self)
+                    self.object_state[env_ids, 7:9] = torch.zeros(self.num_envs, 2, device=self.rl_device)
                     pos = self.robot_default_dof_pos.unsqueeze(0)
                     self.robot_dof_pos[env_ids, :] = pos
                     self.robot_dof_vel[env_ids, :] = torch.zeros_like(self.robot_dof_vel[env_ids])

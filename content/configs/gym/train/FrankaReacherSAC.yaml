@@ -47,6 +47,7 @@ agent:
   init_log_alpha: 0.0
   automatic_entropy_tuning: true
   random_ensemble_q: true
+  reward_scale: 0.1
   policy_optimizer:
     __target__: torch.optim.Adam
     lr: 3e-4 #0.0003

@@ -74,6 +74,7 @@ class MPPI(OLGaussianMPC):
                  cov_type='sigma_I',
                  seed=0,
                  sample_params={'type': 'halton', 'fixed_samples': True, 'seed':0, 'filter_coeffs':None},
+                 normalize_returns=False,
                  tensor_args={'device':torch.device('cpu'), 'dtype':torch.float32},
                  visual_traj='state_seq'):
         
@@ -104,6 +105,7 @@ class MPPI(OLGaussianMPC):
         self.update_cov = update_cov
         self.kappa = kappa
         self.visual_traj = visual_traj
+        self.normalize_returns = normalize_returns
 
     def _update_distribution(self, trajectories):
         """
@@ -248,14 +250,19 @@ class MPPI(OLGaussianMPC):
         if value_preds is not None:
             costs[:,:,-1] = value_preds[:,:,-1] 
 
-        traj_costs = cost_to_go(costs, self.gamma_seq)
-        # if not self.time_based_weights: traj_costs = traj_costs[:,0]
-        traj_costs = traj_costs[:,:,0]
+        traj_returns = cost_to_go(costs, self.gamma_seq)
+        # if not self.time_based_weights: traj_returns = traj_returns[:,0]
+        traj_returns = traj_returns[:,:,0]
         #control_costs = self._control_costs(actions)
-        total_costs = traj_costs #+ self.beta * control_costs
+        # total_returns = traj_returns #+ self.beta * control_costs
+        if self.normalize_returns:
+            max_return = torch.max(traj_returns, dim=-1)[0]
+            min_return = torch.min(traj_returns, dim=-1)[0]
+            traj_returns = (traj_returns - min_return) / (max_return - min_return)
+
         # #calculate soft-max
-        w = torch.softmax((-1.0/self.beta) * total_costs, dim=1)
-        self.total_costs = total_costs
+        w = torch.softmax((-1.0/self.beta) * traj_returns, dim=1)
+        self.total_costs = traj_returns
         return w
 
     def _control_costs(self, actions):

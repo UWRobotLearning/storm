@@ -16,6 +16,7 @@ import yaml
 from hydra.utils import instantiate
 
 from storm_kit.differentiable_robot_model.coordinate_transform import CoordinateTransform, quaternion_to_matrix, matrix_to_quaternion, rpy_angles_to_matrix
+from storm_kit.envs.env_utils import tensor_clamp
 
 
 EXISTING_SIM = None
@@ -112,6 +113,10 @@ class FrankaEnv(): #VecTask
         # for env_id in range(self.num_envs):
         #     self.extern_actor_params[env_id] = None
 
+        self.robot_dof_targets = None
+        self.effort_control = None
+
+
         # create envs, sim and viewer
         self.sim_initialized = False
         self.create_sim()
@@ -121,6 +126,7 @@ class FrankaEnv(): #VecTask
         self.set_viewer()
         self.allocate_buffers()
         
+
         self.reset_idx(torch.arange(self.num_envs, device=self.device))
         self._refresh()
 
@@ -340,6 +346,7 @@ class FrankaEnv(): #VecTask
 
         # self._num_dofs = self.gym.get_sim_dof_count(self.sim) // self.num_envs
         self.robot_dof_targets = torch.zeros((self.num_envs, self.num_dofs), dtype=torch.float, device=self.device) 
+        self.effort_control = torch.zeros_like(self.robot_dof_targets) 
 
         # self.global_indices = torch.arange(self.num_envs * 3, dtype=torch.int32, device=self.device).view(self.num_envs, -1)
         self.global_indices = torch.arange(self.num_envs * 1, dtype=torch.int32, device=self.device).view(self.num_envs, -1)
@@ -358,12 +365,6 @@ class FrankaEnv(): #VecTask
         # Refresh states
         self._update_states()
         
-        # for env_ptr, franka_ptr, obj_ptr in zip(self.envs, self.frankas, self.objects):
-        #     ee_handle = self.gym.find_actor_rigid_body_handle(env_ptr, franka_ptr, "ee_link")
-        #     ee_pose = self.gym.get_rigid_transform(env_ptr, ee_handle)
-        #     obj_body_ptr = self.gym.get_actor_rigid_body_handle(env_ptr, obj_ptr, 0)
-        #     self.gym.set_rigid_transform(env_ptr, obj_body_ptr, copy.deepcopy(ee_pose))
-
     def load_robot_asset(self):
         asset_root = os.path.join(os.path.dirname(os.path.abspath(__file__)), "../../content/assets")
         robot_asset_file = "urdf/franka_description/franka_panda_no_gripper.urdf"
@@ -373,8 +374,6 @@ class FrankaEnv(): #VecTask
             robot_asset_file = self.cfg["env"]["asset"].get("assetFileNameFranka", robot_asset_file)
             # target_asset_file = self.cfg["env"]["asset"].get("assetFileNameTarget", target_asset_file)
         
-        # self.robot_model = DifferentiableRobotModel(os.path.join(asset_root, robot_asset_file), None, device=self.device) #, dtype=self.dtype)
-
         # load franka asset
         asset_options = gymapi.AssetOptions()
         asset_options.flip_visual_attachments = True
@@ -382,12 +381,12 @@ class FrankaEnv(): #VecTask
         asset_options.collapse_fixed_joints = False
         asset_options.disable_gravity = True
         asset_options.thickness = 0.001
-        asset_options.default_dof_drive_mode = gymapi.DOF_MODE_POS
+        asset_options.default_dof_drive_mode = gymapi.DOF_MODE_EFFORT
         asset_options.use_mesh_materials = True
         robot_asset = self.gym.load_asset(self.sim, asset_root, robot_asset_file, asset_options)
 
-        robot_dof_stiffness = to_torch([400, 400, 400, 400, 400, 400, 400, 1.0e6, 1.0e6], dtype=torch.float, device=self.device)
-        robot_dof_damping = to_torch([40, 40, 40, 40, 40, 40, 40, 1.0e2, 1.0e2], dtype=torch.float, device=self.device)
+        self.robot_dof_stiffness = to_torch([100.0, 100.0, 100.0, 100.0, 75.0, 40.0, 30.0], dtype=torch.float, device=self.device)
+        self.robot_dof_damping = to_torch([1.0, 1.0, 1.0, 1.0, 0.75, 0.5, 0.1], dtype=torch.float, device=self.device)
 
         self.num_robot_bodies = self.gym.get_asset_rigid_body_count(robot_asset)
         self.num_robot_dofs = self.gym.get_asset_dof_count(robot_asset)
@@ -403,30 +402,33 @@ class FrankaEnv(): #VecTask
 
         # set robot dof properties
         robot_dof_props = self.gym.get_asset_dof_properties(robot_asset)
-        self.robot_dof_lower_limits = []
-        self.robot_dof_upper_limits = []
+        self.robot_q_pos_lower_lims = []
+        self.robot_q_pos_upper_lims = []
+        self.robot_q_vel_lims = []
+        self.robot_effort_lims = []
         for i in range(self.num_robot_dofs):
-            robot_dof_props['driveMode'][i] = gymapi.DOF_MODE_POS
+            robot_dof_props['driveMode'][i] = gymapi.DOF_MODE_EFFORT #gymapi.DOF_MODE_POS
+
             if self.physics_engine == gymapi.SIM_PHYSX:
-                robot_dof_props['stiffness'][i] = robot_dof_stiffness[i]
-                robot_dof_props['damping'][i] = robot_dof_damping[i]
+                robot_dof_props['stiffness'][i] = 0.0 #self.robot_dof_stiffness[i]
+                robot_dof_props['damping'][i] = 0.0# self.robot_dof_damping[i]
             else:
                 robot_dof_props['stiffness'][i] = 7000.0
                 robot_dof_props['damping'][i] = 50.0
 
-            self.robot_dof_lower_limits.append(robot_dof_props['lower'][i])
-            self.robot_dof_upper_limits.append(robot_dof_props['upper'][i])
-        
-        # set target object dof properties
-        # target_dof_props = self.gym.get_asset_dof_properties(target_asset)
-        # for i in range(self.num_target_dofs):
-        #     target_dof_props['driveMode'][i] = gymapi.DOF_MODE_POS
-        #     target_dof_props['stiffness'][i] = 1000000.0
-        #     target_dof_props['damping'][i] = 500.0
-  
-        self.robot_dof_lower_limits = to_torch(self.robot_dof_lower_limits, device=self.device)
-        self.robot_dof_upper_limits = to_torch(self.robot_dof_upper_limits, device=self.device)
-        self.robot_dof_speed_scales = torch.ones_like(self.robot_dof_lower_limits)
+            self.robot_q_pos_lower_lims.append(robot_dof_props['lower'][i])
+            self.robot_q_pos_upper_lims.append(robot_dof_props['upper'][i])
+            self.robot_q_vel_lims.append(robot_dof_props['velocity'][i])
+            self.robot_effort_lims.append(robot_dof_props['effort'][i])
+          
+
+        self.robot_q_pos_lower_lims = torch.tensor(self.robot_q_pos_lower_lims, device=self.device).unsqueeze(0).repeat(self.num_envs,1)
+        self.robot_q_pos_upper_lims = torch.tensor(self.robot_q_pos_upper_lims, device=self.device).unsqueeze(0).repeat(self.num_envs,1)
+        self.robot_q_vel_lims = torch.tensor(self.robot_q_vel_lims, device=self.device).unsqueeze(0).repeat(self.num_envs,1)
+        self.robot_effort_lims = torch.tensor(self.robot_effort_lims, device=self.device).unsqueeze(0).repeat(self.num_envs,1)
+        self.robot_dof_speed_scales = torch.ones_like(self.robot_q_pos_lower_lims)
+        self.robot_dof_stiffness = self.robot_dof_stiffness.unsqueeze(0).repeat(self.num_envs, 1)
+        self.robot_dof_damping = self.robot_dof_damping.unsqueeze(0).repeat(self.num_envs, 1)
 
         return robot_asset, robot_dof_props
 
@@ -469,39 +471,70 @@ class FrankaEnv(): #VecTask
 
         return object_asset, object_color    
 
-    def pre_physics_step(self, actions: torch.Tensor):
+    def pre_physics_step(self, actions:torch.Tensor):
 
-        # implement pre-physics simulation code here
-        #    - e.g. apply actions
+        pos_des = actions[:, 0:self.num_robot_dofs].clone().to(self.device)
+        vel_des = actions[:, self.num_robot_dofs:2*self.num_robot_dofs].clone().to(self.device)
+        acc_des = actions[:, 2*self.num_robot_dofs:3*self.num_robot_dofs].clone().to(self.device)
 
-        q_pos_des = actions[:, :self.num_robot_dofs].clone().to(self.device)
-        q_vel_des = actions[:, self.num_robot_dofs:2*self.num_robot_dofs].clone().to(self.device)
-        q_acc_des = actions[:, 2*self.num_robot_dofs:3*self.num_robot_dofs].clone().to(self.device)
+        if pos_des.ndim == 3:
+            pos_des = pos_des[:, 0]
+            vel_des = vel_des[:, 0]
+            acc_des = acc_des[:, 0]
+
+        pos_des = tensor_clamp(pos_des, min=self.robot_q_pos_lower_lims, max=self.robot_q_pos_upper_lims)
+        vel_des = tensor_clamp(vel_des, min=-1.0 * self.robot_q_vel_lims, max=self.robot_q_vel_lims)
 
 
-        if self.control_space == "pos":
-            # actions = action_dict['q_pos'].clone().to(self.device)
-            targets = q_pos_des
-        elif self.control_space == "vel":
-            # actions = action_dict['q_vel']
-            # actions = actions.clone().to(self.device)
-            targets = self.robot_dof_targets[:, :self.num_robot_dofs] + \
-                  self.robot_dof_speed_scales * self.dt * q_vel_des #* self.action_scale
+        feedforward_torques = torch.einsum('ijk,ik->ij', self.robot_mass, acc_des)
+        feedback_torques =  self.robot_dof_stiffness[:, 0:self.num_robot_dofs] * (pos_des - self.robot_dof_pos.clone()) +\
+                        self.robot_dof_damping[:, 0:self.num_robot_dofs] * (vel_des - self.robot_dof_vel.clone())    
+        print(pos_des)  
+        torques = feedforward_torques + feedback_torques
+        torques = tensor_clamp(torques, min=-1.*self.robot_effort_lims, max=self.robot_effort_lims)
+        self.effort_control[:,:] = torques
+        # torques[:, 0] = 87.0
+        # torques[:, 1:] = 0.0
+        # print('torques', 'pos_des', 'vel_des')
+        # print(torques, pos_des, vel_des)
+        # input('....')
+        self.gym.set_dof_actuation_force_tensor(self.sim, gymtorch.unwrap_tensor(self.effort_control))
 
-        elif self.control_space == "vel_2":
-            # actions = action_dict['q_vel'].clone().to(self.device)
-            targets = self.robot_dof_pos + \
-                self.robot_dof_speed_scales * self.dt * q_vel_des #* self.action_scale
 
-        elif self.control_space == "acc":
-            raise NotImplementedError
+
+    # def pre_physics_step(self, actions: torch.Tensor):
+
+    #     # implement pre-physics simulation code here
+    #     #    - e.g. apply actions
+
+    #     q_pos_des = actions[:, :self.num_robot_dofs].clone().to(self.device)
+    #     q_vel_des = actions[:, self.num_robot_dofs:2*self.num_robot_dofs].clone().to(self.device)
+    #     q_acc_des = actions[:, 2*self.num_robot_dofs:3*self.num_robot_dofs].clone().to(self.device)
+
+
+    #     if self.control_space == "pos":
+    #         # actions = action_dict['q_pos'].clone().to(self.device)
+    #         targets = q_pos_des
+    #     elif self.control_space == "vel":
+    #         # actions = action_dict['q_vel']
+    #         # actions = actions.clone().to(self.device)
+    #         targets = self.robot_dof_targets[:, :self.num_robot_dofs] + \
+    #               self.robot_dof_speed_scales * self.dt * q_vel_des #* self.action_scale
+
+    #     elif self.control_space == "vel_2":
+    #         # actions = action_dict['q_vel'].clone().to(self.device)
+    #         targets = self.robot_dof_pos + \
+    #             self.robot_dof_speed_scales * self.dt * q_vel_des #* self.action_scale
+
+    #     elif self.control_space == "acc":
+    #         raise NotImplementedError
     
-        # targets = actions #self.robot_dof_targets[:, :self.num_robot_dofs] + self.robot_dof_speed_scales * self.dt * self.actions * self.action_scale
-        self.robot_dof_targets[:, :self.num_robot_dofs] = tensor_clamp(
-            targets, self.robot_dof_lower_limits, self.robot_dof_upper_limits)
-        # env_ids_int32 = torch.arange(self.num_envs, dtype=torch.int32, device=self.device)        
-        self.gym.set_dof_position_target_tensor(
-            self.sim, gymtorch.unwrap_tensor(self.robot_dof_targets))
+    #     # targets = actions #self.robot_dof_targets[:, :self.num_robot_dofs] + self.robot_dof_speed_scales * self.dt * self.actions * self.action_scale
+    #     self.robot_dof_targets[:, :self.num_robot_dofs] = tensor_clamp(
+    #         targets, self.robot_dof_lower_limits, self.robot_dof_upper_limits)
+    #     # env_ids_int32 = torch.arange(self.num_envs, dtype=torch.int32, device=self.device)        
+    #     self.gym.set_dof_position_target_tensor(
+    #         self.sim, gymtorch.unwrap_tensor(self.robot_dof_targets))
 
 
     # def step(self, actions: Dict[str, torch.Tensor]): # -> Tuple[Dict[str, torch.Tensor], torch.Tensor, torch.Tensor, Dict[str, Any]]:
@@ -617,6 +650,10 @@ class FrankaEnv(): #VecTask
         tstep = self.gym.get_sim_time(self.sim)
         tstep *= self.tstep
 
+        # print(self.robot_dof_pos, self.robot_q_pos_lower_lims, self.robot_q_pos_upper_lims)
+        # print(self.robot_dof_vel, self.robot_q_vel_lims)
+
+        # input('...')
 
         state_dict = {
             'q_pos': self.robot_q_pos_buff.to(self.rl_device),
@@ -627,6 +664,7 @@ class FrankaEnv(): #VecTask
         return state_dict
     
     def reset_idx(self, env_ids, reset_data=None):
+        print('resetting')
 
         env_ids_int32 = env_ids.to(dtype=torch.int32)
         # reset franka
@@ -637,12 +675,18 @@ class FrankaEnv(): #VecTask
         self.robot_dof_pos[env_ids, :] = pos
         self.robot_dof_vel[env_ids, :] = torch.zeros_like(self.robot_dof_vel[env_ids])
         self.robot_dof_targets[env_ids, :self.num_robot_dofs] = pos
+        self.effort_control[env_ids, :] = torch.zeros_like(pos)
 
         # multi_env_ids_int32 = self.global_indices[env_ids, 1:3].flatten()
         multi_env_ids_int32 = self.global_indices[env_ids, 0].flatten()
         self.gym.set_dof_position_target_tensor_indexed(self.sim,
                                                         gymtorch.unwrap_tensor(self.robot_dof_targets),
                                                         gymtorch.unwrap_tensor(multi_env_ids_int32), len(multi_env_ids_int32))
+
+        self.gym.set_dof_actuation_force_tensor_indexed(self.sim,
+                                                        gymtorch.unwrap_tensor(self.effort_control),
+                                                        gymtorch.unwrap_tensor(multi_env_ids_int32),
+                                                        len(multi_env_ids_int32))
 
         self.gym.set_dof_state_tensor_indexed(self.sim,
                                               gymtorch.unwrap_tensor(self.dof_state),

@@ -310,8 +310,8 @@ def episode_runner(
         policy,
         task,
         buffer = None,
+        debug=False,
         device=torch.device('cpu')):        
-        
         if buffer is not None:
             update_buffer = True
         
@@ -352,6 +352,8 @@ def episode_runner(
                     actions = actions.squeeze(0)
 
                 next_state_dict, done_env = envs.step(command)
+                if debug:
+                    pass
                 next_obs, next_state_dict_full = task.compute_observations(next_state_dict)
                 done_task, _ = task.compute_termination(next_state_dict_full, actions)
                 cost, _, _ = task.compute_cost(state_dict=state_dict_full, action_batch=actions, termination=done_task)
