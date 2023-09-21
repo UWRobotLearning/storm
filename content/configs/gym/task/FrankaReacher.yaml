@@ -9,7 +9,7 @@ env:
   envSpacing: 1.5
   episodeLength: 500
   enableDebugVis: False
-  controlSpace: "vel_2"
+  # controlSpace: "vel_2"
   controlFrequencyInv: 1
   num_objects: 0
   # clipObservations: 5.0
@@ -91,8 +91,8 @@ rollout:
       vec_weight: [1.0, 1.0, 1.0, 1.0, 1.0, 0.5, 0.5]
       
     manipulability:
-      weight: 10.0 #10.0 #100.0 #0.05 #0.5 #1.0
-      thresh: 0.03
+      weight: 30.0 #10.0 #100.0 #0.05 #0.5 #1.0
+      thresh: 0.1 #0.05 #0.03
 
     joint_l2:
       weight: 0.0
@@ -102,21 +102,20 @@ rollout:
       vec_weight: [1.0, 1.0, 1.0] 
 
     stop_cost:
-      weight: 30.0 #10.0 #10.0 
+      weight: 50.0 #10.0 #10.0 
       max_nlimit: 1.5 #1.5 #0.2
 
     stop_cost_acc:
       weight: 0.0
       max_limit: 0.1 #0.2
 
-    # smooth: # on robot acceleration
-    #   weight: 0.0 
-    #   gaussian_params: {'n':0, 'c':0.2, 's':0, 'r':10.0}
-    #   order: 1
+    jerk_cost:
+      weight: 0.0 
+      order: 1
 
     primitive_collision:
       weight: 5000.0
-      distance_threshold: 0.05
+      distance_threshold: 0.03
 
     # robot_self_collision:
     #   weight: 5000.0 #5000.0

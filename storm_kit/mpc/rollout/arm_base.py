@@ -110,9 +110,9 @@ class ArmBase(RolloutBase):
         # if 'smooth' in self.cfg['cost']:
         #     self.fd_matrix = build_fd_matrix(10 - self.cfg['cost']['smooth']['order'], device=self.device, dtype=self.dtype, PREV_STATE=True, order=self.cfg['cost']['smooth']['order'])
 
-        # if self.cfg['cost']['smooth']['weight'] > 0:
-        #     self.smooth_cost = FiniteDifferenceCost(**self.cfg['cost']['smooth'],
-        #                                             tensor_args=tensor_args)
+        if self.cfg['cost']['jerk_cost']['weight'] > 0:
+            self.jerk_cost = FiniteDifferenceCost(**self.cfg['cost']['jerk_cost'],
+                                                    device=self.device)
 
         self.primitive_collision_cost = PrimitiveCollisionCost(
             world_params=world_params, robot_params=robot_params, 
@@ -186,6 +186,20 @@ class ArmBase(RolloutBase):
             with record_function('ee_vel_cost'):
                 cost += self.ee_vel_cost.forward(state_batch, lin_jac_batch)
 
+        if self.cfg['cost']['jerk_cost']['weight'] > 0:
+            with record_function('jerk_cost'):
+                order = self.cfg['cost']['jerk_cost']['order']
+                
+                # prev_dt = (self.fd_matrix @ prev_state_tstep)[-order:]
+                # n_mul = 1
+                # state = state_batch[:,:, self.n_dofs * n_mul:self.n_dofs * (n_mul+1)]
+                # p_state = prev_state[-order:,self.n_dofs * n_mul: self.n_dofs * (n_mul+1)].unsqueeze(0)
+                # p_state = p_state.expand(state.shape[0], -1, -1)
+                # state_buffer = torch.cat((p_state, state), dim=1)
+                # traj_dt = torch.cat((prev_dt, self.traj_dt))
+                cost += self.smooth_cost.forward(state_buffer, traj_dt)
+
+
         if horizon_cost:
             if self.cfg['cost']['stop_cost']['weight'] > 0:
                 with record_function("stop_cost"):
@@ -208,17 +222,6 @@ class ArmBase(RolloutBase):
             cost_terms['termination'] = termination_cost
 
 
-            # if self.cfg['cost']['smooth']['weight'] > 0:
-            #     with record_function('smooth_cost'):
-            #         order = self.cfg['cost']['smooth']['order']
-            #         prev_dt = (self.fd_matrix @ prev_state_tstep)[-order:]
-            #         n_mul = 1
-            #         state = state_batch[:,:, self.n_dofs * n_mul:self.n_dofs * (n_mul+1)]
-            #         p_state = prev_state[-order:,self.n_dofs * n_mul: self.n_dofs * (n_mul+1)].unsqueeze(0)
-            #         p_state = p_state.expand(state.shape[0], -1, -1)
-            #         state_buffer = torch.cat((p_state, state), dim=1)
-            #         traj_dt = torch.cat((prev_dt, self.traj_dt))
-            #         cost += self.smooth_cost.forward(state_buffer, traj_dt)
 
         # # if not no_coll:
         # if self.cfg['cost']['robot_self_collision']['weight'] > 0:
@@ -291,13 +294,9 @@ class ArmBase(RolloutBase):
 
         # num_term_states_per_traj = torch.count_nonzero(termination, dim=-1)
 
-        # print(termination)
-        # print(num_term_states_per_traj)
-        # input('...')
         #mark any trajectory with terminal states as terminal
         # termination[num_term_states_per_traj > 0] = 1.0
         # print(termination)
-        # input('....')
         # non_zero =  torch.nonzero(termination, as_tuple=False).long()
         # if non_zero.numel() > 0:
         #     print(termination)
@@ -306,7 +305,6 @@ class ArmBase(RolloutBase):
         #     print(torch.count_nonzero(termination, dim=-1))
         #     print(termination[non_zero])
         #     # print(termination)
-        #     input('...')
 
         return termination, state_dict
     
@@ -319,7 +317,6 @@ class ArmBase(RolloutBase):
         ----------
         action_seq: torch.Tensor [num_particles, horizon, d_act]
         """
-
         with record_function("robot_model"):
             state_dict = self.dynamics_model.rollout_open_loop(start_state, act_seq)
         

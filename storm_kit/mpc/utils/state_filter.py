@@ -108,7 +108,6 @@ class JointStateFilter(object):
                 self.internal_jnt_state[k] = raw_joint_state[k].clone().to(self.device)
             self.initial_step = False
             return self.internal_jnt_state
-        
         # q_pos_raw = raw_joint_state[..., 0:self.n_dofs]
         # q_vel_raw = raw_joint_state[..., self.n_dofs:2*self.n_dofs]
         # q_acc_raw = raw_joint_state[..., 2*self.n_dofs:3*self.n_dofs]
@@ -130,7 +129,7 @@ class JointStateFilter(object):
         # self.internal_jnt_state[..., 2*self.n_dofs:3*self.n_dofs] = coeff * q_acc_raw + (1.0 - coeff) * q_acc_internal
 
         # for k in self.filter_keys:
-        for k in self.internal_jnt_state.keys():
+        for k in raw_joint_state.keys():
             if k in self.filter_keys:
                 self.internal_jnt_state[k] = self.filter_coeff[k] * raw_joint_state[k] + (1.0 - self.filter_coeff[k]) * self.internal_jnt_state[k]
             else:
@@ -154,7 +153,7 @@ class JointStateFilter(object):
             self, 
             qdd_des: Optional[torch.Tensor] = None, 
             dt: Optional[float] = None) -> Dict[str, torch.Tensor]:
-        
+
         if qdd_des is None:
             return self.internal_jnt_state
         dt = self.dt if dt is None else dt 

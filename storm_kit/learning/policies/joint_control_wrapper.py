@@ -43,23 +43,32 @@ class JointControlWrapper(nn.Module):
 
     def get_action(self, input_dict, deterministic=False, num_samples:int = 1):
         state_dict = input_dict['states']
-
         planning_states = self.state_filter.filter_joint_state(state_dict)
-
+        # print(list(self.state_filter.internal_jnt_state.keys()))
+        # input('...')
         new_input_dict = {'states': planning_states, 'obs': input_dict['obs']}
+
         action = self.policy.get_action(new_input_dict, deterministic, num_samples)
+        # print(list(self.state_filter.internal_jnt_state.keys()))
+        # input('...')
 
         #TODO:remove this hack and make it consistent across different policies
         if action.ndim == 3:
             action = action.squeeze(0)
         
         scaled_action = action
-
         if self.act_highs is not None:
             scaled_action = self.scale_action(action)
         
         command_dict = self.state_filter.predict_internal_state(scaled_action)
-        command_tensor = torch.cat([command_dict['q_pos'], command_dict['q_vel'], command_dict['q_acc']], dim=-1)
+
+        # print(list(self.state_filter.internal_jnt_state.keys()))
+        # input('...')
+
+
+        command_tensor = torch.cat(
+            [command_dict['q_pos'], command_dict['q_vel'], 
+            command_dict['q_acc']], dim=-1)
         self.prev_qdd_des = action.clone()
         
         return command_tensor, {'action': action, 'scaled_action': scaled_action}

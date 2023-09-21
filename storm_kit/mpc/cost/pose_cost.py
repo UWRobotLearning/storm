@@ -89,7 +89,7 @@ class PoseCost(nn.Module):
         rot_err = torch.square(torch.sum(self.rot_weight * rot_err, dim=-1))
 
 
-        if(self.hinge_val > 0.0):
+        if self.hinge_val > 0.0:
             rot_err = torch.where(goal_dist.squeeze(-1) <= self.hinge_val, rot_err, self.Z) #hard hinge
 
         rot_err[rot_err < self.convergence_val[0]] = 0.0

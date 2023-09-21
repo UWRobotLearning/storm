@@ -24,7 +24,7 @@ import torch
 
 def build_fd_matrix(horizon:int, device='cpu', dtype=torch.float32, order=1, PREV_STATE=False,FULL_RANK=False):
     
-    if(PREV_STATE):
+    if PREV_STATE:
         # build order 1 fd matrix of horizon+order size
         fd1_mat = build_fd_matrix(horizon + order, device, dtype, order=1)
         # multiply order times to get fd_order matrix [h+order, h+order]
@@ -39,8 +39,8 @@ def build_fd_matrix(horizon:int, device='cpu', dtype=torch.float32, order=1, PRE
         #print(torch.diag_embed(one_t, offset=1).shape, fd_mat.shape)
         #fd_mat += - torch.diag_embed(one_t, offset=1)[:-1,:]
 
-    elif(FULL_RANK):
-        fd_mat = torch.eye(horizon,device=device, dtype=dtype)
+    elif FULL_RANK:
+        fd_mat = torch.eye(horizon, device=device, dtype=dtype)
         
         one_t = torch.ones(horizon//2, device=device, dtype=dtype)
         fd_mat[:horizon//2, :horizon//2] = torch.diag_embed(one_t)
@@ -105,7 +105,7 @@ def tensor_step_jerk(state, act, state_seq, dt_h, n_dofs, integrate_matrix, fd_m
     
     return state_seq
 
-# @torch.jit.script
+@torch.jit.script
 def tensor_step_acc(
     state: torch.Tensor, 
     act: torch.Tensor, 

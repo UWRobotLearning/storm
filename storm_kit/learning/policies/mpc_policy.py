@@ -34,6 +34,7 @@ class MPCPolicy(Policy):
         self.value_function = value_function
         self.rollout = self.init_rollout(rollout_cls) 
         self.controller = self.init_controller()
+        self.prev_action = self.init_action[:,0].clone()
         # self.dt = self.cfg.rollout.control_dt
 
         # self.state_filter = JointStateFilter(
@@ -42,8 +43,6 @@ class MPCPolicy(Policy):
         #     n_dofs=self.n_dofs,
         #     dt=self.dt)
         
-        # self.prev_qdd_des = None
-
     def forward(self, obs_dict):
         states = obs_dict['states']
         # if self.state_filter.cmd_joint_state is None:
@@ -60,6 +59,7 @@ class MPCPolicy(Policy):
 
     def get_action(self, obs_dict, deterministic=False, num_samples=1):
         state_dict = obs_dict['states']
+        state_dict['prev_action'] = self.prev_action
         # states = torch.cat(
         #     (state_dict['q_pos'], 
         #      state_dict['q_vel'], 
@@ -77,7 +77,7 @@ class MPCPolicy(Policy):
         # planning_state_dict['q_acc'] = planning_state[:, 0:self.n_dofs]
         curr_action_seq, value, info = self.controller.forward(
             state_dict, calc_val=False, shift_steps=1)
-        q_acc_des = curr_action_seq[:, 0]
+        action = curr_action_seq[:, 0]
         # command = self.state_filter.predict_internal_state(q_acc_des)
 
 
@@ -92,8 +92,8 @@ class MPCPolicy(Policy):
         #     'q_acc_des': command['q_acc'],
         # }
 
-        # self.prev_qdd_des = q_acc_des.clone()
-        return q_acc_des
+        self.prev_action = action.clone()
+        return action
 
 
     def log_prob(self, input_dict: Dict[str, torch.Tensor], act_dict: Dict[str, torch.Tensor]):
@@ -120,7 +120,6 @@ class MPCPolicy(Policy):
         # rollout_fn = self.get_rollout_fn(
         #     cfg=self.cfg['rollout'], device=self.device, world_params=world_params)        
         mppi_params = self.cfg.mppi
-        # dynamics_model = rollout_fn.dynamics_model
         with open_dict(mppi_params):
             mppi_params.d_action = self.n_dofs #dynamics_model.d_action
             mppi_params.action_lows =  [-1.0 * rollout_params.model.max_acc] * self.n_dofs #dynamics_model.d_action # * torch.ones(#dynamics_model.d_action, **self.tensor_args)
@@ -129,12 +128,12 @@ class MPCPolicy(Policy):
         # init_q = torch.tensor(self.cfg.model.init_state, **self.tensor_args)
         #TODO: This should be read from the environment
         init_q = torch.tensor(rollout_params.model.init_state, device=self.device)
-        init_action = torch.zeros((mppi_params.num_instances, mppi_params.horizon, self.n_dofs), device=self.device)#dynamics_model.d_action), **self.tensor_args)
-        if rollout_params.control_space == 'acc':
-            init_mean = init_action * 0.0 
-        elif rollout_params.control_space == 'pos':
-            init_action[:,:,:] += init_q
-            init_mean = init_action
+        self.init_action = torch.zeros((mppi_params.num_instances, mppi_params.horizon, self.n_dofs), device=self.device)#dynamics_model.d_action), **self.tensor_args)
+        # if rollout_params.control_space == 'acc':
+        #     init_mean = self.init_action
+        if rollout_params.control_space == 'pos':
+            self.init_action[:,:,:] += init_q
+        init_mean = self.init_action
 
         controller = MPPI(
             **mppi_params, 
@@ -165,4 +164,5 @@ class MPCPolicy(Policy):
             self.update_rollout_params(param_dict=reset_data)
         # self.prev_qdd_des = None
         # self.state_filter.reset()
+        self.prev_action = self.init_action[:,0].clone()
         self.controller.reset_distribution()

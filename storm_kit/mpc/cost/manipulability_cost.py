@@ -56,7 +56,6 @@ class ManipulabilityCost(nn.Module):
             #     chol_diag = torch.diagonal(chol, dim1=-2, dim2=-1)
             # with record_function('manip_cost:prod'):
             #     score = torch.prod(chol_diag, dim=-1)
-
         score[score != score] = 0.0
         score[score > self.thresh] = self.thresh #1.0
         score = (self.thresh - score) / self.thresh

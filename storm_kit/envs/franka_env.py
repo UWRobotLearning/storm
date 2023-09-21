@@ -63,7 +63,7 @@ class FrankaEnv(): #VecTask
         self.force_render = force_render
         self.max_episode_length = self.cfg["env"]["episodeLength"]
         self.aggregate_mode = self.cfg["env"]["aggregateMode"]
-        self.control_space = self.cfg["env"]["controlSpace"]
+        # self.control_space = self.cfg["env"]["controlSpace"]
         self.num_environments = self.cfg["env"]["num_envs"]
         self.num_objects = self.cfg["env"]["num_objects"]
         self.debug_viz = self.cfg["env"]["enableDebugVis"]
@@ -650,11 +650,6 @@ class FrankaEnv(): #VecTask
         tstep = self.gym.get_sim_time(self.sim)
         tstep *= self.tstep
 
-        # print(self.robot_dof_pos, self.robot_q_pos_lower_lims, self.robot_q_pos_upper_lims)
-        # print(self.robot_dof_vel, self.robot_q_vel_lims)
-
-        # input('...')
-
         state_dict = {
             'q_pos': self.robot_q_pos_buff.to(self.rl_device),
             'q_vel': self.robot_q_vel_buff.to(self.rl_device),
@@ -664,8 +659,6 @@ class FrankaEnv(): #VecTask
         return state_dict
     
     def reset_idx(self, env_ids, reset_data=None):
-        print('resetting')
-
         env_ids_int32 = env_ids.to(dtype=torch.int32)
         # reset franka
         # pos = tensor_clamp(
