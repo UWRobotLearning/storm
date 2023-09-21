@@ -385,7 +385,7 @@ class FrankaEnv(): #VecTask
         asset_options.use_mesh_materials = True
         robot_asset = self.gym.load_asset(self.sim, asset_root, robot_asset_file, asset_options)
 
-        self.robot_dof_stiffness = to_torch([75.0, 75.0, 75.0, 75.0, 50.0, 40.0, 30.0], dtype=torch.float, device=self.device)
+        self.robot_dof_stiffness = to_torch([60.0, 60.0, 60.0, 60.0, 40.0, 30.0, 20.0], dtype=torch.float, device=self.device)
         self.robot_dof_damping = to_torch([1.0, 1.0, 1.0, 1.0, 0.75, 0.5, 0.1], dtype=torch.float, device=self.device)
 
         self.num_robot_bodies = self.gym.get_asset_rigid_body_count(robot_asset)

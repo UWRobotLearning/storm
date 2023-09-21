@@ -202,8 +202,8 @@ class ArmBase(RolloutBase):
 
 
         if termination is not None:
-            termination = termination.view(self.num_instances*self.batch_size, self.horizon)
-            termination_cost = 5000.0 * termination 
+            termination = termination.view(self.num_instances*self.batch_size, self.horizon)            
+            termination_cost = 100.0 * termination 
             cost += termination_cost
             cost_terms['termination'] = termination_cost
 
@@ -287,8 +287,27 @@ class ArmBase(RolloutBase):
         #         self_coll_cost = self_coll_cost.view(self.num_instances, self.batch_size, self.horizon)
         #         termination += self_coll_cost > 0.
 
-        termination = (termination > 0)
-        
+        termination = (termination > 0).float()
+
+        # num_term_states_per_traj = torch.count_nonzero(termination, dim=-1)
+
+        # print(termination)
+        # print(num_term_states_per_traj)
+        # input('...')
+        #mark any trajectory with terminal states as terminal
+        # termination[num_term_states_per_traj > 0] = 1.0
+        # print(termination)
+        # input('....')
+        # non_zero =  torch.nonzero(termination, as_tuple=False).long()
+        # if non_zero.numel() > 0:
+        #     print(termination)
+        #     # termination[non_zero[:,0], non_zero[:,1]:] = 1.0
+        #     print(non_zero)
+        #     print(torch.count_nonzero(termination, dim=-1))
+        #     print(termination[non_zero])
+        #     # print(termination)
+        #     input('...')
+
         return termination, state_dict
     
     def rollout_fn(self, start_state, act_seq):
