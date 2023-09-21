@@ -489,7 +489,7 @@ class FrankaEnv(): #VecTask
         feedforward_torques = torch.einsum('ijk,ik->ij', self.robot_mass, acc_des)
         feedback_torques =  self.robot_dof_stiffness[:, 0:self.num_robot_dofs] * (pos_des - self.robot_dof_pos.clone()) +\
                         self.robot_dof_damping[:, 0:self.num_robot_dofs] * (vel_des - self.robot_dof_vel.clone())    
-        print(pos_des)  
+
         torques = feedforward_torques + feedback_torques
         torques = tensor_clamp(torques, min=-1.*self.robot_effort_lims, max=self.robot_effort_lims)
         self.effort_control[:,:] = torques
