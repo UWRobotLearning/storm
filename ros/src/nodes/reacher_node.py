@@ -154,7 +154,6 @@ class MPCReacherNode():
                     self.policy.update_rollout_params(param_dict)
                     self.new_ee_goal = False
 
-        
                 # for k in self.robot_state.keys():
                 #     self.policy_input['states'][k] = self.robot_state[k].clone().to(self.device)
                                 
