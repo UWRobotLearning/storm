@@ -249,8 +249,7 @@ class ArmBase(RolloutBase):
         state_dict = self.compute_full_state(state_dict)
         # return obs
         obs = torch.cat(
-            (state_dict['q_pos'], state_dict['q_vel']), dim=-1
-        )
+            (state_dict['q_pos'], state_dict['q_vel']), dim=-1)
         return obs, state_dict
 
 

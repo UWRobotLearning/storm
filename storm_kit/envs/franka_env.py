@@ -385,7 +385,7 @@ class FrankaEnv(): #VecTask
         asset_options.use_mesh_materials = True
         robot_asset = self.gym.load_asset(self.sim, asset_root, robot_asset_file, asset_options)
 
-        self.robot_dof_stiffness = to_torch([100.0, 100.0, 100.0, 100.0, 75.0, 40.0, 30.0], dtype=torch.float, device=self.device)
+        self.robot_dof_stiffness = to_torch([75.0, 75.0, 75.0, 75.0, 50.0, 40.0, 30.0], dtype=torch.float, device=self.device)
         self.robot_dof_damping = to_torch([1.0, 1.0, 1.0, 1.0, 0.75, 0.5, 0.1], dtype=torch.float, device=self.device)
 
         self.num_robot_bodies = self.gym.get_asset_rigid_body_count(robot_asset)
@@ -482,8 +482,8 @@ class FrankaEnv(): #VecTask
             vel_des = vel_des[:, 0]
             acc_des = acc_des[:, 0]
 
-        pos_des = tensor_clamp(pos_des, min=self.robot_q_pos_lower_lims, max=self.robot_q_pos_upper_lims)
-        vel_des = tensor_clamp(vel_des, min=-1.0 * self.robot_q_vel_lims, max=self.robot_q_vel_lims)
+        # pos_des = tensor_clamp(pos_des, min=self.robot_q_pos_lower_lims, max=self.robot_q_pos_upper_lims)
+        # vel_des = tensor_clamp(vel_des, min=-1.0 * self.robot_q_vel_lims, max=self.robot_q_vel_lims)
 
 
         feedforward_torques = torch.einsum('ijk,ik->ij', self.robot_mass, acc_des)
