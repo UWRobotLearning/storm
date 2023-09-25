@@ -40,7 +40,7 @@ rollout:
   model:
     urdf_path: "urdf/point_robot.urdf"
     name: "point_robot"
-    max_acc: 10.0 
+    max_acc: 100.0 
     dt_traj_params:
       base_dt:  0.015
       base_ratio: 0.8
@@ -61,7 +61,7 @@ rollout:
 mpc:
   rollout: ${task.rollout}
   world: ${task.world}
-  viz_rollouts: true
+  viz_rollouts: false
 
   mppi:
     num_instances     : ${task.env.num_envs}

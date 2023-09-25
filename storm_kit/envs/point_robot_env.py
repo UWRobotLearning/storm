@@ -465,6 +465,7 @@ class PointRobotEnv():
         #    - e.g. apply actions
         pos_des = actions[:, 0:self.num_dofs].clone().to(self.device)
         vel_des = actions[:, self.num_dofs:2*self.num_dofs].clone().to(self.device)
+        #feedforward component of desired acceleration
         acc_des = actions[:, 2*self.num_dofs:3*self.num_dofs].clone().to(self.device)
         
         if pos_des.ndim == 3:
@@ -474,13 +475,15 @@ class PointRobotEnv():
         
         curr_robot_pos = self.robot_state[:, 0:2]
         curr_robot_vel = self.robot_state[:, 7:9]
-        feedforward_torques = torch.einsum('ijk,ik->ij', self.robot_mass, acc_des)
-        feedback_torques =  10.0 * (pos_des - curr_robot_pos) + 1.0 * (vel_des - curr_robot_vel)      
+        # feedforward_torques = torch.einsum('ijk,ik->ij', self.robot_mass, acc_des)
+        # feedback_torques =  10.0 * (pos_des - curr_robot_pos) + 1.0 * (vel_des - curr_robot_vel)      
+        # torques = feedforward_torques + feedback_torques
 
-        torques = feedforward_torques + feedback_torques
-        torques = tensor_clamp(torques, min=-1.*self.robot_effort_lims, max=self.robot_effort_lims)
-        
-        
+        acc_des_feedback = 50.0 * (pos_des - curr_robot_pos) + 1.0 * (vel_des - curr_robot_vel)  
+        acc_des = acc_des + acc_des_feedback
+        torques = torch.einsum('ijk,ik->ij', self.robot_mass, acc_des)
+
+        torques = tensor_clamp(torques, min=-1.*self.robot_effort_lims, max=self.robot_effort_lims)        
         self.gym.set_dof_actuation_force_tensor(self.sim, gymtorch.unwrap_tensor(torques))
 
 

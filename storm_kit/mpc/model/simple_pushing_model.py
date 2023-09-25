@@ -195,7 +195,7 @@ class SimplePushingModel(nn.Module):
             v_rel_tangent =  torch.sum(v_rel * tangent, dim=-1) 
             
             #normal impulse
-            e = 1.0 #1.0 #1.0 #min(robot.material.restitution, obj.material.restitution)
+            e = 0.0 #1.0 #1.0 #min(robot.material.restitution, obj.material.restitution)
             normal_impulse_magn = - (1 + e) * v_rel_normal
             normal_impulse_magn /= (self.robot_mass_data['inv_mass'] + self.obj_mass_data['inv_mass'])
             normal_impulse = normal_impulse_magn.unsqueeze(-1) * normal

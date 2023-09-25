@@ -475,6 +475,7 @@ class FrankaEnv(): #VecTask
 
         pos_des = actions[:, 0:self.num_robot_dofs].clone().to(self.device)
         vel_des = actions[:, self.num_robot_dofs:2*self.num_robot_dofs].clone().to(self.device)
+        #feedforward componenet of desired acceleration
         acc_des = actions[:, 2*self.num_robot_dofs:3*self.num_robot_dofs].clone().to(self.device)
 
         if pos_des.ndim == 3:
@@ -486,11 +487,19 @@ class FrankaEnv(): #VecTask
         # vel_des = tensor_clamp(vel_des, min=-1.0 * self.robot_q_vel_lims, max=self.robot_q_vel_lims)
 
 
-        feedforward_torques = torch.einsum('ijk,ik->ij', self.robot_mass, acc_des)
-        feedback_torques =  self.robot_dof_stiffness[:, 0:self.num_robot_dofs] * (pos_des - self.robot_dof_pos.clone()) +\
-                        self.robot_dof_damping[:, 0:self.num_robot_dofs] * (vel_des - self.robot_dof_vel.clone())    
+        # feedforward_torques = torch.einsum('ijk,ik->ij', self.robot_mass, acc_des)
+        # feedback_torques =  self.robot_dof_stiffness[:, 0:self.num_robot_dofs] * (pos_des - self.robot_dof_pos.clone()) +\
+        #                 self.robot_dof_damping[:, 0:self.num_robot_dofs] * (vel_des - self.robot_dof_vel.clone())    
 
-        torques = feedforward_torques + feedback_torques
+        # torques = feedforward_torques + feedback_torques
+        
+        acc_des_feedback = self.robot_dof_stiffness[:, 0:self.num_robot_dofs] * (pos_des - self.robot_dof_pos.clone()) +\
+                        self.robot_dof_damping[:, 0:self.num_robot_dofs] * (vel_des - self.robot_dof_vel.clone())  
+        acc_des = acc_des + acc_des_feedback
+
+        torques = torch.einsum('ijk,ik->ij', self.robot_mass, acc_des)
+
+
         torques = tensor_clamp(torques, min=-1.*self.robot_effort_lims, max=self.robot_effort_lims)
         self.effort_control[:,:] = torques
         # torques[:, 0] = 87.0
