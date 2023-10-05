@@ -22,39 +22,50 @@
 # DEALINGS IN THE SOFTWARE.#
 import torch
 
-def build_fd_matrix(horizon:int, device='cpu', dtype=torch.float32, order=1, PREV_STATE=False,FULL_RANK=False):
+def build_fd_matrix(horizon:int, device:torch.device=torch.device('cpu'), order:int=1, full_rank:bool=False, diff_type:str='forward'):
     
-    if PREV_STATE:
-        # build order 1 fd matrix of horizon+order size
-        fd1_mat = build_fd_matrix(horizon + order, device, dtype, order=1)
-        # multiply order times to get fd_order matrix [h+order, h+order]
-        fd_mat = fd1_mat
-        for _ in range(order-1):
-            fd_mat = fd_mat @ fd_mat
+    # if prev_state:
+    #     # build order 1 fd matrix of horizon+order size
+    #     fd1_mat = build_fd_matrix(horizon + order, device, order=1, diff_type=diff_type)
+    #     # multiply order times to get fd_order matrix [h+order, h+order]
+    #     fd_mat = fd1_mat
+    #     for _ in range(order-1):
+    #         fd_mat = fd_mat @ fd_mat
         # return [horizon,h+order]
-        fd_mat = fd_mat[:horizon, :]
+        # fd_mat = fd_mat[:horizon, :]
         #fd_mat = torch.zeros((horizon, horizon + order),device=device, dtype=dtype)
         #one_t = torch.ones(horizon, device=device, dtype=dtype)
         #fd_mat[:horizon, :horizon] = torch.diag_embed(one_t)
         #print(torch.diag_embed(one_t, offset=1).shape, fd_mat.shape)
         #fd_mat += - torch.diag_embed(one_t, offset=1)[:-1,:]
-
-    elif FULL_RANK:
-        fd_mat = torch.eye(horizon, device=device, dtype=dtype)
-        
-        one_t = torch.ones(horizon//2, device=device, dtype=dtype)
+    
+    if full_rank:
+        fd_mat = torch.eye(horizon, device=device)
+        one_t = torch.ones(horizon//2, device=device)
         fd_mat[:horizon//2, :horizon//2] = torch.diag_embed(one_t)
         fd_mat[:horizon//2+1, :horizon//2+1] += - torch.diag_embed(one_t, offset=1)
-        one_t = torch.ones(horizon//2, device=device, dtype=dtype)
+        one_t = torch.ones(horizon//2, device=device)
         fd_mat[horizon//2:, horizon//2:] += - torch.diag_embed(one_t, offset=-1)
         fd_mat[horizon//2, horizon//2] = 0.0
         fd_mat[horizon//2, horizon//2-1] = -1.0
         fd_mat[horizon//2, horizon//2+1] = 1.0
+    
     else:
-        fd_mat = torch.zeros((horizon, horizon),device=device, dtype=dtype)
-        one_t = torch.ones(horizon - 1, device=device, dtype=dtype)
-        fd_mat[:horizon - 1, :horizon - 1] = -1.0 * torch.diag_embed(one_t)
-        fd_mat += torch.diag_embed(one_t, offset=1)
+        fd_mat = torch.zeros((horizon, horizon),device=device)
+        one_t = torch.ones(horizon - 1, device=device)
+        if diff_type == 'forward' or diff_type == 'backward':
+            fd_mat[:horizon - 1, :horizon - 1] = -1.0 * torch.diag_embed(one_t)
+            fd_mat += torch.diag_embed(one_t, offset=1)
+            fd_mat = fd_mat[0:horizon-1, :]
+        elif diff_type == 'central':
+            fd_mat += 0.5 * torch.diag_embed(one_t, offset=1)
+            fd_mat -= 0.5 * torch.diag_embed(one_t, offset=-1)
+            #use forward diff for first entry and backward for last
+            if horizon > 1:
+                fd_mat[0,0] = -1.0
+                fd_mat[0,1] = 1.0
+                fd_mat[-1,-2] = -1.0
+                fd_mat[-1,-1] = 1.0
 
     return fd_mat
 
@@ -63,7 +74,7 @@ def build_int_matrix(horizon, diagonal=0, device='cpu', dtype=torch.float32, ord
                      traj_dt=None):
     integrate_matrix = torch.tril(torch.ones((horizon, horizon), device=device, dtype=dtype), diagonal=diagonal)
     chain_list = [torch.eye(horizon, device=device, dtype=dtype)]
-    if(traj_dt is None):
+    if traj_dt is None:
         chain_list.extend([integrate_matrix for i in range(order)])
     else:
         diag_dt = torch.diag(traj_dt)

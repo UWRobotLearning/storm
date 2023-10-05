@@ -106,8 +106,7 @@ class URDFKinematicModel(nn.Module):
         elif control_space == 'pos':
             self.step_fn = tensor_step_pos
 
-        self._fd_matrix = build_fd_matrix(self.num_traj_points, device=self.device,
-                                          dtype=self.dtype, order=1)
+        self._fd_matrix = build_fd_matrix(self.num_traj_points, device=self.device, order=1)
 
         self.dt_traj_params = dt_traj_params
 
@@ -134,7 +133,7 @@ class URDFKinematicModel(nn.Module):
         self.link_rot_seq = torch.empty((self.num_instances, self.batch_size, self.num_traj_points, len(self.link_names),3,3), dtype=self.dtype, device=self.device)
 
         # self.prev_state_buffer = torch.zeros((self.num_instances, 10, self.d_state), device=self.device, dtype=self.dtype) 
-        self.prev_state_fd = build_fd_matrix(9, device=self.device, dtype=self.dtype, order=1, PREV_STATE=True)
+        # self.prev_state_fd = build_fd_matrix(9, device=self.device, order=1, prev_state=True)
 
         self.action_order = 0
         self._integrate_matrix_nth = build_int_matrix(self.num_traj_points, order=self.action_order, device=self.device, dtype=self.dtype, traj_dt=self.traj_dt)
@@ -239,7 +238,6 @@ class URDFKinematicModel(nn.Module):
         with record_function("tensor_step"):
             # forward step with step matrix:
             state_seq = self.tensor_step(curr_state, act_seq, state_seq, curr_batch_size, num_traj_points)
-        
         shape_tup = (self.num_instances * curr_batch_size * num_traj_points, self.n_dofs)
         with record_function("fk + jacobian"):
             ee_pos_seq, ee_rot_seq, lin_jac_seq, ang_jac_seq = self.robot_model.compute_fk_and_jacobian(

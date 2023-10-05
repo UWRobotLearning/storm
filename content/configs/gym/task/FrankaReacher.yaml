@@ -110,7 +110,7 @@ rollout:
       max_limit: 0.1 #0.2
 
     jerk_cost:
-      weight: 0.0 
+      weight: 1.0
       order: 1
 
     primitive_collision:
@@ -137,7 +137,7 @@ mpc:
     num_instances     : ${task.env.num_envs}
     horizon           : 30
     init_cov          : 0.1 #0.005 #.5 #.5
-    gamma             : 0.99 #0.98
+    gamma             : 0.999 #0.98
     n_iters           : 1
     step_size_mean    : 0.98
     step_size_cov     : 0.7

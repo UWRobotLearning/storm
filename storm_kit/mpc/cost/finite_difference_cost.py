@@ -25,56 +25,76 @@ import torch.nn as nn
 from ..model.integration_utils import build_fd_matrix
 
 class FiniteDifferenceCost(nn.Module):
-    def __init__(self, device:torch.device('cpu'), weight=1.0, order=1, **kwargs):
+    def __init__(self,  weight:int,  horizon:int, order:int=1, device:torch.device = torch.device('cpu')):
         super(FiniteDifferenceCost, self).__init__()
         self.device = device
         self.order = order
-        for _ in range(order):
-            weight *= weight
+        self.horizon = horizon
+        # for _ in range(order):
+        #     weight *= weight
         self.weight = weight
         self.device = device
         # build FD matrix
-        self.fd_mat = None
-        self.t_mat = None
+        self.fd_mat = build_fd_matrix(
+            horizon=self.horizon,
+            device=self.device, 
+            order=self.order, 
+            full_rank=False,
+            diff_type='forward')
+        
+        # self.fd_mat2 = build_fd_matrix(
+        #     horizon=self.horizon,
+        #     device = self.device, 
+        #     order = self.order, 
+        #     prev_state=False, 
+        #     full_rank=True)
+        # print(self.fd_mat)
+        # print(self.fd_mat.shape)
+        # input('.....')
+        # self.t_mat = None
 
 
     def forward(self, ctrl_seq, dt):
         """
         ctrl_seq: [B X H X d_act]
         """
-        dt[dt == 0.0] = 0.0 #dt[-1]
-        dt = 1 / dt
-        
-        #dt = dt / torch.max(dt)
-        dt = torch.abs(dt)
-        
-        #print(dt)
-        dt[dt == float("Inf")] = 0
-
-        dt[dt > 10] = 10
-        #dt = dt / torch.max(dt)
-        
-        dt[dt != dt] = 0.0
-        #for _ in range(self.order-1):
-        #    dt = dt * dt
-        #print(dt)
-        inp_device = ctrl_seq.device
-        ctrl_seq = ctrl_seq.to(device=self.device)
-        
-        _, H, _ = ctrl_seq.shape
-        H = H - self.order
-        dt = dt[:H]
-        #
-        if self.fd_mat is None or self.fd_mat.shape[0] != H:
-            self.fd_mat = build_fd_matrix(H,device=self.device, order=self.order, PREV_STATE=True)
-            
-        diff = torch.matmul(self.fd_mat,ctrl_seq)
-        res = torch.abs(diff)
-        cost = res[:,:,-1]
-        cost[cost < 0.0001] = 0.0
-        cost = self.weight * cost 
-        
+        deriv = torch.matmul(self.fd_mat, ctrl_seq)
+        res = torch.norm(deriv, p=2, dim=-1,keepdim=False)
+        cost = self.weight * res
         return cost
+        # dt[dt == 0.0] = 0.0 #dt[-1]
+        # dt = 1 / dt
+        
+        # #dt = dt / torch.max(dt)
+        # dt = torch.abs(dt)
+        
+        # #print(dt)
+        # dt[dt == float("Inf")] = 0
+
+        # dt[dt > 10] = 10
+        # #dt = dt / torch.max(dt)
+        
+        # dt[dt != dt] = 0.0
+        # #for _ in range(self.order-1):
+        # #    dt = dt * dt
+        # #print(dt)
+        # inp_device = ctrl_seq.device
+        # ctrl_seq = ctrl_seq.to(device=self.device)
+        
+        # _, H, _ = ctrl_seq.shape
+        # H = H - self.order
+        # dt = dt[:H]
+        # #
+        # if self.fd_mat is None or self.fd_mat.shape[0] != H:
+        #     self.fd_mat = build_fd_matrix(H,device=self.device, order=self.order, PREV_STATE=True)
+            
+        # diff = torch.matmul(self.fd_mat,ctrl_seq)
+        # res = torch.abs(diff)
+        # cost = res[:,:,-1]
+        # cost[cost < 0.0001] = 0.0
+        # cost = self.weight * cost 
+        
+        # return cost
 
 
 

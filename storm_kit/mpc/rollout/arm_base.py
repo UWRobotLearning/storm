@@ -111,8 +111,10 @@ class ArmBase(RolloutBase):
         #     self.fd_matrix = build_fd_matrix(10 - self.cfg['cost']['smooth']['order'], device=self.device, dtype=self.dtype, PREV_STATE=True, order=self.cfg['cost']['smooth']['order'])
 
         if self.cfg['cost']['jerk_cost']['weight'] > 0:
-            self.jerk_cost = FiniteDifferenceCost(**self.cfg['cost']['jerk_cost'],
-                                                    device=self.device)
+            self.jerk_cost = FiniteDifferenceCost(
+                **self.cfg['cost']['jerk_cost'], 
+                horizon = self.horizon + 1,
+                device=self.device)
 
         self.primitive_collision_cost = PrimitiveCollisionCost(
             world_params=world_params, robot_params=robot_params, 
@@ -151,6 +153,7 @@ class ArmBase(RolloutBase):
 
         # num_instances, curr_batch_size, num_traj_points, _ = state_dict['state_seq'].shape
         state_batch = state_dict['state_seq'].view(self.num_instances * self.batch_size, self.horizon, -1)
+        action_batch = action_batch.view(self.num_instances * self.batch_size, self.horizon, -1)
         lin_jac_batch, ang_jac_batch = state_dict['lin_jac_seq'], state_dict['ang_jac_seq']
         lin_jac_batch = lin_jac_batch.view(self.num_instances*self.batch_size, self.horizon, 3, self.n_dofs)
         ang_jac_batch = ang_jac_batch.view(self.num_instances*self.batch_size, self.horizon, 3, self.n_dofs)
@@ -188,7 +191,7 @@ class ArmBase(RolloutBase):
 
         if self.cfg['cost']['jerk_cost']['weight'] > 0:
             with record_function('jerk_cost'):
-                order = self.cfg['cost']['jerk_cost']['order']
+                # order = self.cfg['cost']['jerk_cost']['order']
                 
                 # prev_dt = (self.fd_matrix @ prev_state_tstep)[-order:]
                 # n_mul = 1
@@ -197,7 +200,11 @@ class ArmBase(RolloutBase):
                 # p_state = p_state.expand(state.shape[0], -1, -1)
                 # state_buffer = torch.cat((p_state, state), dim=1)
                 # traj_dt = torch.cat((prev_dt, self.traj_dt))
-                cost += self.smooth_cost.forward(state_buffer, traj_dt)
+                prev_action = state_dict['prev_action']
+                prev_action = prev_action.unsqueeze(1).expand(self.num_instances*self.batch_size, 1, -1)
+                act_buff = torch.cat([prev_action, action_batch], dim=-2)
+                # print(act_buff.shape, self.traj_dt.shape)
+                cost += self.jerk_cost.forward(act_buff, self.traj_dt)
 
 
         if horizon_cost:
@@ -322,6 +329,7 @@ class ArmBase(RolloutBase):
         
         #link_pos_seq, link_rot_seq = self.dynamics_model.get_link_poses()
         with record_function("compute_termination"):
+            state_dict['prev_action'] = start_state['prev_action']
             term_seq, _ = self.compute_termination(state_dict, act_seq)
 
         with record_function("compute_cost"):

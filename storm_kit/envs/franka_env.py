@@ -186,6 +186,8 @@ class FrankaEnv(): #VecTask
              self.num_envs, device=self.device, dtype=torch.long)
         self.progress_buf = torch.zeros(
             self.num_envs, device=self.device, dtype=torch.long)
+        self.prev_action_buff = torch.zeros(
+            (self.num_envs, self.num_robot_dofs), device=self.device)
         # self.randomize_buf = torch.zeros(
         #     self.num_envs, device=self.device, dtype=torch.long)
         self.extras = {}
@@ -502,13 +504,9 @@ class FrankaEnv(): #VecTask
 
         torques = tensor_clamp(torques, min=-1.*self.robot_effort_lims, max=self.robot_effort_lims)
         self.effort_control[:,:] = torques
-        # torques[:, 0] = 87.0
-        # torques[:, 1:] = 0.0
-        # print('torques', 'pos_des', 'vel_des')
-        # print(torques, pos_des, vel_des)
-        # input('....')
-        self.gym.set_dof_actuation_force_tensor(self.sim, gymtorch.unwrap_tensor(self.effort_control))
 
+        self.gym.set_dof_actuation_force_tensor(self.sim, gymtorch.unwrap_tensor(self.effort_control))
+        self.prev_action_buff = acc_des.clone()
 
 
     # def pre_physics_step(self, actions: torch.Tensor):
@@ -663,6 +661,7 @@ class FrankaEnv(): #VecTask
             'q_pos': self.robot_q_pos_buff.to(self.rl_device),
             'q_vel': self.robot_q_vel_buff.to(self.rl_device),
             'q_acc': self.robot_q_acc_buff.to(self.rl_device),
+            'prev_action': self.prev_action_buff.to(self.rl_device),
             'tstep': tstep
         }
         return state_dict
@@ -696,7 +695,7 @@ class FrankaEnv(): #VecTask
 
         self.progress_buf[env_ids] = 0
         self.reset_buf[env_ids] = 0 
-
+        self.prev_action_buff[env_ids] = torch.zeros_like(self.prev_action_buff[env_ids])
         if reset_data is not None:
             if 'goal_dict' in reset_data:
                 self.update_goal(reset_data['goal_dict'])
