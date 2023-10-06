@@ -103,13 +103,13 @@ rollout:
 
     stop_cost:
       weight: 50.0 #10.0 #10.0 
-      max_nlimit: 1.5 #1.5 #0.2
+      max_nlimit: 2.0 #1.5 #0.2
 
     stop_cost_acc:
       weight: 0.0
       max_limit: 0.1 #0.2
 
-    jerk_cost:
+    smooth_cost:
       weight: 1.0
       order: 1
 

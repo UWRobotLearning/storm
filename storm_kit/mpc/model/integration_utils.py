@@ -22,7 +22,7 @@
 # DEALINGS IN THE SOFTWARE.#
 import torch
 
-def build_fd_matrix(horizon:int, device:torch.device=torch.device('cpu'), order:int=1, full_rank:bool=False, diff_type:str='forward'):
+def build_fd_matrix(horizon:int, device:torch.device=torch.device('cpu'), order:int=1, full_rank:bool=False):
     
     # if prev_state:
     #     # build order 1 fd matrix of horizon+order size
@@ -53,19 +53,9 @@ def build_fd_matrix(horizon:int, device:torch.device=torch.device('cpu'), order:
     else:
         fd_mat = torch.zeros((horizon, horizon),device=device)
         one_t = torch.ones(horizon - 1, device=device)
-        if diff_type == 'forward' or diff_type == 'backward':
-            fd_mat[:horizon - 1, :horizon - 1] = -1.0 * torch.diag_embed(one_t)
-            fd_mat += torch.diag_embed(one_t, offset=1)
-            fd_mat = fd_mat[0:horizon-1, :]
-        elif diff_type == 'central':
-            fd_mat += 0.5 * torch.diag_embed(one_t, offset=1)
-            fd_mat -= 0.5 * torch.diag_embed(one_t, offset=-1)
-            #use forward diff for first entry and backward for last
-            if horizon > 1:
-                fd_mat[0,0] = -1.0
-                fd_mat[0,1] = 1.0
-                fd_mat[-1,-2] = -1.0
-                fd_mat[-1,-1] = 1.0
+        fd_mat[:horizon - 1, :horizon - 1] = -1.0 * torch.diag_embed(one_t)
+        fd_mat += torch.diag_embed(one_t, offset=1)
+        fd_mat = fd_mat[0:horizon-1, :]
 
     return fd_mat
 

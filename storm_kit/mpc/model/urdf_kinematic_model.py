@@ -132,8 +132,8 @@ class URDFKinematicModel(nn.Module):
         self.link_pos_seq = torch.empty((self.num_instances, self.batch_size, self.num_traj_points, len(self.link_names),3), dtype=self.dtype, device=self.device)
         self.link_rot_seq = torch.empty((self.num_instances, self.batch_size, self.num_traj_points, len(self.link_names),3,3), dtype=self.dtype, device=self.device)
 
-        # self.prev_state_buffer = torch.zeros((self.num_instances, 10, self.d_state), device=self.device, dtype=self.dtype) 
-        # self.prev_state_fd = build_fd_matrix(9, device=self.device, order=1, prev_state=True)
+        self.prev_state_buffer = torch.zeros((self.num_instances, 10, self.d_state), device=self.device, dtype=self.dtype) 
+        # self.prev_state_fd = build_fd_matrix(10, device=self.device, order=1)
 
         self.action_order = 0
         self._integrate_matrix_nth = build_int_matrix(self.num_traj_points, order=self.action_order, device=self.device, dtype=self.dtype, traj_dt=self.traj_dt)
@@ -214,14 +214,13 @@ class URDFKinematicModel(nn.Module):
 
         # # add start state to prev state buffer:
         # if self.initial_step:
-        #     # self.prev_state_buffer = torch.zeros((self.num_instances, 10, self.d_state), device=self.device, dtype=self.dtype)
-        #     self.prev_state_buffer[:,:,:] = curr_robot_state.unsqueeze(1)
-        #     self.initial_step = False
+            # self.prev_state_buffer = torch.zeros((self.num_instances, 10, self.d_state), device=self.device, dtype=self.dtype)
+        # self.prev_state_buffer[:,:,:] = curr_robot_state.unsqueeze(1)
+            # self.initial_step = False
 
-        # self.prev_state_buffer = self.prev_state_buffer.roll(-1, dims=1)
-        # self.prev_state_buffer[:,-1,:] = curr_robot_state
+        self.prev_state_buffer = self.prev_state_buffer.roll(-1, dims=1)
+        self.prev_state_buffer[:,-1,:] = curr_robot_state
 
-        
         # compute dt w.r.t previous data?
         state_seq = self.state_seq
         ee_pos_seq = self.ee_pos_seq
@@ -264,8 +263,8 @@ class URDFKinematicModel(nn.Module):
                       'lin_jac_seq': lin_jac_seq.to(inp_device),
                       'ang_jac_seq': ang_jac_seq.to(inp_device),
                       'link_pos_seq': link_pos_seq.to(inp_device),
-                      'link_rot_seq': link_rot_seq.to(inp_device)}
-                    #   'prev_state_seq': self.prev_state_buffer.to(inp_device)}
+                      'link_rot_seq': link_rot_seq.to(inp_device),
+                      'prev_state_seq': self.prev_state_buffer.to(inp_device)}
 
         return state_dict
 
@@ -309,7 +308,10 @@ class URDFKinematicModel(nn.Module):
 
     def reset(self):
         self.prev_state_buffer = torch.zeros((self.num_instances, 10, self.d_state), device=self.device, dtype=self.dtype) 
-        self.initial_step = True
+        # self.initial_step = True
+    
+    def reset_idx(self, env_ids):
+        self.prev_state_buffer[env_ids] = torch.zeros_like(self.prev_state_buffer[env_ids])
 
 
     # #Rendering

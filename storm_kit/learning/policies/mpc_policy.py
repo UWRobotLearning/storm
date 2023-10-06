@@ -35,6 +35,7 @@ class MPCPolicy(Policy):
         self.rollout = self.init_rollout(rollout_cls) 
         self.controller = self.init_controller()
         self.prev_action = self.init_action[:,0].clone()
+        self.prev_command_time = time.time()
         # self.dt = self.cfg.rollout.control_dt
 
         # self.state_filter = JointStateFilter(
@@ -60,6 +61,7 @@ class MPCPolicy(Policy):
     def get_action(self, obs_dict, deterministic=False, num_samples=1):
         state_dict = obs_dict['states']
         state_dict['prev_action'] = self.prev_action
+    
         # states = torch.cat(
         #     (state_dict['q_pos'], 
         #      state_dict['q_vel'], 
@@ -160,7 +162,6 @@ class MPCPolicy(Policy):
     
     def reset(self, reset_data=None):
         if reset_data is not None:
-            # if 'goal_dict' in reset_data:
             self.update_rollout_params(param_dict=reset_data)
         # self.prev_qdd_des = None
         # self.state_filter.reset()

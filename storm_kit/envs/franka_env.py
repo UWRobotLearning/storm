@@ -340,7 +340,9 @@ class FrankaEnv(): #VecTask
         self.robot_dof_pos = self.robot_dof_state[..., 0]
         self.robot_dof_vel = self.robot_dof_state[..., 1]
         self.robot_dof_acc = torch.zeros_like(self.robot_dof_vel)
-        self.tstep = torch.ones(self.num_envs, 1, device=self.device)
+        self.episode_time = torch.zeros(self.num_envs, 1, device=self.device)
+        self.last_sim_time = torch.zeros(self.num_envs, 1, device=self.device)
+
 
         #TODO: Figure out if 13 is right
         self.num_bodies = self.rigid_body_states.shape[1]
@@ -654,15 +656,15 @@ class FrankaEnv(): #VecTask
         self.robot_q_pos_buff[:] = self.robot_dof_pos
         self.robot_q_vel_buff[:] = self.robot_dof_vel
         self.robot_q_acc_buff[:] = self.robot_dof_acc
-        tstep = self.gym.get_sim_time(self.sim)
-        tstep *= self.tstep
+        sim_time = self.gym.get_sim_time(self.sim)
+        self.episode_time = sim_time - self.last_sim_time
 
         state_dict = {
             'q_pos': self.robot_q_pos_buff.to(self.rl_device),
             'q_vel': self.robot_q_vel_buff.to(self.rl_device),
             'q_acc': self.robot_q_acc_buff.to(self.rl_device),
             'prev_action': self.prev_action_buff.to(self.rl_device),
-            'tstep': tstep
+            'tstep': self.episode_time
         }
         return state_dict
     
@@ -700,6 +702,7 @@ class FrankaEnv(): #VecTask
             if 'goal_dict' in reset_data:
                 self.update_goal(reset_data['goal_dict'])
 
+        self.last_sim_time = torch.ones(self.num_envs, 1, device=self.device) * self.gym.get_sim_time(self.sim)
         state_dict = self.get_state_dict()
         return state_dict 
 

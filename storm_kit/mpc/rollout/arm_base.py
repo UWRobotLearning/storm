@@ -107,12 +107,11 @@ class ArmBase(RolloutBase):
 
         self.retract_state = torch.tensor([self.cfg['cost']['retract_state']], device=device, dtype=dtype)
 
-        # if 'smooth' in self.cfg['cost']:
-        #     self.fd_matrix = build_fd_matrix(10 - self.cfg['cost']['smooth']['order'], device=self.device, dtype=self.dtype, PREV_STATE=True, order=self.cfg['cost']['smooth']['order'])
 
-        if self.cfg['cost']['jerk_cost']['weight'] > 0:
-            self.jerk_cost = FiniteDifferenceCost(
-                **self.cfg['cost']['jerk_cost'], 
+        if self.cfg['cost']['smooth_cost']['weight'] > 0:
+            self.fd_matrix = build_fd_matrix(10 - self.cfg['cost']['smooth_cost']['order'] + 1, device=self.device, order=self.cfg['cost']['smooth_cost']['order'])
+            self.smooth_cost = FiniteDifferenceCost(
+                **self.cfg['cost']['smooth_cost'], 
                 horizon = self.horizon + 1,
                 device=self.device)
 
@@ -161,9 +160,9 @@ class ArmBase(RolloutBase):
         link_pos_batch, link_rot_batch = state_dict['link_pos_seq'], state_dict['link_rot_seq']
         link_pos_batch = link_pos_batch.view(self.num_instances*self.batch_size, self.horizon, self.num_links, 3)
         link_rot_batch = link_rot_batch.view(self.num_instances*self.batch_size, self.horizon, self.num_links, 3, 3)
-        # prev_state = state_dict['prev_state_seq']
-        # prev_state = prev_state.view(self.num_instances*prev_state.shape[-2], prev_state.shape[-1])
-        # prev_state_tstep = state_dict['prev_state_seq'][:,-1]
+        prev_state = state_dict['prev_state_seq']
+        prev_state = prev_state.view(self.num_instances*prev_state.shape[-2], prev_state.shape[-1])
+        prev_state_tstep = prev_state[:,-1]
 
         retract_state = self.retract_state
                 
@@ -189,22 +188,20 @@ class ArmBase(RolloutBase):
             with record_function('ee_vel_cost'):
                 cost += self.ee_vel_cost.forward(state_batch, lin_jac_batch)
 
-        if self.cfg['cost']['jerk_cost']['weight'] > 0:
-            with record_function('jerk_cost'):
-                # order = self.cfg['cost']['jerk_cost']['order']
-                
-                # prev_dt = (self.fd_matrix @ prev_state_tstep)[-order:]
-                # n_mul = 1
-                # state = state_batch[:,:, self.n_dofs * n_mul:self.n_dofs * (n_mul+1)]
-                # p_state = prev_state[-order:,self.n_dofs * n_mul: self.n_dofs * (n_mul+1)].unsqueeze(0)
-                # p_state = p_state.expand(state.shape[0], -1, -1)
-                # state_buffer = torch.cat((p_state, state), dim=1)
-                # traj_dt = torch.cat((prev_dt, self.traj_dt))
-                prev_action = state_dict['prev_action']
-                prev_action = prev_action.unsqueeze(1).expand(self.num_instances*self.batch_size, 1, -1)
-                act_buff = torch.cat([prev_action, action_batch], dim=-2)
-                # print(act_buff.shape, self.traj_dt.shape)
-                cost += self.jerk_cost.forward(act_buff, self.traj_dt)
+        if self.cfg['cost']['smooth_cost']['weight'] > 0:
+            with record_function('smooth_cost'):
+                order = self.cfg['cost']['smooth_cost']['order']
+                n_mul = 2 #TODO: This must be decided based on order and control space
+                # prev_action = state_dict['prev_action']
+                # prev_action = prev_action.unsqueeze(1).expand(self.num_instances*self.batch_size, 1, -1)
+                # act_buff = torch.cat([prev_action, action_batch], dim=-2)
+                state = state_batch[:,:, n_mul * self.n_dofs : (n_mul+1) * self.n_dofs]
+                p_state = prev_state[-order:, n_mul*self.n_dofs: (n_mul+1) * self.n_dofs].unsqueeze(0)
+                p_state = p_state.expand(state.shape[0], -1, -1)
+                state_buffer = torch.cat((p_state, state), dim=1)
+                prev_dt = (self.fd_matrix @ prev_state_tstep)[-order:]
+                traj_dt = torch.cat((prev_dt, self.traj_dt[0:-1]))
+                cost += self.smooth_cost.forward(state_buffer, traj_dt.unsqueeze(-1))
 
 
         if horizon_cost:
@@ -401,7 +398,12 @@ class ArmBase(RolloutBase):
             new_state_dict['ang_jac_seq'] =  ang_jac_batch
             new_state_dict['link_pos_seq'] = link_pos_seq 
             new_state_dict['link_rot_seq'] = link_rot_seq
-            # 'prev_state_seq': current_state_tensor
+
+            self.prev_state_buff = self.prev_state_buff.roll(-1, dims=1)
+            self.prev_state_buff[:,-1,:] = new_state_dict['state_seq'].clone()
+            new_state_dict['prev_state_seq'] = self.prev_state_buff
+
+
             return new_state_dict
         
         return state_dict

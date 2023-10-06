@@ -60,6 +60,7 @@ class ArmReacher(ArmBase):
 
     def init_buffers(self):
         self.ee_goal_buff = torch.zeros(self.num_instances, 7, device=self.device)
+        self.prev_state_buff = torch.zeros(self.num_instances, 10, 22, device=self.device)
 
     def compute_cost(
             self, 
@@ -135,9 +136,9 @@ class ArmReacher(ArmBase):
 
         if goal_position_noise > 0.:
             #randomize goal position around the default
-            self.ee_goal_buff[env_ids, 0] = self.ee_goal_buff[env_ids, 0] +  2.0* goal_position_noise * (torch.rand_like(self.ee_goal_buff[env_ids, 0], device=self.device) - 0.5)
-            self.ee_goal_buff[env_ids, 1] = self.ee_goal_buff[env_ids, 1] +  2.0* goal_position_noise * (torch.rand_like(self.ee_goal_buff[env_ids, 1], device=self.device) - 0.5)
-            self.ee_goal_buff[env_ids, 2] = self.ee_goal_buff[env_ids, 2] +  2.0* goal_position_noise * (torch.rand_like(self.ee_goal_buff[env_ids, 2], device=self.device) - 0.5)
+            self.ee_goal_buff[env_ids, 0] = self.ee_goal_buff[env_ids, 0] +  2.0*goal_position_noise * (torch.rand_like(self.ee_goal_buff[env_ids, 0], device=self.device) - 0.5)
+            self.ee_goal_buff[env_ids, 1] = self.ee_goal_buff[env_ids, 1] +  2.0*goal_position_noise * (torch.rand_like(self.ee_goal_buff[env_ids, 1], device=self.device) - 0.5)
+            self.ee_goal_buff[env_ids, 2] = self.ee_goal_buff[env_ids, 2] +  2.0*goal_position_noise * (torch.rand_like(self.ee_goal_buff[env_ids, 2], device=self.device) - 0.5)
         
         if goal_rotation_noise > 0.:
             #randomize goal orientation
@@ -146,6 +147,8 @@ class ArmReacher(ArmBase):
         self.goal_ee_pos = self.ee_goal_buff[..., 0:3]
         self.goal_ee_quat = self.ee_goal_buff[..., 3:7]
         self.goal_ee_rot = quaternion_to_matrix(self.goal_ee_quat)
+
+        self.prev_state_buff[env_ids] = torch.zeros_like(self.prev_state_buff[env_ids])
 
 
         # #reset EE target 
@@ -176,6 +179,9 @@ class ArmReacher(ArmBase):
         reset_data = {}
         goal_dict = dict(ee_goal=self.ee_goal_buff)
         reset_data['goal_dict'] = goal_dict
+
+        self.dynamics_model.reset_idx(env_ids)
+
         return reset_data
 
 

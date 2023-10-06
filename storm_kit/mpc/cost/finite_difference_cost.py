@@ -39,8 +39,7 @@ class FiniteDifferenceCost(nn.Module):
             horizon=self.horizon,
             device=self.device, 
             order=self.order, 
-            full_rank=False,
-            diff_type='forward')
+            full_rank=False)
         
         # self.fd_mat2 = build_fd_matrix(
         #     horizon=self.horizon,
@@ -48,17 +47,17 @@ class FiniteDifferenceCost(nn.Module):
         #     order = self.order, 
         #     prev_state=False, 
         #     full_rank=True)
-        # print(self.fd_mat)
-        # print(self.fd_mat.shape)
-        # input('.....')
         # self.t_mat = None
 
 
-    def forward(self, ctrl_seq, dt):
+    def forward(self, ctrl_seq, dt_seq):
         """
         ctrl_seq: [B X H X d_act]
+        dt_seq: [H x 1]
         """
         deriv = torch.matmul(self.fd_mat, ctrl_seq)
+        dt_inv = 1/dt_seq
+        dt_inv[dt_seq == 0.0] = 0.0
         res = torch.norm(deriv, p=2, dim=-1,keepdim=False)
         cost = self.weight * res
         return cost
