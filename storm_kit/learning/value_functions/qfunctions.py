@@ -85,7 +85,8 @@ class TwinQFunction(nn.Module):
         return [self.net1(input), self.net2(input)]
 
     def forward(self, obs_dict: Dict[str,torch.Tensor], actions: torch.Tensor):
-        return torch.min(*self.all(obs_dict, actions))
+        # return torch.min(*self.all(obs_dict, actions))
+        return torch.max(*self.all(obs_dict, actions))
 
 
 class EnsembleQFunction(nn.Module):
@@ -140,5 +141,7 @@ class EnsembleQFunction(nn.Module):
         #select random unique idxs (without replacement)
         rand_idxs = np.random.choice(self.ensemble_size, size=self.prediction_size, replace=False)
         #return minimum predicted value amongst chosen members
-        return torch.min(self._idx(obs_dict, actions, rand_idxs), dim=-1)[0]
+        # return torch.min(self._idx(obs_dict, actions, rand_idxs), dim=-1)[0]
+        return torch.max(self._idx(obs_dict, actions, rand_idxs), dim=-1)[0]
+
         # return torch.min(*self._idx(obs_dict, actions, rand_idxs))

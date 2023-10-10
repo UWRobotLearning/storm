@@ -5,7 +5,7 @@ physics_engine: ${..physics_engine}
 
 # if given, will override the device setting in gym. 
 env:
-  num_envs: ${resolve_default:1,${...num_envs}}
+  num_envs: ${...num_envs}
   envSpacing: 1.5
   episodeLength: 200
   enableDebugVis: False
@@ -105,7 +105,7 @@ sim:
   dt: 0.0166 # 1/60
   substeps: 1
   up_axis: "z"
-  use_gpu_pipeline: ${eq:${...pipeline},"gpu"}
+  use_gpu_pipeline: ${...use_gpu_pipeline}
   gravity: [0.0, 0.0, -9.81]
   physx:
     num_threads: ${....num_threads}

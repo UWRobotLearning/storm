@@ -202,8 +202,6 @@ class FrankaEnv(): #VecTask
         self.sim_params.gravity.x = 0
         self.sim_params.gravity.y = 0
         self.sim_params.gravity.z = -9.81
-        # self.sim = super().create_sim(
-        #     self.device_id, self.graphics_device_id, self.physics_engine, self.sim_params)
         self.sim = _create_sim_once(self.gym, self.device_id, self.graphics_device_id, self.physics_engine, self.sim_params)
         if self.sim is None:
             print("*** Failed to create sim")
@@ -224,6 +222,13 @@ class FrankaEnv(): #VecTask
 
         robot_asset, robot_dof_props = self.load_robot_asset()
         table_asset, table_dims, table_color = self.load_table_asset()
+
+        # temp = self.world_model["coll_objs"]["cube"]["table"]["pose"]
+        table_pose_world = gymapi.Transform()
+        table_pose_world.p = gymapi.Vec3(0, 0, 0 + table_dims.z)
+        table_pose_world.r = gymapi.Quat(0., 0., 0., 1.)
+
+        #load objects
         self.num_object_bodies = 0
         self.num_object_shapes = 0
         if self.num_objects > 0:
@@ -233,12 +238,13 @@ class FrankaEnv(): #VecTask
                 self.num_object_bodies += self.gym.get_asset_rigid_body_count(object_asset)
                 self.num_object_shapes = self.gym.get_asset_rigid_shape_count(object_asset)
                 object_assets.append(object_asset)
+                object_start_pose_table = gymapi.Transform()
+                # object_start_pose_table.p = gymapi.Vec3(-table_dims.x/2.0 + 0.3 + 0.02 + 0.01 + 0.01, 0.0, table_dims.z/2.0 + 0.02) #0.3
+                object_start_pose_table.p = gymapi.Vec3(0.02 + 0.01 + 0.01, 0.0, table_dims.z/2.0 + 0.02) #0.3
+                object_start_pose_table.r = gymapi.Quat(0.0, 0.0, 0.0, 1.0)
 
+            self.object_start_pose_world =  table_pose_world * object_start_pose_table #convert from franka to world frame
 
-        # temp = self.world_model["coll_objs"]["cube"]["table"]["pose"]
-        table_pose_world = gymapi.Transform()
-        table_pose_world.p = gymapi.Vec3(0, 0, 0 + table_dims.z)
-        table_pose_world.r = gymapi.Quat(0., 0., 0., 1.)
         robot_start_pose_table = gymapi.Transform()
         robot_start_pose_table.p = gymapi.Vec3(-table_dims.x/2.0 + 0.2, 0.0, table_dims.z/2.0)
         robot_start_pose_table.r = gymapi.Quat(0.0, 0.0, 0.0, 1.0)
@@ -297,7 +303,7 @@ class FrankaEnv(): #VecTask
 
             if self.num_objects > 0:
                 for i, object_asset in enumerate(object_assets):
-                    object_actor = self.gym.create_actor(env_ptr, object_asset, self.ball_start_pose_world, "ball_{}".format(i), i, 0, 0)
+                    object_actor = self.gym.create_actor(env_ptr, object_asset, self.object_start_pose_world, "ball_{}".format(i), i, 0, 0)
                     self.gym.set_rigid_body_color(env_ptr, object_actor, 0, gymapi.MESH_VISUAL_AND_COLLISION, object_color)
                     body_props = self.gym.get_actor_rigid_body_properties(env_ptr, object_actor)
                     for b in range(len(body_props)):
@@ -335,13 +341,24 @@ class FrankaEnv(): #VecTask
         # create some wrapper tensors for different slices
         # self.franka_default_dof_pos = to_torch([1.157, -1.066, -0.155, -2.239, -1.841, 1.003, 0.469], device=self.device)
         self.robot_default_dof_pos = to_torch([0.0, -0.7853, 0.0, -2.3561, 0.0, 1.5707, 0.7853], device=self.device)
-
         self.robot_dof_state = self.dof_state[:, :self.num_robot_dofs]
         self.robot_dof_pos = self.robot_dof_state[..., 0]
         self.robot_dof_vel = self.robot_dof_state[..., 1]
         self.robot_dof_acc = torch.zeros_like(self.robot_dof_vel)
         self.episode_time = torch.zeros(self.num_envs, 1, device=self.device)
         self.last_sim_time = torch.zeros(self.num_envs, 1, device=self.device)
+
+        #Note: this needs to change to support more than one object!!!
+        if self.num_objects > 0:
+            self.object_state = self.root_state[:,-1]
+            self.init_object_state = torch.zeros(self.num_envs, 13, device=self.device)
+            self.init_object_state[:,0] = self.object_start_pose_world.p.x
+            self.init_object_state[:,1] = self.object_start_pose_world.p.y
+            self.init_object_state[:,2] = self.object_start_pose_world.p.z
+            self.init_object_state[:,3] = self.object_start_pose_world.r.x
+            self.init_object_state[:,4] = self.object_start_pose_world.r.y
+            self.init_object_state[:,5] = self.object_start_pose_world.r.z
+            self.init_object_state[:,6] = self.object_start_pose_world.r.w
 
 
         #TODO: Figure out if 13 is right
@@ -389,8 +406,10 @@ class FrankaEnv(): #VecTask
         asset_options.use_mesh_materials = True
         robot_asset = self.gym.load_asset(self.sim, asset_root, robot_asset_file, asset_options)
 
-        self.robot_dof_stiffness = to_torch([60.0, 60.0, 60.0, 60.0, 40.0, 30.0, 20.0], dtype=torch.float, device=self.device)
-        self.robot_dof_damping = to_torch([1.0, 1.0, 1.0, 1.0, 0.75, 0.5, 0.1], dtype=torch.float, device=self.device)
+        # self.robot_dof_stiffness = to_torch([60.0, 60.0, 60.0, 60.0, 40.0, 30.0, 20.0], dtype=torch.float, device=self.device)
+        self.robot_dof_stiffness = to_torch([1000.0, 1000.0, 1000.0, 1000.0, 4000.0, 3000.0, 2000.0], dtype=torch.float, device=self.device)
+        # self.robot_dof_damping = to_torch([1.0, 1.0, 1.0, 1.0, 0.75, 0.5, 0.1], dtype=torch.float, device=self.device)
+        self.robot_dof_damping = to_torch([10.0, 10.0, 10.0, 10.0, 7.5, 5.0, 1.0], dtype=torch.float, device=self.device)
 
         self.num_robot_bodies = self.gym.get_asset_rigid_body_count(robot_asset)
         self.num_robot_dofs = self.gym.get_asset_dof_count(robot_asset)
@@ -502,6 +521,7 @@ class FrankaEnv(): #VecTask
         acc_des = acc_des + acc_des_feedback
 
         torques = torch.einsum('ijk,ik->ij', self.robot_mass, acc_des)
+        # print(self.robot_mass)
 
 
         torques = tensor_clamp(torques, min=-1.*self.robot_effort_lims, max=self.robot_effort_lims)
@@ -599,9 +619,6 @@ class FrankaEnv(): #VecTask
         # if self.num_states > 0:
         #     self.obs_dict["states"] = self.get_state()
 
-        # return self.obs_dict, self.rew_buf.to(self.rl_device), self.reset_buf.to(self.rl_device), self.extras
-
-
         return state_dict, self.reset_buf.to(self.rl_device)
 
 
@@ -647,7 +664,6 @@ class FrankaEnv(): #VecTask
                 # sphere_geom = gymutil.WireframeSphereGeometry(0.02, 12, 12, sphere_pose, color=(1, 1, 0))
                 # gymutil.draw_lines(axes_geom, self.gym, self.viewer, self.envs[i], ee_pose_world)
                 # gymutil.draw_lines(sphere_geom, self.gym, self.viewer, self.envs[i], ee_pose_world)
-        # print('draw time', time.time()-st)
 
         return state_dict
 
@@ -666,6 +682,19 @@ class FrankaEnv(): #VecTask
             'prev_action': self.prev_action_buff.to(self.rl_device),
             'tstep': self.episode_time
         }
+
+        if self.num_objects > 0:
+            #Note: This won't work for more than one object
+            object_pos = self.object_state[:,0:3]
+            object_rot = self.object_state[:,3:7]
+            object_vel = self.object_state[:,7:10]
+            object_ang_vel = self.object_state[:,10:13]
+
+            state_dict['object_pos'] = object_pos.to(self.rl_device)
+            state_dict['object_rot'] = object_rot.to(self.rl_device)
+            state_dict['object_vel'] = object_vel.to(self.rl_device)
+            state_dict['object_ang_vel'] = object_ang_vel.to(self.rl_device)
+
         return state_dict
     
     def reset_idx(self, env_ids, reset_data=None):

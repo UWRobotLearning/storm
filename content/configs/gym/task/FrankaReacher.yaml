@@ -9,7 +9,6 @@ env:
   envSpacing: 1.5
   episodeLength: 500
   enableDebugVis: False
-  # controlSpace: "vel_2"
   controlFrequencyInv: 1
   num_objects: 0
   # clipObservations: 5.0
@@ -41,7 +40,7 @@ rollout:
     learnable_rigid_body_config:
       learnable_links: []
     name: "franka_panda"
-    max_acc: 10.0 
+    max_acc: 100.0 
     dt_traj_params:
       base_dt: 0.0166 #0.02 #0.0166 #0.01 #0.02
       base_ratio: 1.0
@@ -102,7 +101,7 @@ rollout:
       vec_weight: [1.0, 1.0, 1.0] 
 
     stop_cost:
-      weight: 50.0 #10.0 #10.0 
+      weight: 50.0 #50.0 #10.0 #10.0 
       max_nlimit: 2.0 #1.5 #0.2
 
     stop_cost_acc:
@@ -110,7 +109,7 @@ rollout:
       max_limit: 0.1 #0.2
 
     smooth_cost:
-      weight: 1.0
+      weight: 0.0
       order: 1
 
     primitive_collision:
@@ -179,7 +178,7 @@ sim:
   dt: 0.0166 # 1/60
   substeps: 1
   up_axis: "z"
-  use_gpu_pipeline: ${eq:${...pipeline},"gpu"}
+  use_gpu_pipeline: ${...use_gpu_pipeline}
   gravity: [0.0, 0.0, -9.81]
   physx:
     num_threads: ${....num_threads}

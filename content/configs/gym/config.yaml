@@ -4,7 +4,7 @@ task_name: ${task.name}
 experiment: ''
 
 # if set to positive integer, overrides the default number of environments
-num_envs: ''
+num_envs: 1
 
 # seed - set to -1 to choose random seed
 seed: 42
@@ -18,7 +18,7 @@ max_iterations: ''
 #  'physx' or 'flex'
 physics_engine: 'physx'
 # whether to use cpu or gpu pipeline
-pipeline: 'gpu'
+use_gpu_pipeline: True
 # device for running physics simulation
 sim_device: 'cuda:0'
 # device to run RL

@@ -20,7 +20,7 @@
 # LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
 # FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 # DEALINGS IN THE SOFTWARE.#
-from typing import Dict, Optional
+from typing import Dict, Optional, Tuple
 import torch
 from torch.profiler import record_function
 
@@ -54,26 +54,27 @@ class ArmPusher(ArmBase):
         #                                     quat_inputs=False)
 
         self.goal_cost = PoseCost(**cfg['cost']['goal_pose'], device=self.device)
-        self.default_ee_goal = torch.tensor([0.05, 0.0, 0.3, 0.0, 0.707, 0.707, 0.0], device=self.device)
+        self.task_specs = cfg['task_specs']
+        self.default_ee_goal = torch.tensor(self.task_specs['default_ee_target'], device=self.device)
         self.init_buffers()
 
-
     def init_buffers(self):
-        self.ee_goal_buff = torch.zeros(self.num_instances, 7, device=self.device)
-
+        # self.ee_goal_buff = torch.zeros(self.num_instances, 7, device=self.device)
+        self.object_goal_buff = torch.zeros(self.num_instances, 2, device=self.device)
+        self.object_init_pos_buff = torch.zeros(self.num_instances, 2, device=self.device)
+        self.prev_state_buff = torch.zeros(self.num_instances, 10, 22, device=self.device)
 
     def compute_cost(
             self, 
             state_dict: Dict[str, torch.Tensor], 
             action_batch: Optional[torch.Tensor]=None,
             termination: Optional[Dict[str, torch.Tensor]]=None, 
-            no_coll: bool=False, horizon_cost: bool=True, return_dist:bool=False):
+            horizon_cost: bool=True, return_dist:bool=False):
 
-        cost, cost_terms, state_dict = super(ArmReacher, self).compute_cost(
+        cost, cost_terms, state_dict = super(ArmPusher, self).compute_cost(
             state_dict = state_dict,
             action_batch = action_batch,
             termination = termination,
-            # no_coll = no_coll, 
             horizon_cost = horizon_cost)
 
         # num_instances, curr_batch_size, num_traj_points, _ = state_dict['state_seq'].shape
@@ -88,7 +89,6 @@ class ArmPusher(ArmBase):
         goal_ee_rot = self.goal_ee_rot
         goal_state = self.goal_state
         
-
         # with record_function("pose_cost"):
         #     goal_cost, rot_err_norm, goal_dist = self.goal_cost.forward(ee_pos_batch, ee_rot_batch,
         #                                                                 goal_ee_pos, goal_ee_rot)
@@ -98,22 +98,7 @@ class ArmPusher(ArmBase):
                                                                         goal_ee_pos, goal_ee_rot)
             # goal_cost[:,:,0:-1] = 0.
         cost += goal_cost
-        
-        # joint l2 cost
-        if self.cfg['cost']['joint_l2']['weight'] > 0.0 and goal_state is not None:
-            disp_vec = state_batch[:,:,:,0:self.n_dofs] - goal_state[:,0:self.n_dofs]
-            dist_cost, _ = self.dist_cost.forward(disp_vec)
-            cost += dist_cost #self.dist_cost.forward(disp_vec)
-
-        if return_dist:
-            return cost, state_dict, rot_err_norm, goal_dist
-
-        if self.cfg['cost']['zero_acc']['weight'] > 0:
-            cost += self.zero_acc_cost.forward(state_batch[:, :, self.n_dofs*2:self.n_dofs*3], goal_dist=goal_dist)
-
-        if self.cfg['cost']['zero_vel']['weight'] > 0:
-            cost += self.zero_vel_cost.forward(state_batch[:, :, self.n_dofs:self.n_dofs*2], goal_dist=goal_dist)
-        
+                
         return cost, cost_terms, state_dict
 
 
@@ -130,11 +115,26 @@ class ArmPusher(ArmBase):
         return self.reset_idx(env_ids)
 
     def reset_idx(self, env_ids):
+        goal_position_noise = self.task_specs['target_position_noise']
+        goal_rotation_noise = self.task_specs['target_rotation_noise']
 
         self.ee_goal_buff[env_ids] = self.default_ee_goal
+
+        if goal_position_noise > 0.:
+            #randomize goal position around the default
+            self.ee_goal_buff[env_ids, 0] = self.ee_goal_buff[env_ids, 0] +  2.0*goal_position_noise * (torch.rand_like(self.ee_goal_buff[env_ids, 0], device=self.device) - 0.5)
+            self.ee_goal_buff[env_ids, 1] = self.ee_goal_buff[env_ids, 1] +  2.0*goal_position_noise * (torch.rand_like(self.ee_goal_buff[env_ids, 1], device=self.device) - 0.5)
+            self.ee_goal_buff[env_ids, 2] = self.ee_goal_buff[env_ids, 2] +  2.0*goal_position_noise * (torch.rand_like(self.ee_goal_buff[env_ids, 2], device=self.device) - 0.5)
+        
+        if goal_rotation_noise > 0.:
+            #randomize goal orientation
+            raise NotImplementedError('oritentation randomization not implemented')
+
         self.goal_ee_pos = self.ee_goal_buff[..., 0:3]
         self.goal_ee_quat = self.ee_goal_buff[..., 3:7]
         self.goal_ee_rot = quaternion_to_matrix(self.goal_ee_quat)
+
+        self.prev_state_buff[env_ids] = torch.zeros_like(self.prev_state_buff[env_ids])
 
 
         # #reset EE target 
@@ -165,6 +165,9 @@ class ArmPusher(ArmBase):
         reset_data = {}
         goal_dict = dict(ee_goal=self.ee_goal_buff)
         reset_data['goal_dict'] = goal_dict
+
+        self.dynamics_model.reset_idx(env_ids)
+
         return reset_data
 
 
@@ -232,7 +235,7 @@ class ArmPusher(ArmBase):
         #     goal_ee_pos - state_dict['ee_pos_seq']), dim=-1)
         obs = torch.cat((
             obs, 
-            self.ee_goal_buff,
+            self.ee_goal_buff[:, 0:3],
             state_dict['ee_pos_seq'],
             self.ee_goal_buff[:, 0:3] - state_dict['ee_pos_seq']), dim=-1)
 
@@ -257,7 +260,7 @@ class ArmPusher(ArmBase):
             goal_ee_quat = ee_goal[:, 3:7]
             goal_ee_rot = None        
         
-        super(ArmReacher, self).update_params(retract_state=retract_state)
+        super(ArmPusher, self).update_params(retract_state=retract_state)
         
         if goal_ee_pos is not None:
             self.goal_ee_pos = torch.as_tensor(goal_ee_pos, dtype=self.dtype, device=self.device) #.unsqueeze(0)
@@ -278,8 +281,14 @@ class ArmPusher(ArmBase):
 
     @property
     def obs_dim(self)->int:
-        return 27
+        return 23
 
     @property
     def action_dim(self)->int:
         return self.n_dofs
+
+    @property
+    def action_lims(self)->Tuple[torch.Tensor, torch.Tensor]:
+        act_highs = torch.tensor([self.cfg['model']['max_acc']] * self.action_dim,  device=self.device)
+        act_lows = torch.tensor([-1.0 * self.cfg['model']['max_acc']] * self.action_dim, device=self.device)
+        return act_lows, act_highs

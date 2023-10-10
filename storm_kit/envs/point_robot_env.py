@@ -331,6 +331,8 @@ class PointRobotEnv():
         self.robot_dof_vel = self.robot_dof_state[..., 1]
         self.robot_dof_acc = torch.zeros_like(self.robot_dof_vel)
         self.tstep = torch.ones(self.num_envs, 1, device=self.device)
+        self.episode_time = torch.zeros(self.num_envs, 1, device=self.device)
+        self.last_sim_time = torch.zeros(self.num_envs, 1, device=self.device)
 
         self.robot_state = self.rigid_body_states[:, 2]
         self.init_robot_state = torch.zeros(self.num_envs, 13, device=self.device)

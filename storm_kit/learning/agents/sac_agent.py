@@ -145,7 +145,6 @@ class SACAgent(Agent):
             train_metrics['policy_loss'] = policy_loss.item()
             train_metrics['policy_entropy'] = log_pi_new_actions.item()
 
-
             #Update temperature
             alpha_loss = torch.tensor([0.0])
             if self.automatic_entropy_tuning:
@@ -183,7 +182,9 @@ class SACAgent(Agent):
         
         alpha = self.log_alpha.exp() #torch.exp(self.log_alpha).item()
         self.critic.requires_grad_(True)
-        policy_loss = (alpha * log_pi_new_actions - q_pred).mean() 
+        # policy_loss = (alpha * log_pi_new_actions - q_pred).mean() 
+        policy_loss = (alpha * log_pi_new_actions + q_pred).mean() #signs flipped on Q since we are minimizing costs
+
 
         return policy_loss, log_pi_new_actions.mean()
 
@@ -195,7 +196,6 @@ class SACAgent(Agent):
         next_obs_batch = batch_dict['next_obs']
         next_state_batch = batch_dict['next_state_dict']
         done_batch = batch_dict['done'].squeeze(-1).float()
-        rew_batch = -1.0 * cost_batch #TODO: fix
 
         with torch.no_grad():
             policy_input = {
@@ -212,11 +212,11 @@ class SACAgent(Agent):
             
             if self.backup_entropy:
                 alpha = self.log_alpha.exp()
-                q_pred_next =  target_pred - alpha * next_actions_log_prob
+                q_pred_next =  target_pred + alpha * next_actions_log_prob # sign is flipped in entropy since we are minimizing costs
             else:
                 q_pred_next = target_pred
 
-            q_target = self.reward_scale * rew_batch +  (1. - done_batch) * self.discount * q_pred_next
+            q_target = self.reward_scale * cost_batch +  (1. - done_batch) * self.discount * q_pred_next
 
         qf_all = self.critic.all({'obs': obs_batch}, act_batch)
         q_target = q_target.unsqueeze(-1).repeat(1, qf_all.shape[-1])
@@ -235,7 +235,10 @@ class SACAgent(Agent):
         # qf_loss = qf1_loss + qf2_loss
 
         # avg_q_value = torch.min(qf1, qf2).mean()
-        avg_q_value = torch.min(qf_all, dim=-1)[0].mean()
+        # avg_q_value = torch.min(qf_all, dim=-1)[0].mean()
+        avg_q_value = torch.max(qf_all, dim=-1)[0].mean() #max instead of min since we are minimizing costs
+
+
 
         return qf_loss, avg_q_value
 

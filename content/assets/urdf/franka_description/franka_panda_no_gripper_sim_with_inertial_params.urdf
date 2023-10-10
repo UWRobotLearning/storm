@@ -43,7 +43,7 @@
     <parent link="panda_link0"/>
     <child link="panda_link1"/>
     <axis xyz="0 0 1"/>
-    <dynamics damping="10.0"/>
+    <!-- <dynamics damping="10.0"/> -->
     <limit effort="87" lower="-2.8973" upper="2.8973" velocity="2.1750"/>
     <dynamics damping="10.0" friction="5.0"/>
   </joint>
@@ -70,7 +70,7 @@
     <parent link="panda_link1"/>
     <child link="panda_link2"/>
     <axis xyz="0 0 1"/>
-    <dynamics damping="10.0"/>
+    <!-- <dynamics damping="10.0"/> -->
     <limit effort="87" lower="-1.7628" upper="1.7628" velocity="2.1750"/>
     <dynamics damping="5.0" friction="2.0"/>
   </joint>
@@ -97,7 +97,7 @@
     <parent link="panda_link2"/>
     <child link="panda_link3"/>
     <axis xyz="0 0 1"/>
-    <dynamics damping="10.0"/>
+    <!-- <dynamics damping="10.0"/> -->
     <limit effort="87" lower="-2.8973" upper="2.8973" velocity="2.1750"/>
     <dynamics damping="5.0" friction="2.0"/>
   </joint>
@@ -124,7 +124,7 @@
     <parent link="panda_link3"/>
     <child link="panda_link4"/>
     <axis xyz="0 0 1"/>    
-    <dynamics damping="10.0"/>
+    <!-- <dynamics damping="10.0"/> -->
     <limit effort="87" lower="-3.0718" upper="-0.0698" velocity="2.1750"/>
     <dynamics damping="1.0" friction="0.5"/>
     <!-- something is weird with this joint limit config
@@ -241,8 +241,7 @@
   </joint>
   <link name="panda_hand">
     <visual>
-      <!-- <origin rpy="-1.57 0.0 0.0" xyz="0 0 0.0"/> -->
-      <origin rpy="0.0 0.0 -1.57" xyz="0 0 0.0"/>
+      <origin rpy="-1.57 0.0 0.0" xyz="0 0 0.0"/>
       <geometry>
         <!--box size="0.01 0.01 0.01"/-->
         <!-- <mesh filename="meshes/visual/hand.dae"/> -->

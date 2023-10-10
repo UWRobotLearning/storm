@@ -37,7 +37,7 @@ agent:
   discount: 0.99
   train_batch_size: 256
   max_buffer_size: 1e6
-  min_buffer_size: 5e3
+  min_buffer_size: 0 #5e3
   num_action_samples: 1
   log_freq: 1
   checkpoint_freq: 500
@@ -47,6 +47,7 @@ agent:
   init_log_alpha: 0.0
   automatic_entropy_tuning: true
   random_ensemble_q: true
+  reward_scale: 1.0
   policy_optimizer:
     __target__: torch.optim.Adam
     lr: 3e-4 #0.0003
