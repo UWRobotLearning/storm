@@ -6,13 +6,11 @@ import sys
 import numpy as np
 import os
 import time
-
 from isaacgym import gymutil, gymtorch, gymapi
 import torch
 from isaacgym.torch_utils import *
 import yaml
 from hydra.utils import instantiate
-
 from storm_kit.differentiable_robot_model.coordinate_transform import CoordinateTransform, quaternion_to_matrix, matrix_to_quaternion, rpy_angles_to_matrix
 from storm_kit.envs.env_utils import tensor_clamp
 
@@ -28,7 +26,7 @@ def _create_sim_once(gym, *args, **kwargs):
         return EXISTING_SIM
 
 
-class PointRobotEnv(): 
+class TrayEnv(): 
     def __init__(self, cfg, rl_device, sim_device, graphics_device_id, headless, virtual_screen_capture, force_render):        
         self.cfg = cfg
 
@@ -57,7 +55,8 @@ class PointRobotEnv():
             self.virtual_display.start()
 
 
-        self.force_render = force_render
+        self.force_render = force_render #testing
+        # self.force_render = False
         self.max_episode_length = self.cfg["env"]["episodeLength"]
         # self.action_scale = self.cfg["env"]["actionScale"]
         self.aggregate_mode = self.cfg["env"]["aggregateMode"]
@@ -107,6 +106,8 @@ class PointRobotEnv():
         # for env_id in range(self.num_envs):
         #     self.extern_actor_params[env_id] = None
 
+        self.effort_control = None
+
         # create envs, sim and viewer
         self.sim_initialized = False
         self.create_sim()
@@ -138,11 +139,12 @@ class PointRobotEnv():
 
             # set the camera position based on up axis
             sim_params = self.gym.get_sim_params(self.sim)
+
             if sim_params.up_axis == gymapi.UP_AXIS_Z:
-                cam_pos = gymapi.Vec3(0.0, 1.0, 1.0)
-                cam_target = gymapi.Vec3(0.0, -1.0, 0.0)
+                cam_pos = gymapi.Vec3(0.0, 2.0, 1.0)
+                cam_target = gymapi.Vec3(0.0, -2.0, 0.0)
             else:
-                cam_pos = gymapi.Vec3(20.0, 3.0, 25.0)
+                cam_pos = gymapi.Vec3(10.0, 3.0, 20.0)
                 cam_target = gymapi.Vec3(10.0, 0.0, 15.0)
 
             self.gym.viewer_camera_look_at(
@@ -157,9 +159,9 @@ class PointRobotEnv():
         """
 
         self.target_buf = torch.zeros(
-            self.num_envs, 3, device=self.device)
+            self.num_envs, 6, device=self.device)
         self.start_buf = torch.zeros(
-            self.num_envs, 3, device=self.device)
+            self.num_envs, 6, device=self.device)
         self.reset_buf = torch.ones(
             self.num_envs, device=self.device, dtype=torch.long)
         self.timeout_buf = torch.zeros(
@@ -176,10 +178,11 @@ class PointRobotEnv():
         #    - call super().create_sim with device args (see docstring)
         #    - create ground plane
         #    - set up environments
-        self.sim_params.up_axis = gymapi.UP_AXIS_Z
-        self.sim_params.gravity.x = 0
-        self.sim_params.gravity.y = 0
-        self.sim_params.gravity.z = -9.81
+        # self.sim_params.up_axis = gymapi.UP_AXIS_Z
+        # self.sim_params.gravity.x = 0
+        # self.sim_params.gravity.y = 0
+        # self.sim_params.gravity.z = -9.81
+        # self.sim_params.gravity.z = +1
         # self.sim = super().create_sim(
         #     self.device_id, self.graphics_device_id, self.physics_engine, self.sim_params)
         self.sim = _create_sim_once(self.gym, self.device_id, self.graphics_device_id, self.physics_engine, self.sim_params)
@@ -192,15 +195,16 @@ class PointRobotEnv():
 
     def _create_ground_plane(self):
         plane_params = gymapi.PlaneParams()
-        plane_params.normal = gymapi.Vec3(0.0, 0.0, 1.0)
+        plane_params.normal = gymapi.Vec3(0.0, 0.0, 1.0) # gymapi.Vec3(0.0, 0.0, 1.0)
         self.gym.add_ground(self.sim, plane_params)
     
-    def _create_envs(self, num_envs, spacing, num_per_row):
+    def _create_envs(self, num_envs, spacing, num_per_row): #table asset mod
         lower = gymapi.Vec3(-spacing, -spacing, 0.0)
         upper = gymapi.Vec3(spacing, spacing, spacing)
 
         robot_asset, robot_dof_props = self.load_robot_asset()
         table_asset, table_dims, table_color = self.load_table_asset()
+        _, table_dims, _ = self.load_table_asset()
 
         table_pose_world = gymapi.Transform()
         table_pose_world.p = gymapi.Vec3(0, 0, 0 + table_dims.z)
@@ -210,8 +214,12 @@ class PointRobotEnv():
         self.robot_start_pose_table.p = gymapi.Vec3(0.0, 0.0, table_dims.z/2.0 + 0.03 + 0.01)
 
         self.robot_start_pose_table.r = gymapi.Quat(0.0, 0.0, 0.0, 1.0)
+        # self.robot_start_pose_table = gymapi.Transform()
+        # self.robot_start_pose_table.p = gymapi.Vec3(0.0, 1.0, 3.0)
+        # self.robot_start_pose_table.r = gymapi.Quat(0.0, 0.0, 0.0, 1.0)
 
         self.robot_pose_world =  table_pose_world * self.robot_start_pose_table #convert from franka to world frame
+        # self.robot_pose_world =   self.robot_start_pose_table #convert from franka to world frame
 
         self.num_object_bodies = 0
         self.num_object_shapes = 0
@@ -299,7 +307,11 @@ class PointRobotEnv():
             self.robots.append(robot_actor)
             self.objects.append(env_objects)
 
-        
+
+            # temp = self.gym.get_actor_rigid_body_dict(env_ptr, 0)
+            # print("##################################################################")
+            # print(temp)
+
         self.init_data()
     
     def init_data(self):
@@ -318,7 +330,7 @@ class PointRobotEnv():
         self.rigid_body_states = gymtorch.wrap_tensor(rigid_body_tensor).view(self.num_envs, -1, 13)
         self.robot_jacobian = gymtorch.wrap_tensor(jacobian_tensor)
         self.robot_mass = gymtorch.wrap_tensor(mass_tensor)
-        
+
         
         self.robot_default_dof_pos = to_torch([0.0]* self.num_robot_dofs, device=self.device)
         self.robot_dof_state = self.dof_state[:, :self.num_robot_dofs]
@@ -329,7 +341,7 @@ class PointRobotEnv():
         self.episode_time = torch.zeros(self.num_envs, 1, device=self.device)
         self.last_sim_time = torch.zeros(self.num_envs, 1, device=self.device)
 
-        self.robot_state = self.rigid_body_states[:, 2]
+        self.robot_state = self.rigid_body_states[:, 6] #was 2 first, maybe 6
         self.init_robot_state = torch.zeros(self.num_envs, 13, device=self.device)
         self.init_robot_state[:,0] = self.robot_pose_world.p.x
         self.init_robot_state[:,1] = self.robot_pose_world.p.y
@@ -338,7 +350,6 @@ class PointRobotEnv():
         self.init_robot_state[:,4] = self.robot_pose_world.r.y
         self.init_robot_state[:,5] = self.robot_pose_world.r.z
         self.init_robot_state[:,6] = self.robot_pose_world.r.w
-
 
         #Note: this needs to change to support more than one object!!!
         if self.num_objects > 0:
@@ -354,6 +365,7 @@ class PointRobotEnv():
 
         self.num_bodies = self.rigid_body_states.shape[1]
         self.num_dofs = self.gym.get_sim_dof_count(self.sim) // self.num_envs
+        self.effort_control = torch.zeros((self.num_envs, self.num_dofs), dtype=torch.float, device=self.device) 
         self.global_indices = torch.arange(self.num_envs * 3, dtype=torch.int32, 
                                             device=self.device).view(self.num_envs, -1)
         
@@ -371,8 +383,10 @@ class PointRobotEnv():
         self._update_states()
         
     def load_robot_asset(self):
+        # asset_root = "/home/navneet/storm/content/assets"
         asset_root = os.path.join(os.path.dirname(os.path.abspath(__file__)), "../../content/assets")
-        robot_asset_file = "urdf/point_robot.urdf"
+
+        robot_asset_file = "urdf/tray.urdf"
 
         if "asset" in self.cfg["env"]:
             asset_root = os.path.join(os.path.dirname(os.path.abspath(__file__)), self.cfg["env"]["asset"].get("assetRoot", asset_root))
@@ -389,11 +403,14 @@ class PointRobotEnv():
         asset_options.use_mesh_materials = True
         robot_asset = self.gym.load_asset(self.sim, asset_root, robot_asset_file, asset_options)
 
+        # print(robot_asset_file, asset_root, robot_asset)
+
         self.num_robot_bodies = self.gym.get_asset_rigid_body_count(robot_asset)
         self.num_robot_dofs = self.gym.get_asset_dof_count(robot_asset)
         self.num_robot_shapes = self.gym.get_asset_rigid_shape_count(robot_asset)
         print("num robot bodies: ", self.num_robot_bodies)
         print("num robot dofs: ", self.num_robot_dofs)
+        # print(self.gym.get_asset_dof_names(robot_asset))
 
         # set franka dof properties
         robot_dof_props = self.gym.get_asset_dof_properties(robot_asset)
@@ -425,6 +442,7 @@ class PointRobotEnv():
         table_dims=  gymapi.Vec3(table_dims[0], table_dims[1], table_dims[2])
         table_asset_options = gymapi.AssetOptions()
         # table_asset_options.armature = 0.001
+        table_asset_options.disable_gravity = True
         table_asset_options.fix_base_link = True
         # table_asset_options.thickness = 0.002
         table_asset = self.gym.create_box(self.sim, table_dims.x, table_dims.y, table_dims.z,
@@ -454,56 +472,42 @@ class PointRobotEnv():
         print("num object bodies: ", self.num_object_bodies)
         object_color = gymapi.Vec3(0.0, 0.0, 1.0)
 
-        return object_asset, object_color    
-
+        return object_asset, object_color   
 
     def pre_physics_step(self, actions: torch.Tensor):
         # implement pre-physics simulation code here
         #    - e.g. apply actions
-        pos_des = actions[:, 0:self.num_dofs].clone().to(self.device)
-        vel_des = actions[:, self.num_dofs:2*self.num_dofs].clone().to(self.device)
+        pos_des = actions[:, :3].clone().to(self.device)
+        vel_des = actions[:, 3:2*3].clone().to(self.device)
         #feedforward component of desired acceleration
-        acc_des = actions[:, 2*self.num_dofs:3*self.num_dofs].clone().to(self.device)
-        
+        acc_des = actions[:, 2*3:3*3].clone().to(self.device)
         if pos_des.ndim == 3:
             pos_des = pos_des[:, 0]
             vel_des = vel_des[:, 0]
             acc_des = acc_des[:, 0]
-        
-        curr_robot_pos = self.robot_state[:, 0:2]
-        curr_robot_vel = self.robot_state[:, 7:9]
+
+        curr_robot_pos = self.robot_state[:, 0:3]
+        curr_robot_vel = self.robot_state[:, 7:10]
+
+        # curr_robot_pos = self.robot_state[:, 0:6]
+        # curr_robot_vel = self.robot_state[:, 7:13]
+        # print(curr_robot_pos, curr_robot_vel)
         # feedforward_torques = torch.einsum('ijk,ik->ij', self.robot_mass, acc_des)
-        # feedback_torques =  10.0 * (pos_des - curr_robot_pos) + 1.0 * (vel_des - curr_robot_vel)      
+        # # print(feedforward_torques, feedforward_torques.shape)
+        # feedback_torques =  1 * (pos_des - curr_robot_pos) + 10* (vel_des - curr_robot_vel)      
         # torques = feedforward_torques + feedback_torques
 
-        acc_des_feedback = 50.0 * (pos_des - curr_robot_pos) + 1.0 * (vel_des - curr_robot_vel)  
+        acc_des_feedback = 1.0 * (pos_des - curr_robot_pos) + 1.0 * (vel_des - curr_robot_vel)  
         acc_des = acc_des + acc_des_feedback
-        torques = torch.einsum('ijk,ik->ij', self.robot_mass, acc_des)
 
-        torques = tensor_clamp(torques, min=-1.*self.robot_effort_lims, max=self.robot_effort_lims)        
-        self.gym.set_dof_actuation_force_tensor(self.sim, gymtorch.unwrap_tensor(torques))
+        robot_mass = self.robot_mass[:, 0:3,0:3] #only taking first three components, but this must change later!!
 
+        torques = torch.einsum('ijk,ik->ij', robot_mass, acc_des)
+        self.effort_control[:,:3] = torques
 
-    # def pre_physics_step(self, action_dict: Dict[str, torch.tensor]):
-    #     # implement pre-physics simulation code here
-    #     #    - e.g. apply actions
-    #     if 'raw_action' in action_dict:
-    #         actions = action_dict['raw_action'].clone().to(self.device)
-    #         if actions.ndim == 3:
-    #             actions = actions[:, 0]
-    #     else:
-    #         pos_des = action_dict['q_pos'].clone().to(self.device)
-    #         vel_des = action_dict['q_vel'].clone().to(self.device)
-    #         acc_des = action_dict['q_acc'].clone().to(self.device)
-    #         if pos_des.ndim == 3:
-    #             pos_des = pos_des[:, 0]
-    #             vel_des = vel_des[:, 0]
-    #             acc_des = acc_des[:, 0]
-    #         curr_robot_pos = self.robot_state[:, 0:2]
-    #         curr_robot_vel = self.robot_state[:, 7:9]
-    #         actions =  -1.0 * (curr_robot_pos - pos_des) - 0.01 * (curr_robot_vel- vel_des)      
-    #     actions = tensor_clamp(actions, min=-1.*self.robot_effort_lims, max=self.robot_effort_lims)
-    #     self.gym.set_dof_actuation_force_tensor(self.sim, gymtorch.unwrap_tensor(actions))
+        torques = tensor_clamp(self.effort_control, min=-1.*self.robot_effort_lims, max=self.robot_effort_lims)
+        # torques[0][2] = 0 #for now but have to debug later
+        self.gym.set_dof_actuation_force_tensor(self.sim, gymtorch.unwrap_tensor(self.effort_control))
 
     def step(self, actions: Dict[str, torch.tensor]): # -> Tuple[Dict[str, torch.Tensor], torch.Tensor, torch.Tensor, Dict[str, Any]]:
 
@@ -571,14 +575,18 @@ class PointRobotEnv():
         tstep *= self.tstep
         robot_pos = self.robot_state[:, 0:3]
         robot_vel = self.robot_state[:, 7:10]
-        robot_acc = self.robot_dof_acc
+        robot_acc = torch.zeros_like(robot_vel)
+
+        # print('state', self.robot_state)
+        # print('pos', robot_pos)
 
         state_dict = {
-            'q_pos': robot_pos[:,0:2].to(self.rl_device),
-            'q_vel': robot_vel[:,0:2].to(self.rl_device),
-            'q_acc': robot_acc[:,0:2].to(self.rl_device),
+            'q_pos': robot_pos.to(self.rl_device),
+            'q_vel': robot_vel.to(self.rl_device),
+            'q_acc': robot_acc.to(self.rl_device),
             'tstep': tstep
         }
+
         if self.num_objects > 0:
             #Note: This won't work for more than one object
             object_pos = self.object_state[:,0:3]
@@ -590,6 +598,7 @@ class PointRobotEnv():
             state_dict['object_rot'] = object_rot[:,0:2].to(self.rl_device)
             state_dict['object_vel'] = object_vel[:,0:2].to(self.rl_device)
             state_dict['object_ang_vel'] = object_ang_vel[:,0:2].to(self.rl_device)
+
 
 
         return state_dict
@@ -626,27 +635,23 @@ class PointRobotEnv():
             if 'goal_dict' in reset_data:
                 self.update_goal(reset_data['goal_dict'])
             
-            if 'start_dict' in reset_data:
-                self.update_start(reset_data['start_dict'])
-                if self.num_objects > 0:
-                    #reset object
-                    self.object_state[env_ids, 0:2] = self.start_buf[env_ids][env_ids, 0:2].clone()
-                    self.object_state[env_ids, 7:9] = torch.zeros(self.num_envs, 2, device=self.rl_device)
-                    pos = self.robot_default_dof_pos.unsqueeze(0)
-                    self.robot_dof_pos[env_ids, :] = pos
-                    self.robot_dof_vel[env_ids, :] = torch.zeros_like(self.robot_dof_vel[env_ids])
-                    self.gym.set_actor_root_state_tensor_indexed(
-                        self.sim, gymtorch.unwrap_tensor(self.root_state),
-                        gymtorch.unwrap_tensor(multi_env_ids_object_int32), len(multi_env_ids_object_int32))
+            # if 'start_dict' in reset_data:
+            #     self.update_start(reset_data['start_dict'])
+            #     if self.num_objects > 0:
+            #         #reset object
+            #         self.object_state[env_ids, 0:2] = self.start_buf[env_ids][env_ids, 0:2].clone()
+            #         self.object_state[env_ids, 7:9] = torch.zeros(self.num_envs, 2, device=self.rl_device)
+            #         pos = self.robot_default_dof_pos.unsqueeze(0)
+            #         self.robot_dof_pos[env_ids, :] = pos
+            #         self.robot_dof_vel[env_ids, :] = torch.zeros_like(self.robot_dof_vel[env_ids])
+            #         self.gym.set_actor_root_state_tensor_indexed(
+            #             self.sim, gymtorch.unwrap_tensor(self.root_state),
+            #             gymtorch.unwrap_tensor(multi_env_ids_object_int32), len(multi_env_ids_object_int32))
 
                 # else:
                 #     self.robot_state[env_ids, 0:2] = self.start_buf[env_ids, 0:2].clone()
                 #     self.robot_dof_pos[env_ids, :] =  self.robot_default_dof_pos.unsqueeze(0)
                 #     self.robot_dof_vel[env_ids, :] = torch.zeros_like(self.robot_dof_vel[env_ids])
-
-
-        
-
         #update buffers
         self.progress_buf[env_ids] = 0
         self.reset_buf[env_ids] = 0
@@ -666,8 +671,6 @@ class PointRobotEnv():
             self.start_buf = start_dict['object_start_pos']
         else:
             self.start_buf = start_dict['robot_start_pos']
-    
-
         
     def render(self, mode="rgb_array"):
         """Draw the frame to the viewer, and check for keyboard events."""
@@ -735,15 +738,15 @@ class PointRobotEnv():
             self.gym.clear_lines(self.viewer)
             for i in range(self.num_envs):
                 # Plot sphere at target
-                sphere_rot = gymapi.Quat.from_euler_zyx(0.0, 0, 0)
+                sphere_rot = gymapi.Quat.from_euler_zyx(0.0, 0, 0.0)
                 sphere_pose = gymapi.Transform(r=sphere_rot)
                 sphere_geom = gymutil.WireframeSphereGeometry(0.02, 12, 12, sphere_pose, color=(0, 1, 0))
-                target_pos = self.target_buf[i, 0:2]
-                if self.num_objects > 0:
-                    z = self.init_object_state[i,2]
-                else:
-                    z = self.robot_pose_world.p.z
-                target_pos = gymapi.Vec3(x=target_pos[0], y=target_pos[1], z=z) 
+                target_pos = self.target_buf[i, 0:3]
+                # if self.num_objects > 0:
+                #     z = self.init_object_state[i,2]
+                # else:
+                # z = self.robot_pose_world.p.z
+                target_pos = gymapi.Vec3(x=target_pos[0], y=target_pos[1], z=target_pos[2]) 
                 target_pose = gymapi.Transform(p=target_pos)
                 gymutil.draw_lines(sphere_geom, self.gym, self.viewer, self.envs[i], target_pose)
 
@@ -762,7 +765,7 @@ class PointRobotEnv():
         # check correct up-axis
         if config_sim["up_axis"] not in ["z", "y"]:
             msg = f"Invalid physics up-axis: {config_sim['up_axis']}"
-            print(msg)
+            # print(msg)
             raise ValueError(msg)
 
         # assign general sim parameters
@@ -779,7 +782,7 @@ class PointRobotEnv():
 
         # assign gravity
         sim_params.gravity = gymapi.Vec3(*config_sim["gravity"])
-
+        # sim_params.gravity = gymapi.Vec3(0, 0, 0)
         # configure physics parameters
         if physics_engine == "physx":
             # set the parameters

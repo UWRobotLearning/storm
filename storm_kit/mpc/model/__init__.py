@@ -24,5 +24,6 @@ from .model_base import DynamicsModelBase
 from .urdf_kinematic_model import URDFKinematicModel
 from .urdf_kinematic_model_baseline import URDFKinematicModelBaseline
 from .simple_model import HolonomicModel
+from .tray_model import SixDOFTrayRobotModel
 
 #__all__ = ['DynamicsModelBase', 'URDFKinematicModel', 'HolonomicModel']

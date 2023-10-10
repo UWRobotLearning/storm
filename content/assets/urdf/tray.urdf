@@ -1,0 +1,170 @@
+<?xml version="1.0"?>
+<robot name="tray">
+  <link name="base_link" />
+  <link name="translation_x" />
+  <link name="translation_y" />
+  <link name="translation_z" />
+
+  <link name="tray_link">
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <box size="0.25 0.25 0.01" />
+      </geometry>
+      <material name="tray_material">
+        <color rgba="0.8 0.8 0.8 1.0" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <box size="0.25 0.25 0.01" />
+      </geometry>
+      <material name="tray_material">
+        <color rgba="0.8 0.8 0.8 1.0" />
+      </material>
+    </collision>
+    <inertial>
+      <mass value="0.5"/>
+      <inertia ixx="0.05" ixy="0.0" ixz="0.0" iyy="0.05" iyz="0.0" izz="0.05"/>
+    </inertial>
+  </link>
+
+  <link name="wall_1">
+    <visual>
+      <origin xyz="0.1225 0 0.02" rpy="0 0 0" />
+      <geometry>
+        <box size="0.005 0.25 0.03" />
+      </geometry>
+      <material name="tray_material" />
+    </visual>
+    <collision>
+      <origin xyz="0.1225 0 0.02" rpy="0 0 0" />
+      <geometry>
+        <box size="0.005 0.25 0.03" />
+      </geometry>
+      <material name="tray_material">
+        <color rgba="0.8 0.8 0.8 1.0" />
+      </material>
+    </collision>
+    <inertial>
+      <mass value="0.5"/>
+      <inertia ixx="0.05" ixy="0.0" ixz="0.0" iyy="0.05" iyz="0.0" izz="0.05"/>
+    </inertial>
+  </link>
+  <link name="wall_2">
+    <visual>
+      <origin xyz="-0.1225 0 0.02" rpy="0 0 0" />
+      <geometry>
+        <box size="0.005 0.25 0.03" />
+      </geometry>
+      <material name="tray_material" />
+    </visual>
+    <collision>
+      <origin xyz="-0.1225 0 0.02" rpy="0 0 0" />
+      <geometry>
+        <box size="0.005 0.25 0.03" />
+      </geometry>
+      <material name="tray_material">
+        <color rgba="0.8 0.8 0.8 1.0" />
+      </material>
+    </collision>
+    <inertial>
+      <mass value="0.5"/>
+      <inertia ixx="0.05" ixy="0.0" ixz="0.0" iyy="0.05" iyz="0.0" izz="0.05"/>
+    </inertial>
+  </link>
+  <link name="wall_3">
+    <visual>
+      <origin xyz="0 0.1225 0.02" rpy="0 0 0" />
+      <geometry>
+        <box size="0.25 0.005 0.03" />
+      </geometry>
+      <material name="tray_material" />
+    </visual>
+    <collision>
+      <origin xyz="0 0.1225 0.02" rpy="0 0 0" />
+      <geometry>
+        <box size="0.25 0.005 0.03" />
+      </geometry>
+      <material name="tray_material">
+        <color rgba="0.8 0.8 0.8 1.0" />
+      </material>
+    </collision>
+    <inertial>
+      <mass value="0.5"/>
+      <inertia ixx="0.05" ixy="0.0" ixz="0.0" iyy="0.05" iyz="0.0" izz="0.05"/>
+    </inertial>
+  </link>
+  <link name="wall_4">
+    <visual>
+      <origin xyz="0 -0.1225 0.02" rpy="0 0 0" />
+      <geometry>
+        <box size="0.25 0.005 0.03" />
+      </geometry>
+      <material name="tray_material" />
+    </visual>
+    <collision>
+      <origin xyz="0 -0.1225 0.02" rpy="0 0 0" />
+      <geometry>
+        <box size="0.25 0.005 0.03" />
+      </geometry>
+      <material name="tray_material">
+        <color rgba="0.8 0.8 0.8 1.0" />
+      </material>
+    </collision>
+  </link>
+  
+  <joint name="prismatic_joint_x" type="prismatic">
+    <axis xyz="1 0 0"/>
+    <origin xyz="0 0 0"/>
+    <parent link="base_link"/>
+    <child link="translation_x"/>
+    <limit effort="1000.0" lower="-2" upper="2" velocity="100"/>
+  </joint>
+  <joint name="prismatic_joint_y" type="prismatic">
+    <axis xyz="0 1 0"/>
+    <origin xyz="0 0 0"/>
+    <parent link="translation_x"/>
+    <child link="translation_y"/>
+    <limit effort="1000.0" lower="-2" upper="2" velocity="100"/>
+  </joint>
+  <joint name="prismatic_joint_z" type="prismatic">
+    <axis xyz="0 0 1"/>
+    <origin xyz="0 0 0"/>
+    <parent link="translation_y"/>
+    <child link="translation_z"/>
+    <limit effort="1000.0" lower="-2" upper="2" velocity="100"/>
+  </joint>
+
+  <joint name="spherical_joint" type="spherical">
+    <origin xyz="0 0 0"/>
+    <parent link="translation_z"/>
+    <child link="tray_link"/>
+    <limit effort="1000.0" lower="-4" upper="4" velocity="100"/>
+  </joint>
+
+  <joint name="joint_wall_1" type="fixed">
+    <parent link="tray_link" />
+    <child link="wall_1" />
+    <origin xyz="0.0 0 0.00" />
+  </joint>
+
+  <joint name="joint_wall_2" type="fixed">
+    <parent link="tray_link" />
+    <child link="wall_2" />
+    <origin xyz="0.0 0 0.00" />
+  </joint>
+
+  <joint name="joint_wall_3" type="fixed">
+    <parent link="tray_link" />
+    <child link="wall_3" />
+    <origin xyz="0.0 0 0.00" />
+  </joint>
+
+  <joint name="joint_wall_4" type="fixed">
+    <parent link="tray_link" />
+    <child link="wall_4" />
+    <origin xyz="0.0 0 0.00" />
+  </joint>
+</robot>
