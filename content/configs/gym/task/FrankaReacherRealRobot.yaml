@@ -118,8 +118,8 @@ rollout:
       weight: 0.0
       max_limit: 0.1 #0.2
 
-    jerk_cost:
-      weight: 0.0 
+    smooth_cost:
+      weight: 0.1
       order: 1
 
     primitive_collision:
