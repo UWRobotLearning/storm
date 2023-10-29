@@ -26,7 +26,7 @@ import torch.nn as nn
 # import torch.nn.functional as F
 
 
-from ...differentiable_robot_model.coordinate_transform import CoordinateTransform, quaternion_to_matrix
+from ...differentiable_robot_model.spatial_vector_algebra import CoordinateTransform, quaternion_to_matrix
 
 from ...util_file import get_assets_path, join_path
 from ...geom.sdf.robot import RobotSphereCollision

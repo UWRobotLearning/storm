@@ -20,16 +20,17 @@
 # LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
 # FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 # DEALINGS IN THE SOFTWARE.#
+from .norm_cost import NormCost
 from .dist_cost import DistCost
 from .finite_difference_cost import FiniteDifferenceCost
-from .jacobian_cost import JacobianCost
+# from .deprecated.jacobian_cost import JacobianCost
 from .pose_cost import PoseCost
-from .pose_cost_quaternion import PoseCostQuaternion
+# from .pose_cost_quaternion import PoseCostQuaternion
 from .stop_cost import StopCost
 from .projected_dist_cost import ProjectedDistCost
 from .null_costs import get_inv_null_cost, get_transpose_null_cost
-from .zero_cost import ZeroCost
-from .ee_vel_cost import EEVelCost
+# from .deprecated.zero_cost import ZeroCost
+# from .deprecated.ee_vel_cost import EEVelCost
 from .manipulability_cost import ManipulabilityCost
 
 from .collision_cost import CollisionCost
@@ -37,5 +38,5 @@ from .primitive_collision_cost import PrimitiveCollisionCost
 from .voxel_collision_cost import VoxelCollisionCost
 
 
-__all__ = ['DistCost', 'FiniteDifferenceCost', 'JacobianCost', 'PoseCost', 'PoseCostQuaternion', 'ProjectedDistCost', \
-           'ZeroCost', 'ManipulabilityCost', 'get_inv_null_cost','get_transpose_null_cost']
+__all__ = ['NormCost', 'DistCost', 'FiniteDifferenceCost', 'PoseCost', 'ProjectedDistCost', \
+           'StopCost', 'ManipulabilityCost', 'get_inv_null_cost','get_transpose_null_cost']

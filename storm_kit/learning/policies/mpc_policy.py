@@ -59,6 +59,7 @@ class MPCPolicy(Policy):
         return dist
 
     def get_action(self, obs_dict, deterministic=False, num_samples=1):
+        st=time.time()
         state_dict = obs_dict['states']
         state_dict['prev_action'] = self.prev_action
     
@@ -95,6 +96,7 @@ class MPCPolicy(Policy):
         # }
 
         self.prev_action = action.clone()
+        print(time.time()-st)
         return action
 
 

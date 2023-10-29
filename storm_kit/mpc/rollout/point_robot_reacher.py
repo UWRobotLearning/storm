@@ -26,21 +26,15 @@ from torch.profiler import record_function
 import time
 import matplotlib.pyplot as plt
 
-from ..cost import DistCost, PoseCost, ProjectedDistCost, JacobianCost, ZeroCost, EEVelCost, StopCost, FiniteDifferenceCost
+from ..cost import NormCost
 from ..cost.bound_cost import BoundCost
-from ..cost.manipulability_cost import ManipulabilityCost
-from ..cost import CollisionCost, VoxelCollisionCost, PrimitiveCollisionCost
-from ..model import URDFKinematicModel
 from ...util_file import join_path, get_assets_path
-from ...differentiable_robot_model.coordinate_transform import CoordinateTransform, matrix_to_quaternion, quaternion_to_matrix
 from ..model.integration_utils import build_int_matrix, build_fd_matrix, tensor_step_acc, tensor_step_vel, tensor_step_pos, tensor_step_jerk
 
 
 from storm_kit.mpc.rollout.rollout_base import RolloutBase
 from storm_kit.mpc.model.double_integrator_model import DoubleIntegratorModel
 from storm_kit.mpc.control.control_utils import cost_to_go
-from storm_kit.geom.sim import RigidBody, Material
-from storm_kit.geom.shapes import Sphere
 
 
 class PointRobotReacher(RolloutBase):
@@ -60,9 +54,11 @@ class PointRobotReacher(RolloutBase):
         self.num_instances = cfg['num_instances']
         self.horizon = cfg['horizon']
         self.batch_size = cfg['batch_size']
+        self.n_dofs = cfg['n_dofs']
         self.viz_rollouts = viz_rollouts
         self.value_function = value_function
         self.model = DoubleIntegratorModel(
+            n_dofs = self.n_dofs,
             batch_size = self.cfg['batch_size'],
             horizon = self.cfg['horizon'],
             num_instances = self.num_instances,
@@ -78,43 +74,44 @@ class PointRobotReacher(RolloutBase):
         self.workspace_dims = torch.zeros(2,2, device=self.device)
         self.workspace_dims[:,0] = -1.0 * table_dims / 2.0
         self.workspace_dims[:,1] = table_dims / 2.0
-        self.n_dofs = cfg['n_dofs']
-        self.default_robot_goal = torch.tensor([0.0, 0.0], device=self.device)
-        self.default_robot_init_pos = torch.tensor([0.0, 0.0], device=self.device)
+        self.task_specs = cfg['task_specs']
+        self.default_ee_goal = torch.tensor(self.task_specs['default_ee_target'], device=self.device)
+        self.default_robot_init_pos = torch.tensor([0.0, 0.0, 0.0], device=self.device)
 
         self.init_buffers()
 
-        self.goal_cost = DistCost(
-            weight=10.0,
-            vec_weight=[1.0, 1.0],
+        self.goal_cost = NormCost(
+            weight=50.0,
+            norm_type='squared_l2',
             device=self.device
         )
 
         self.robot_vel_cost = DistCost(
             weight=0.0,
-            vec_weight=[1.0, 1.0],
+            norm_type='squared_l2',
             device=self.device
         )
 
-        self.goal_bonus_weight = 100.0
-        self.alive_bonus = 1.0 #1.0
-
+        # self.goal_bonus_weight = 100.0
+        self.termination_cost_weight = 1.0
+        # self.alive_bonus = 1.0 #1.0
         self.vis_initialized = False
 
 
     def init_buffers(self):
-        self.robot_goal_buff = torch.zeros(self.num_instances, 2, device=self.device)
+        self.ee_goal_buff = torch.zeros(self.num_instances, 7, device=self.device)
         self.robot_init_pos_buff = torch.zeros(self.num_instances, 2, device=self.device)
         self.value_preds_buff = torch.zeros(self.num_instances, self.batch_size, self.horizon, device=self.device)
+        self.termination_buff = torch.zeros(self.num_instances, self.batch_size, self.horizon, device=self.device)
 
     def compute_cost(self, 
             state_dict: Dict[str, torch.Tensor], 
             action_batch: Optional[Dict[str, torch.Tensor]]=None,
             termination: Optional[Dict[str, torch.Tensor]]=None):
         
-        goal_robot_pos = self.robot_goal_buff.unsqueeze(1).unsqueeze(1).repeat(1, self.batch_size, self.horizon, 1)
-        robot_pos = state_dict['q_pos'][..., 0:2].view(self.num_instances, self.batch_size, self.horizon, 2)
-        robot_vel = state_dict['q_vel'][..., 0:2].view(self.num_instances, self.batch_size, self.horizon, 2)
+        goal_robot_pos = self.ee_goal_buff[:, 0:3].unsqueeze(1).unsqueeze(1).repeat(1, self.batch_size, self.horizon, 1)
+        robot_pos = state_dict['q_pos']#.view(self.num_instances, self.batch_size, self.horizon, -1)
+        robot_vel = state_dict['q_vel']#.view(self.num_instances, self.batch_size, self.horizon, -1)
 
         goal_cost, dist = self.goal_cost(
             robot_pos - goal_robot_pos)
@@ -132,12 +129,12 @@ class PointRobotReacher(RolloutBase):
 
 
         if termination is not None:
-            # termination_cost = self.termination_cost_weight * termination 
-            alive_bonus = 1.0 * self.alive_bonus * (1.0 - termination.float())
-            # cost += termination_cost
-            cost -= alive_bonus
-            # cost_terms['termination'] = termination_cost
-            cost_terms['alive_bonus'] = alive_bonus
+            termination_cost = self.termination_cost_weight * termination 
+            cost += termination_cost
+            cost_terms['termination'] = termination_cost
+            # alive_bonus = 1.0 * self.alive_bonus * (1.0 - termination.float())
+            # cost -= alive_bonus
+            # cost_terms['alive_bonus'] = alive_bonus
 
 
         return cost, cost_terms, state_dict
@@ -145,34 +142,36 @@ class PointRobotReacher(RolloutBase):
     def compute_observations(self, 
                              state_dict: Dict[str,torch.Tensor]):
 
-        robot_goal_buff = self.robot_goal_buff.clone()
+        ee_goal_buff = self.ee_goal_buff.clone()
 
         if state_dict['q_pos'].ndim > 2:
             _, batch_size, horizon, _ = state_dict['q_pos'].shape
-            robot_goal_buff = self.robot_goal_buff.unsqueeze(1).unsqueeze(1).repeat(1, batch_size, horizon, 1)
+            ee_goal_buff = self.ee_goal_buff.unsqueeze(1).unsqueeze(1).repeat(1, batch_size, horizon, 1)
 
         robot_pos = state_dict['q_pos']
         robot_vel = state_dict['q_vel']
 
         obs = torch.cat((
             robot_pos, robot_vel,
-            robot_goal_buff, robot_goal_buff - robot_pos,
+            ee_goal_buff[:,0:3], ee_goal_buff[:, 0:3] - robot_pos,
             ), dim=-1)
 
         return obs, state_dict
 
     def compute_termination(self, state_dict: Dict[str,torch.Tensor], act_batch: Dict[str,torch.Tensor]):
-        robot_pos = state_dict['q_pos']
-        x_lims = self.workspace_dims[0]
-        y_lims = self.workspace_dims[1]
-        robot_x = robot_pos[..., 0] 
-        robot_y = robot_pos[..., 1]
-        #termination based on robot
-        termination = (robot_x - self.robot_radius <= x_lims[0]) + (robot_x + self.robot_radius >= x_lims[1])
-        termination += (robot_y - self.robot_radius <= y_lims[0]) + (robot_y + self.robot_radius >= y_lims[1])
-        #resolve all termination conditions
-        termination = (termination > 0)
-        return termination, state_dict
+        #termination is based on robot position in sim coordinates
+        # robot_pos = state_dict['q_pos']
+        # x_lims = self.workspace_dims[0]
+        # y_lims = self.workspace_dims[1]
+        # robot_x = robot_pos[..., 0] 
+        # robot_y = robot_pos[..., 1]
+        # #termination based on robot
+        # termination = (robot_x - self.robot_radius <= x_lims[0]) + (robot_x + self.robot_radius >= x_lims[1])
+        # termination += (robot_y - self.robot_radius <= y_lims[0]) + (robot_y + self.robot_radius >= y_lims[1])
+        # #resolve all termination conditions
+        # termination = (termination > 0)
+        # return termination, state_dict
+        return self.termination_buff, state_dict
     
     def compute_value_predictions(self, state_dict: torch.Tensor, act_seq):
         value_preds = None
@@ -189,7 +188,7 @@ class PointRobotReacher(RolloutBase):
     def compute_metrics(self, episode_data: Dict[str, torch.Tensor]):
         states = episode_data['state_dict']
         robot_pos = states['q_pos']
-        robot_goal = episode_data['goal_dict']['robot_goal']
+        robot_goal = episode_data['goal_dict']['ee_goal'][:, 0:3]
 
         errors = torch.norm(robot_pos - robot_goal, p=2, dim=-1)
         init_error = errors[0]
@@ -250,7 +249,7 @@ class PointRobotReacher(RolloutBase):
 
         """
         if 'goal_dict' in param_dict:
-            self.robot_goal_buff = param_dict['goal_dict']['robot_goal']
+            self.ee_goal_buff = param_dict['goal_dict']['ee_goal']
         if 'start_dict' in param_dict:
             self.robot_init_pos_buff = param_dict['start_dict']['robot_start_pos']
             
@@ -259,24 +258,30 @@ class PointRobotReacher(RolloutBase):
         return self.reset_idx(env_ids)
 
     def reset_idx(self, env_ids):
-        #randomize goals
-        self.robot_goal_buff[env_ids] = self.default_robot_goal
-        # self.robot_goal_buff[env_ids, 0] += 0.2
-        # self.robot_goal_buff[env_ids, 1] += 0.2 * torch.rand(1, device=self.device) - 0.1
+        goal_position_noise = self.task_specs['target_position_noise']
+        goal_rotation_noise = self.task_specs['target_rotation_noise']
+        self.ee_goal_buff[env_ids] = self.default_ee_goal
 
-        self.robot_goal_buff[env_ids, 0] += 0.4 * torch.rand(1, device=self.device) - 0.2
-        self.robot_goal_buff[env_ids, 1] += 0.4 * torch.rand(1, device=self.device) - 0.2
+        if goal_position_noise > 0.:
+            #randomize goal position around the default
+            self.ee_goal_buff[env_ids, 0] = self.ee_goal_buff[env_ids, 0] +  2.0*goal_position_noise * (torch.rand_like(self.ee_goal_buff[env_ids, 0], device=self.device) - 0.5)
+            self.ee_goal_buff[env_ids, 1] = self.ee_goal_buff[env_ids, 1] +  2.0*goal_position_noise * (torch.rand_like(self.ee_goal_buff[env_ids, 1], device=self.device) - 0.5)
+            # self.ee_goal_buff[env_ids, 2] = self.ee_goal_buff[env_ids, 2] +  2.0*goal_position_noise * (torch.rand_like(self.ee_goal_buff[env_ids, 2], device=self.device) - 0.5)
 
-        #randomize robot positions
-        self.robot_init_pos_buff[env_ids] = self.default_robot_init_pos
+        if goal_rotation_noise > 0.:
+            #randomize goal orientation
+            raise NotImplementedError('orientation randomization not implemented')
+
+        # #randomize robotositions
+        # self.robot_init_pos_buff[env_ids] = self.default_robot_init_pos
 
         #randomize ball location
         reset_data = {}
         reset_data['goal_dict'] = {
-            'robot_goal': self.robot_goal_buff}
-        reset_data['start_dict'] = {
-            'robot_start_pos': self.robot_init_pos_buff
-        }
+            'ee_goal': self.ee_goal_buff}
+        # reset_data['start_dict'] = {
+        #     'robot_start_pos': self.robot_init_pos_buff
+        # }
         return reset_data
 
 
@@ -319,7 +324,7 @@ class PointRobotReacher(RolloutBase):
         top_robot_pos = torch.index_select(robot_pos, 1, top_idx).squeeze(0).cpu() #.squeeze(0)
         top_robot_pos = torch.cat((top_robot_pos, torch.zeros(10, horizon, 1)), dim=-1)
 
-        robot_goal = self.robot_goal_buff.clone().cpu()
+        robot_goal = self.ee_goal_buff.clone().cpu()
         robot_goal = torch.cat((robot_goal, torch.zeros(self.num_instances, 1)), dim=-1).numpy()
 
         for i in range(horizon):
@@ -341,7 +346,7 @@ class PointRobotReacher(RolloutBase):
 
     @property
     def obs_dim(self)->int:
-        return 8
+        return 12
     
     @property
     def action_dim(self)->int:

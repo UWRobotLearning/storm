@@ -355,8 +355,8 @@ def episode_runner(
                 if debug:
                     pass
                 next_obs, next_state_dict_full = task.compute_observations(next_state_dict)
-                done_task, _ = task.compute_termination(next_state_dict_full, actions)
-                cost, _, _ = task.compute_cost(state_dict=state_dict_full, action_batch=actions, termination=done_task)
+                done_task, done_cost, _ = task.compute_termination(next_state_dict_full, actions)
+                cost, _, _ = task.compute_cost(state_dict=state_dict_full, action_batch=actions, termination_cost=done_cost)
 
                 next_obs = next_obs.view(envs.num_envs, obs_dim)
                 done_task = done_task.view(envs.num_envs,)

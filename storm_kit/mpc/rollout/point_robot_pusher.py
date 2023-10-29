@@ -26,21 +26,17 @@ from torch.profiler import record_function
 import time
 import matplotlib.pyplot as plt
 
-from ..cost import DistCost, PoseCost, ProjectedDistCost, JacobianCost, ZeroCost, EEVelCost, StopCost, FiniteDifferenceCost
+from ..cost import DistCost, PoseCost
 from ..cost.bound_cost import BoundCost
 from ..cost.manipulability_cost import ManipulabilityCost
-from ..cost import CollisionCost, VoxelCollisionCost, PrimitiveCollisionCost
 from ..model import URDFKinematicModel
 from ...util_file import join_path, get_assets_path
-from ...differentiable_robot_model.coordinate_transform import CoordinateTransform, matrix_to_quaternion, quaternion_to_matrix
 from ...mpc.model.integration_utils import build_int_matrix, build_fd_matrix, tensor_step_acc, tensor_step_vel, tensor_step_pos, tensor_step_jerk
 
 
 from storm_kit.mpc.rollout.rollout_base import RolloutBase
 from storm_kit.mpc.model.simple_pushing_model import SimplePushingModel
 from storm_kit.mpc.control.control_utils import cost_to_go
-from storm_kit.geom.sim import RigidBody, Material
-from storm_kit.geom.shapes import Sphere
 
 
 class PointRobotPusher(RolloutBase):
@@ -60,9 +56,11 @@ class PointRobotPusher(RolloutBase):
         self.num_instances = cfg['num_instances']
         self.horizon = cfg['horizon']
         self.batch_size = cfg['batch_size']
+        self.n_dofs = cfg['n_dofs']
         self.viz_rollouts = viz_rollouts
         self.value_function = value_function
         self.model = SimplePushingModel(
+            n_dofs = self.n_dofs,
             batch_size = self.cfg['batch_size'],
             horizon = self.cfg['horizon'],
             num_instances = self.num_instances,
@@ -76,38 +74,41 @@ class PointRobotPusher(RolloutBase):
         self.object_radius = 0.02
         self.robot_radius = 0.03 #0.01
 
-        table_dims = torch.tensor(self.world_model["coll_objs"]["cube"]["table"]["dims"][0:2], device=self.device)
+        table_dims = torch.tensor(self.world_model["coll_objs"]["cube"]["table"]["dims"], device=self.device)
         self.workspace_dims = torch.zeros(2,2, device=self.device)
-        self.workspace_dims[:,0] = -1.0 * table_dims / 2.0
-        self.workspace_dims[:,1] = table_dims / 2.0
+        self.workspace_dims[:,0] = -1.0 * table_dims[0:2] / 2.0
+        self.workspace_dims[:,1] = table_dims[0:2] / 2.0
         self.n_dofs = cfg['n_dofs']
-        self.default_object_goal = torch.tensor([0.0, 0.0], device=self.device)
         # self.default_object_init_pos = torch.tensor([-table_dims[0]/2.0 + self.robot_radius + self.object_radius + 0.01, 0.0], device=self.device) #+0.5
         self.default_object_init_pos = torch.tensor([0.0 + self.robot_radius + self.object_radius, 0.0], device=self.device) #+0.5
+
+        self.task_specs = cfg['task_specs']
+        self.default_object_goal = torch.tensor(self.task_specs['default_object_target'], device=self.device)
+        self.default_object_goal[2] = table_dims[2] / 2.0 + self.object_radius
 
         self.init_buffers()
 
         self.object_position_cost = DistCost(
-            weight=10.0,
-            vec_weight=[1.0, 1.0],
+            weight=0.0,
+            vec_weight=[1.0, 1.0, 1.0],
             device=self.device
         )
 
         self.object_robot_cost = DistCost(
-            weight=0.0,
-            vec_weight=[1.0, 1.0],
+            weight=10.0,
+            vec_weight=[1.0, 1.0, 1.0],
             device=self.device
         )
 
         self.object_vel_cost = DistCost(
             weight=0.0,
-            vec_weight=[1.0, 1.0],
+            vec_weight=[1.0, 1.0, 1.0],
             device=self.device
         )
 
         self.robot_vel_cost = DistCost(
             weight=0.0,
-            vec_weight=[1.0, 1.0],
+            vec_weight=[1.0, 1.0, 1.0],
             device=self.device
         )
 
@@ -123,7 +124,7 @@ class PointRobotPusher(RolloutBase):
         # self.robot_vel_buff =  torch.zeros(self.num_instances, self.batch_size, self.horizon, 3, device=self.device)
         # self.object_pos_buff =  torch.zeros(self.num_instances, self.batch_size, self.horizon, 3, device=self.device)
         # self.object_vel_buff =  torch.zeros(self.num_instances, self.batch_size, self.horizon, 3, device=self.device)
-        self.object_goal_buff = torch.zeros(self.num_instances, 2, device=self.device)
+        self.object_goal_buff = torch.zeros(self.num_instances, 7, device=self.device)
         self.object_init_pos_buff = torch.zeros(self.num_instances, 2, device=self.device)
         self.value_preds_buff = torch.zeros(self.num_instances, self.batch_size, self.horizon, device=self.device)
 
@@ -131,14 +132,13 @@ class PointRobotPusher(RolloutBase):
             state_dict: Dict[str, torch.Tensor], 
             action_batch: Optional[Dict[str, torch.Tensor]]=None,
             termination: Optional[Dict[str, torch.Tensor]]=None):
-        
-        object_pos = state_dict['object_pos'][..., 0:2].view(self.num_instances, self.batch_size, self.horizon, 2)
-        object_vel = state_dict['object_vel'][..., 0:2].view(self.num_instances, self.batch_size, self.horizon, 2)
-        goal_object_pos = self.object_goal_buff.unsqueeze(1).unsqueeze(1).repeat(1, self.batch_size, self.horizon, 1)
-        start_object_pos = self.object_init_pos_buff.unsqueeze(1).unsqueeze(1).repeat(1, self.batch_size, self.horizon, 1)
+        object_pos = state_dict['object_pos'].view(self.num_instances, self.batch_size, self.horizon, -1)
+        object_vel = state_dict['object_vel'].view(self.num_instances, self.batch_size, self.horizon, -1)
+        goal_object_pos = self.object_goal_buff[:, 0:3].unsqueeze(1).unsqueeze(1).repeat(1, self.batch_size, self.horizon, 1)
+        # start_object_pos = self.object_init_pos_buff.unsqueeze(1).unsqueeze(1).repeat(1, self.batch_size, self.horizon, 1)
         # goal_object_pos = goal_object_pos.view(self.num_instances * self.batch_size, self.horizon, 2)
-        robot_pos = state_dict['q_pos'][..., 0:2].view(self.num_instances, self.batch_size, self.horizon, 2)
-        robot_vel = state_dict['q_vel'][..., 0:2].view(self.num_instances, self.batch_size, self.horizon, 2)
+        robot_pos = state_dict['q_pos'].view(self.num_instances, self.batch_size, self.horizon, 3)
+        robot_vel = state_dict['q_vel'].view(self.num_instances, self.batch_size, self.horizon, 3)
 
 
         # object_pos_cost_rel, dist = self.object_position_cost(
@@ -159,8 +159,8 @@ class PointRobotPusher(RolloutBase):
         # goal_bonus = self.goal_bonus_weight * in_goal_tolerance
         # cost_terms['goal_bonus'] = goal_bonus
 
-        # obj_robot_cost, _ = self.object_robot_cost(robot_pos - object_pos)
-        # cost_terms['object_robot_rel_pos'] = obj_robot_cost
+        obj_robot_cost, _ = self.object_robot_cost(robot_pos - object_pos)
+        cost_terms['object_robot_rel_pos'] = obj_robot_cost
         
         obj_vel_cost, _ = self.object_vel_cost(object_vel)
         # obj_vel_cost[dist >= 0.01] = 0.0
@@ -172,7 +172,7 @@ class PointRobotPusher(RolloutBase):
 
 
         # cost = object_pos_cost_rel + object_pos_cost_abs + obj_vel_cost + robot_vel_cost #+ obj_robot_cost
-        cost = object_pos_cost + obj_vel_cost + robot_vel_cost #- goal_bonus #+ obj_robot_cost
+        cost = object_pos_cost + obj_vel_cost + robot_vel_cost + obj_robot_cost #- goal_bonus #+ obj_robot_cost
 
 
         if termination is not None:
@@ -189,7 +189,7 @@ class PointRobotPusher(RolloutBase):
     def compute_observations(self, 
                              state_dict: Dict[str,torch.Tensor]):
 
-        object_goal_buff = self.object_goal_buff.clone()
+        object_goal_buff = self.object_goal_buff[:, 0:3].clone()
         object_start_buff = self.object_init_pos_buff.clone()
 
         if state_dict['q_pos'].ndim > 2:
@@ -218,17 +218,17 @@ class PointRobotPusher(RolloutBase):
         y_lims = self.workspace_dims[1]
         obj_x = object_pos[..., 0] 
         obj_y = object_pos[..., 1]
-        robot_x = robot_pos[..., 0] 
-        robot_y = robot_pos[..., 1]
+        # robot_x = robot_pos[..., 0] 
+        # robot_y = robot_pos[..., 1]
         #termination based on object
         termination = (obj_x - self.object_radius <= x_lims[0]) + (obj_x + self.object_radius >= x_lims[1])
         termination += (obj_y - self.object_radius <= y_lims[0]) + (obj_y + self.object_radius >= y_lims[1])
         #termination based on robot
-        termination += (robot_x - self.robot_radius <= x_lims[0]) + (robot_x + self.robot_radius >= x_lims[1])
-        termination += (robot_y - self.robot_radius <= y_lims[0]) + (robot_y + self.robot_radius >= y_lims[1])
+        # termination += (robot_x - self.robot_radius <= x_lims[0]) + (robot_x + self.robot_radius >= x_lims[1])
+        # termination += (robot_y - self.robot_radius <= y_lims[0]) + (robot_y + self.robot_radius >= y_lims[1])
         #resolve all termination conditions
         termination = (termination > 0)
-        return termination, state_dict
+        return termination, None, state_dict
     
     def compute_value_predictions(self, state_dict: torch.Tensor, act_seq):
         value_preds = None
@@ -247,7 +247,7 @@ class PointRobotPusher(RolloutBase):
         object_pos = states['object_pos']
         object_goal = episode_data['goal_dict']['object_goal']
 
-        errors = torch.norm(object_pos - object_goal, p=2, dim=-1)
+        errors = torch.norm(object_pos - object_goal[..., 0:3], p=2, dim=-1)
         init_error = errors[0]
         last_n_errors = errors[-5:]
         normalized_errors = last_n_errors / init_error
@@ -277,7 +277,7 @@ class PointRobotPusher(RolloutBase):
             state_dict = self.model.rollout_open_loop(start_state, act_seq)
 
         with record_function("compute_termination"):
-            term_seq, _ = self.compute_termination(state_dict, act_seq)
+            term_seq, _, _ = self.compute_termination(state_dict, act_seq)
         
         with record_function("cost_fns"):
             cost_seq, _, _ = self.compute_cost(state_dict, act_seq, termination=term_seq)
@@ -329,6 +329,9 @@ class PointRobotPusher(RolloutBase):
         return self.reset_idx(env_ids)
 
     def reset_idx(self, env_ids):
+        goal_position_noise = self.task_specs['target_position_noise']
+        goal_rotation_noise = self.task_specs['target_rotation_noise']
+
         # self.robot_pos_buff[env_ids] = torch.zeros(len(env_ids), self.batch_size, self.horizon, 3, device=self.device)
         # self.robot_vel_buff[env_ids] = torch.zeros(len(env_ids), self.batch_size, self.horizon, 3, device=self.device)
         # self.object_pos_buff[env_ids] = torch.zeros(len(env_ids), self.batch_size, self.horizon, 3, device=self.device)
@@ -339,11 +342,25 @@ class PointRobotPusher(RolloutBase):
         # self.object_goal_buff[env_ids, 0] += 0.2
         # self.object_goal_buff[env_ids, 1] += 0.2 * torch.rand(1, device=self.device) - 0.1
 
-        self.object_goal_buff[env_ids, 0] += 0.4 * torch.rand(1, device=self.device) - 0.2
-        self.object_goal_buff[env_ids, 1] += 0.4 * torch.rand(1, device=self.device) - 0.2
+        # self.object_goal_buff[env_ids, 0] += 0.4 * torch.rand(1, device=self.device) - 0.2
+        # self.object_goal_buff[env_ids, 1] += 0.4 * torch.rand(1, device=self.device) - 0.2
 
-        #randomize object positions
-        self.object_init_pos_buff[env_ids] = self.default_object_init_pos
+
+        if goal_position_noise > 0.:
+            #randomize goal position around the default
+            self.object_goal_buff[env_ids, 0] = self.object_goal_buff[env_ids, 0] +  2.0*goal_position_noise * (torch.rand_like(self.object_goal_buff[env_ids, 0], device=self.device) - 0.5)
+            self.object_goal_buff[env_ids, 1] = self.object_goal_buff[env_ids, 1] +  2.0*goal_position_noise * (torch.rand_like(self.object_goal_buff[env_ids, 1], device=self.device) - 0.5)
+            # self.ee_goal_buff[env_ids, 2] = self.ee_goal_buff[env_ids, 2] +  2.0*goal_position_noise * (torch.rand_like(self.ee_goal_buff[env_ids, 2], device=self.device) - 0.5)
+
+        print(self.object_goal_buff)
+
+        if goal_rotation_noise > 0.:
+            #randomize goal orientation
+            raise NotImplementedError('orientation randomization not implemented')
+
+
+        # #randomize object positions
+        # self.object_init_pos_buff[env_ids] = self.default_object_init_pos
 
         #randomize ball location
         reset_data = {}
@@ -431,22 +448,13 @@ class PointRobotPusher(RolloutBase):
                 data = actions[0, b_i, :, d_i]
                 self.ax[d_i].plot(data)
         plt.pause(0.01)
-        plt.draw()
-
-
-
-            # print(self.samples.shape, torch.max(self.samples, dim=2)[0], torch.min(self.samples, dim=2)[0], torch.mean(self.samples, dim=2))
-            # exit()
-
-        
-        
-        
+        plt.draw()        
         # time.sleep(0.01)
 
 
     @property
     def obs_dim(self)->int:
-        return 14
+        return 21
     
     @property
     def action_dim(self)->int:

@@ -33,7 +33,7 @@ from torch.profiler import record_function
 import matplotlib.pyplot as plt
 
 
-from ...differentiable_robot_model.coordinate_transform import CoordinateTransform, rpy_angles_to_matrix, transform_point
+from ...differentiable_robot_model.spatial_vector_algebra import CoordinateTransform, rpy_angles_to_matrix, transform_point, quaternion_to_matrix
 from ...geom.geom_types import tensor_capsule, tensor_sphere, tensor_cube
 from ...geom.sdf.primitives import get_pt_primitive_distance, get_sphere_primitive_distance
 
@@ -249,9 +249,12 @@ class WorldPrimitiveCollision(WorldGridCollision):
         self._world_cubes = []        
         for j_idx, j in enumerate(cube_objs):
             pose = cube_objs[j]['pose']
-            pose_fixed = [pose[0], pose[1], pose[2], pose[6], pose[3], pose[4], pose[5]]
+            # pose_fixed = [pose[0], pose[1], pose[2], pose[6], pose[3], pose[4], pose[5]]
+            trans = torch.as_tensor(pose[0:3], device=self.device).unsqueeze(0)
+            rot = quaternion_to_matrix(torch.as_tensor(pose[3:], device=self.device).unsqueeze(0))
             dims = cube_objs[j]['dims']
-            cube = tensor_cube(pose_fixed, dims, device=self.device)
+
+            cube = tensor_cube(rot=rot, trans=trans, dims=dims, device=self.device)
             self._world_cubes.append(cube)
 
         # self.n_objs = self._world_spheres.shape[1] + len(self._world_cubes)

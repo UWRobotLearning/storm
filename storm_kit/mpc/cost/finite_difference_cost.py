@@ -23,6 +23,7 @@
 import torch
 import torch.nn as nn
 from ..model.integration_utils import build_fd_matrix
+from storm_kit.mpc.cost import NormCost
 
 class FiniteDifferenceCost(nn.Module):
     def __init__(self,  weight:int,  horizon:int, order:int=1, device:torch.device = torch.device('cpu')):

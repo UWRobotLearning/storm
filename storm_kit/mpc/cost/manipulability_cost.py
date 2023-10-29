@@ -50,12 +50,15 @@ class ManipulabilityCost(nn.Module):
         with torch.cuda.amp.autocast(enabled=False):
             J_J_t = torch.matmul(jac_batch, jac_batch.transpose(-2,-1))
             score = torch.sqrt(torch.linalg.det(J_J_t))
+            # score = torch.linalg.det(J_J_t)
             # with record_function('manip_cost:chol'):
             #     chol = torch.linalg.cholesky(J_J_t)
             # with record_function('manip_cost:diag'):
             #     chol_diag = torch.diagonal(chol, dim1=-2, dim2=-1)
             # with record_function('manip_cost:prod'):
             #     score = torch.prod(chol_diag, dim=-1)
+        # if score.shape[0] == 1000:
+        #     print(torch.max(score), torch.min(score))
         score[score != score] = 0.0
         score[score > self.thresh] = self.thresh #1.0
         score = (self.thresh - score) / self.thresh

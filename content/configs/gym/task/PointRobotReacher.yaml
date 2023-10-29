@@ -10,15 +10,14 @@ env:
   episodeLength: 200
   enableDebugVis: False
   targetRandomizeMode: "fixed_target"
-  clipObservations: 5.0
-  startPositionNoise: 0.0
-  startRotationNoise: 0.0
-  # numProps: 16
   aggregateMode: 3
   num_objects: 0
-
-  # actionScale: 1.0 #7.5
-  # dofVelocityScale: 0.1
+  joint_control_mode: 'inverse_dynamics'
+  robot_p_gains: [50.0, 50.0, 50.0]
+  robot_d_gains: [1.0, 1.0, 1.0]
+  robot_default_dof_pos: [0.0, 0.0, 0.0]
+  robot_z_offset: 0.03
+  floating_base_robot: True
 
   asset:
     assetRoot: "../../content/assets"
@@ -31,9 +30,9 @@ rollout:
   num_instances: ${task.env.num_envs}
   batch_size: 1
   horizon: 1
-  control_dt: 0.015
+  control_dt: 0.0166
   control_space: 'acc'
-  n_dofs: 2
+  n_dofs: 3
   state_filter_coeff: {'q_pos':1.0, 'q_vel':1.0, 'q_acc':0.0}
 
   model:
@@ -41,11 +40,15 @@ rollout:
     name: "point_robot"
     max_acc: 10.0 
     dt_traj_params:
-      base_dt:  0.015
-      base_ratio: 0.8
-      max_dt: 0.15 #0.15
+      base_dt:  0.0166
+      base_ratio: 1.0
+      max_dt: 0.166 #0.15
     init_state: [0., 0.]
-    link_names: ['robot', 'robot_y']
+
+  task_specs:
+    default_ee_target: [0.1, 0.0, 0.0, 0.0, 0.707, 0.707, 0.0]
+    target_position_noise: 0.2
+    target_rotation_noise: 0.0
     
   cost:
     # goal_pose:
@@ -64,8 +67,8 @@ mpc:
 
   mppi:
     num_instances     : ${task.env.num_envs}
-    horizon           : 20
-    init_cov          : 1.0 #.5 #.5
+    horizon           : 30
+    init_cov          : 0.1 #.5 #.5
     gamma             : 0.99 #0.98
     n_iters           : 1
     step_size_mean    : 0.98 #0.98

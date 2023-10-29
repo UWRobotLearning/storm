@@ -3,11 +3,11 @@ import torch.nn as nn
 from torch.profiler import record_function
 from typing import Optional, Dict, List
 from storm_kit.mpc.model.integration_utils import build_int_matrix, build_fd_matrix, tensor_step_acc, tensor_step_vel, tensor_step_pos, tensor_step_jerk
-from storm_kit.differentiable_robot_model.coordinate_transform import CoordinateTransform
 
 class DoubleIntegratorModel(nn.Module):
     def __init__(
             self,
+            n_dofs: int = 3,
             batch_size: int = 1000,
             horizon: int = 5,
             num_instances: int = 1,
@@ -26,7 +26,7 @@ class DoubleIntegratorModel(nn.Module):
         self.robot_keys = robot_keys
         self.device = device
 
-        self.n_dofs = 2
+        self.n_dofs = n_dofs
         self.d_state = 3 * self.n_dofs + 1
 
         self.ee_state_seq = torch.zeros(self.num_instances, self.batch_size, self.num_traj_points, self.d_state, device=self.device)
@@ -139,10 +139,10 @@ class DoubleIntegratorModel(nn.Module):
         with record_function("tensor_step"):
             ee_state_seq = self.tensor_step(curr_ee_state, act_seq, ee_state_seq, curr_batch_size, num_traj_points)
         
-        ee_state_seq = ee_state_seq.view((self.num_instances, curr_batch_size, num_traj_points, 7))                
-        ee_pos = ee_state_seq[:,:,:,0:2]
-        ee_vel = ee_state_seq[:,:,:,2:4]
-        ee_acc = ee_state_seq[:,:,:,4:6]
+        ee_state_seq = ee_state_seq.view((self.num_instances, curr_batch_size, num_traj_points, self.d_state))                
+        ee_pos = ee_state_seq[:,:,:,0:self.n_dofs]
+        ee_vel = ee_state_seq[:,:,:,self.n_dofs:2*self.n_dofs]
+        ee_acc = ee_state_seq[:,:,:,2*self.n_dofs:3*self.n_dofs]
         tstep = ee_state_seq[:,:,:,-1]
 
         

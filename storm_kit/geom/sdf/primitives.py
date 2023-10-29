@@ -22,7 +22,7 @@
 # DEALINGS IN THE SOFTWARE.#
 from typing import List, Optional
 import torch
-from ...differentiable_robot_model.coordinate_transform import transform_point
+from ...differentiable_robot_model.spatial_vector_algebra import transform_point
 
 def sdf_capsule_to_pt(capsule_base, capsule_tip, capsule_radius, pt):
     """Computes distance between a capsule and a point

@@ -1,80 +1,22 @@
-#
-# MIT License
-#
-# Copyright (c) 2020-2021 NVIDIA CORPORATION.
-#
-# Permission is hereby granted, free of charge, to any person obtaining a
-# copy of this software and associated documentation files (the "Software"),
-# to deal in the Software without restriction, including without limitation
-# the rights to use, copy, modify, merge, publish, distribute, sublicense,
-# and/or sell copies of the Software, and to permit persons to whom the
-# Software is furnished to do so, subject to the following conditions:
-#
-# The above copyright notice and this permission notice shall be included in
-# all copies or substantial portions of the Software.
-#
-# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
-# THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
-# FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
-# DEALINGS IN THE SOFTWARE.
-#
-# **********************************************************************
-# The first version was licensed as "Original Source License"(see below).
-# Several enhancements and bug fixes were done at NVIDIA CORPORATION
-# since obtaining the first version. 
-#
-#
-#
-# Original Source License:
-#
-# MIT License
-#
 # Copyright (c) Facebook, Inc. and its affiliates.
-#
-# Permission is hereby granted, free of charge, to any person obtaining a copy
-# of this software and associated documentation files (the "Software"), to deal
-# in the Software without restriction, including without limitation the rights
-# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-# copies of the Software, and to permit persons to whom the Software is
-# furnished to do so, subject to the following conditions:
-#
-# The above copyright notice and this permission notice shall be included in all
-# copies or substantial portions of the Software.
-#
-# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-# SOFTWARE.#
-
-# Copyright (c) Facebook, Inc. and its affiliates.
+"""
+URDF Utils
+====================================
+TODO
+"""
 import os
 import torch
 from urdf_parser_py.urdf import URDF
-from typing import Optional
+
 
 class URDFRobotModel(object):
-    def __init__(self, urdf_path:str, device: torch.device =torch.device('cpu')): # tensor_args={'device':"cpu", 'dtype':torch.float32}):
+    def __init__(self, urdf_path, device="cpu"):
         self.robot = URDF.from_xml_file(urdf_path)
-        self.urdf_path = urdf_path
-        self.device = device
-        # self.dtype = dtype
-        # self.tensor_args = tensor_args
+        self._device = torch.device(device)
 
     def find_joint_of_body(self, body_name):
         for (i, joint) in enumerate(self.robot.joints):
             if joint.child == body_name:
-                return i
-        return -1
-
-    def find_link_idx(self, link_name):
-        for (i,link) in enumerate(self.robot.links):
-            if(link.name == link_name):
                 return i
         return -1
 
@@ -83,33 +25,19 @@ class URDFRobotModel(object):
         joint = self.robot.joints[jid]
         return joint.parent
 
-    def get_link_collision_mesh(self, link_name):
-        idx = self.find_link_idx(link_name)
-        link = self.robot.links[idx]
-        mesh_fname = link.collision.geometry.filename
-        mesh_origin = link.collision.origin
-        origin_pose = torch.zeros(6).to(device=self.device) #, dtype=self.dtype)
-        if mesh_origin is not None:
-            origin_pose[:3] = mesh_origin.position
-            origin_pose[3:6] = mesh_origin.rotation
-            
-        # join to urdf path
-        mesh_fname = os.path.join(os.path.dirname(self.urdf_path), mesh_fname)
-        return mesh_fname, origin_pose
-    
     def get_body_parameters_from_urdf(self, i, link):
         body_params = {}
-        body_params['joint_id'] = i
-        body_params['link_name'] = link.name
+        body_params["joint_id"] = i
+        body_params["link_name"] = link.name
 
         if i == 0:
-            rot_angles = torch.zeros(3).to(device=self.device)
-            trans = torch.zeros(3).to(device=self.device)
+            rot_angles = torch.zeros(3, device=self._device)
+            trans = torch.zeros(3, device=self._device)
             joint_name = "base_joint"
             joint_type = "fixed"
             joint_limits = None
             joint_damping = None
-            joint_axis = torch.zeros((1, 3), device=self.device)
+            joint_axis = torch.zeros((1, 3), device=self._device)
         else:
             link_name = link.name
             jid = self.find_joint_of_body(link_name)
@@ -117,41 +45,58 @@ class URDFRobotModel(object):
             joint_name = joint.name
             # find joint that is the "child" of this body according to urdf
 
-            rpy = torch.tensor(joint.origin.rotation, device=self.device)
-            rot_angles = torch.tensor([rpy[0], rpy[1], rpy[2]], device=self.device)
-            trans = torch.tensor(joint.origin.position, device=self.device)
+            rot_angles = torch.tensor(
+                joint.origin.rotation, dtype=torch.float32, device=self._device
+            )
+            trans = torch.tensor(
+                joint.origin.position, dtype=torch.float32, device=self._device
+            )
             joint_type = joint.type
             joint_limits = None
-            joint_damping = torch.zeros(1, device=self.device)
-            joint_axis = torch.zeros((1, 3), device=self.device)
-            if joint_type != 'fixed':
-                joint_limits = {'effort': joint.limit.effort,
-                                'lower': joint.limit.lower,
-                                'upper': joint.limit.upper,
-                                'velocity': joint.limit.velocity}
+            joint_damping = torch.zeros(1, device=self._device)
+            joint_axis = torch.zeros((1, 3), device=self._device)
+            if joint_type != "fixed":
+                joint_limits = {
+                    "effort": joint.limit.effort,
+                    "lower": joint.limit.lower,
+                    "upper": joint.limit.upper,
+                    "velocity": joint.limit.velocity,
+                }
+                try:
+                    joint_damping = torch.tensor(
+                        [joint.dynamics.damping],
+                        dtype=torch.float32,
+                        device=self._device,
+                    )
+                except AttributeError:
+                    joint_damping = torch.zeros(1, device=self._device)
+                joint_axis = torch.tensor(
+                    joint.axis, dtype=torch.float32, device=self._device
+                ).reshape(1, 3)
 
-                joint_damping = torch.tensor(0.0, device=self.device)
-                if joint.dynamics.damping is not None:
-                    joint_damping = torch.tensor(0.0, device=self.device)
-                # try:
-                    # joint_damping = torch.tensor(joint.dynamics.damping, device=self.device)
-                # except AttributeError:
-                    # joint_damping = torch.tensor(0.0, device=self.device)
-                joint_axis = torch.tensor(joint.axis, device=self.device).reshape(1, 3)
+        body_params["rot_angles"] = rot_angles
+        body_params["trans"] = trans
+        body_params["joint_name"] = joint_name
+        body_params["joint_type"] = joint_type
+        body_params["joint_limits"] = joint_limits
+        body_params["joint_damping"] = joint_damping
+        body_params["joint_axis"] = joint_axis
 
-        body_params['rot_angles'] = rot_angles
-        body_params['trans'] = trans
-        body_params['joint_name'] = joint_name
-        body_params['joint_type'] = joint_type
-        body_params['joint_limits'] = joint_limits
-        body_params['joint_damping'] = joint_damping
-        body_params['joint_axis'] = joint_axis
-        #body_params['collision_mesh'] = link.collision.geometry.mesh.filename
         if link.inertial is not None:
-            mass = torch.tensor(link.inertial.mass, device=self.device)
-            com = torch.tensor(link.inertial.origin.position, device=self.device).reshape((1, 3))
+            mass = torch.tensor(
+                [link.inertial.mass], dtype=torch.float32, device=self._device
+            )
+            com = (
+                torch.tensor(
+                    link.inertial.origin.position,
+                    dtype=torch.float32,
+                    device=self._device,
+                )
+                .reshape((1, 3))
+                .to(self._device)
+            )
 
-            inert_mat = torch.zeros((3, 3), device=self.device)
+            inert_mat = torch.zeros((3, 3), device=self._device)
             inert_mat[0, 0] = link.inertial.inertia.ixx
             inert_mat[0, 1] = link.inertial.inertia.ixy
             inert_mat[0, 2] = link.inertial.inertia.ixz
@@ -163,14 +108,19 @@ class URDFRobotModel(object):
             inert_mat[2, 2] = link.inertial.inertia.izz
 
             inert_mat = inert_mat.unsqueeze(0)
-            body_params['mass'] = mass
-            body_params['com'] = com
-            body_params['inertia_mat'] = inert_mat
+            body_params["mass"] = mass
+            body_params["com"] = com
+            body_params["inertia_mat"] = inert_mat
         else:
-            body_params['mass'] = None
-            body_params['com'] = None
-            body_params['inertia_mat'] = None
-            print("no dynamics information for link: {}".format(link.name))
+            body_params["mass"] = torch.ones((1,), device=self._device)
+            body_params["com"] = torch.zeros((1, 3), device=self._device)
+            body_params["inertia_mat"] = torch.eye(3, 3, device=self._device).unsqueeze(
+                0
+            )
+            print(
+                "Warning: No dynamics information for link: {}, setting all inertial properties to 1.".format(
+                    link.name
+                )
+            )
 
         return body_params
-

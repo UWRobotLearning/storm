@@ -24,7 +24,7 @@ import torch
 import torch.nn as nn
 # import torch.nn.functional as F
 
-from .gaussian_projection import GaussianProjection
+# from .deprecated.gaussian_projection import GaussianProjection
 
 class CollisionCost(nn.Module):
     def __init__(self, weight=None, world_params=None, gaussian_params={}, device=torch.device('cpu'), float_dtype=torch.float32):
@@ -34,7 +34,7 @@ class CollisionCost(nn.Module):
         self.tensor_args = {'device':device, 'dtype':float_dtype}
         self.weight = torch.as_tensor(weight, device=device, dtype=float_dtype)
         
-        self.proj_gaussian = GaussianProjection(gaussian_params=gaussian_params)
+        # self.proj_gaussian = GaussianProjection(gaussian_params=gaussian_params)
 
         self.radius = []
         self.position = []

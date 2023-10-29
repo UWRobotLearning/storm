@@ -24,11 +24,11 @@ import torch
 import torch.nn as nn
 # import torch.nn.functional as F
 
-from ...differentiable_robot_model.coordinate_transform import CoordinateTransform, quaternion_to_matrix
+from ...differentiable_robot_model.spatial_vector_algebra import CoordinateTransform, quaternion_to_matrix
 
 from ...util_file import get_assets_path, join_path
 from ...geom.sdf.robot_world import RobotWorldCollisionVoxel
-from .gaussian_projection import GaussianProjection
+# from .deprecated.gaussian_projection import GaussianProjection
 
 class VoxelCollisionCost(nn.Module):
     def __init__(self, weight=None, robot_params=None,
@@ -41,7 +41,7 @@ class VoxelCollisionCost(nn.Module):
         self.distance_threshold = distance_threshold
         self.weight = torch.as_tensor(weight, **self.tensor_args)
         
-        self.proj_gaussian = GaussianProjection(gaussian_params=gaussian_params)
+        # self.proj_gaussian = GaussianProjection(gaussian_params=gaussian_params)
 
 
         # load robot model:

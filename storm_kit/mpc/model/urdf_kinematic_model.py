@@ -26,7 +26,7 @@ import torch
 import torch.nn as nn
 from torch.profiler import record_function
 
-from ...differentiable_robot_model.differentiable_robot_model import DifferentiableRobotModel
+from ...differentiable_robot_model import DifferentiableRobotModel
 from .integration_utils import build_int_matrix, build_fd_matrix, tensor_step_acc, tensor_step_vel, tensor_step_pos, tensor_step_jerk
 
 class URDFKinematicModel(nn.Module):
@@ -237,11 +237,16 @@ class URDFKinematicModel(nn.Module):
         with record_function("tensor_step"):
             # forward step with step matrix:
             state_seq = self.tensor_step(curr_state, act_seq, state_seq, curr_batch_size, num_traj_points)
+
+        q_pos_seq = state_seq[:,:,:, 0:self.n_dofs]
+        q_vel_seq = state_seq[:,:,:, self.n_dofs:2*self.n_dofs]
+        q_acc_seq = state_seq[:,:,:, 2*self.n_dofs:3*self.n_dofs]
+        tstep_seq = state_seq[:,:,:, -1]
+        
         shape_tup = (self.num_instances * curr_batch_size * num_traj_points, self.n_dofs)
         with record_function("fk + jacobian"):
             ee_pos_seq, ee_rot_seq, lin_jac_seq, ang_jac_seq = self.robot_model.compute_fk_and_jacobian(
                 state_seq[:,:,:,:self.n_dofs].view(shape_tup),
-                state_seq[:,:,:,self.n_dofs:2 * self.n_dofs].view(shape_tup),
                 link_name=self.ee_link_name)
 
         # get link poses:
@@ -255,18 +260,32 @@ class URDFKinematicModel(nn.Module):
         ee_rot_seq = ee_rot_seq.view((self.num_instances, curr_batch_size, num_traj_points, 3, 3))
         lin_jac_seq = lin_jac_seq.view((self.num_instances, curr_batch_size, num_traj_points, 3, self.n_dofs))
         ang_jac_seq = ang_jac_seq.view((self.num_instances, curr_batch_size, num_traj_points, 3, self.n_dofs))
+        ee_jacobian_seq = torch.cat((ang_jac_seq, lin_jac_seq), dim=-2)
 
+        ee_vel_twist_seq = torch.matmul(ee_jacobian_seq, q_vel_seq.unsqueeze(-1)).squeeze(-1)
+        # this is a first order approximation of ee acceleation i.e ignoreing \dot{J}
+        # TODO: Test this against finite differencing and/or RNE
+        ee_acc_twist_seq = torch.matmul(ee_jacobian_seq, q_acc_seq.unsqueeze(-1)).squeeze(-1) 
 
         state_dict = {'state_seq': state_seq.to(inp_device),
+                      'q_pos_seq': q_pos_seq.to(inp_device),
+                      'q_vel_seq': q_vel_seq.to(inp_device),
+                      'q_acc_seq': q_acc_seq.to(inp_device),
                       'ee_pos_seq': ee_pos_seq.to(inp_device),
                       'ee_rot_seq': ee_rot_seq.to(inp_device),
-                      'lin_jac_seq': lin_jac_seq.to(inp_device),
-                      'ang_jac_seq': ang_jac_seq.to(inp_device),
+                      'ee_jacobian_seq': ee_jacobian_seq.to(inp_device),
+                      'ee_vel_twist_seq': ee_vel_twist_seq.to(inp_device),
+                      'ee_acc_twist_seq': ee_acc_twist_seq.to(inp_device),
                       'link_pos_seq': link_pos_seq.to(inp_device),
                       'link_rot_seq': link_rot_seq.to(inp_device),
-                      'prev_state_seq': self.prev_state_buffer.to(inp_device)}
+                      'prev_state_seq': self.prev_state_buffer.to(inp_device),
+                      'tstep_seq': tstep_seq.to(inp_device)}
 
         return state_dict
+
+
+    #   'lin_jac_seq': lin_jac_seq.to(inp_device),
+    #   'ang_jac_seq': ang_jac_seq.to(inp_device),
 
 
     def enforce_bounds(self, state_batch: torch.Tensor)->torch.Tensor:

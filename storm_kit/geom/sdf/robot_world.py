@@ -24,7 +24,7 @@ import copy
 import torch
 from torch.profiler import record_function
 
-from ...differentiable_robot_model.coordinate_transform import CoordinateTransform, rpy_angles_to_matrix, multiply_transform, transform_point
+from ...differentiable_robot_model.spatial_vector_algebra import CoordinateTransform, rpy_angles_to_matrix, multiply_transform, transform_point
 from ...geom.sdf.primitives import sdf_capsule_to_sphere
 from .robot import RobotCapsuleCollision, RobotMeshCollision, RobotSphereCollision
 from .world import WorldPointCloudCollision, WorldPrimitiveCollision

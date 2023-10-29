@@ -22,7 +22,7 @@
 # DEALINGS IN THE SOFTWARE.#
 import torch
 
-from ..differentiable_robot_model.coordinate_transform import CoordinateTransform
+from ..differentiable_robot_model.spatial_vector_algebra import CoordinateTransform
 
 # def tensor_circle(pt, radius, tensor=None, tensor_args={'device':"cpu", 'dtype':torch.float32}):
 def tensor_circle(pt, radius, tensor=None, device=torch.device('cpu')):
@@ -61,13 +61,14 @@ def tensor_capsule(base, tip, radius, tensor=None, device=torch.device("cpu")):
 
 
 # def tensor_cube(pose, dims, tensor_args={'device':"cpu", 'dtype':torch.float32}):
-def tensor_cube(pose, dims, device=torch.device("cpu")):
-    w_T_b = CoordinateTransform(pose=pose, device=device)
+def tensor_cube(rot, trans, dims, device=torch.device("cpu")):
+    print(rot.shape, trans.shape)
+    w_T_b = CoordinateTransform(rot=rot, trans=trans, device=device)
     b_T_w = w_T_b.inverse()
     dims_t = torch.tensor([dims[0], dims[1], dims[2]], device=device)
-    cube = {'trans': w_T_b.translation(), 'rot': w_T_b.rotation(),
-            'inv_trans': b_T_w.translation(), 'inv_rot': b_T_w.rotation(),
-            'dims':dims_t}
+    # cube = {'trans': w_T_b.translation(), 'rot': w_T_b.rotation(),
+    #         'inv_trans': b_T_w.translation(), 'inv_rot': b_T_w.rotation(),
+    #         'dims':dims_t}
     cube = [w_T_b.translation(), w_T_b.rotation(),
             b_T_w.translation(), b_T_w.rotation(),
             dims_t]

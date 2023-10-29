@@ -24,7 +24,7 @@ from typing import List, Tuple, Dict, Optional, Any
 import torch
 from urdfpy import URDF
 
-from ...differentiable_robot_model.differentiable_robot_model import DifferentiableRobotModel
+from ...differentiable_robot_model import DifferentiableRobotModel
 from .model_base import DynamicsModelBase
 from .integration_utils import build_int_matrix, build_fd_matrix, tensor_step_acc, tensor_step_vel, tensor_step_pos, tensor_step_jerk
 

@@ -28,7 +28,7 @@ from typing import List
 import torch
 import trimesh
 
-from ...differentiable_robot_model.coordinate_transform import CoordinateTransform, rpy_angles_to_matrix, multiply_transform, transform_point
+from ...differentiable_robot_model.spatial_vector_algebra import CoordinateTransform, rpy_angles_to_matrix, multiply_transform, transform_point
 from ...differentiable_robot_model.urdf_utils import URDFRobotModel
 from ...geom.geom_types import tensor_capsule, tensor_sphere
 from ...util_file import join_path, get_configs_path

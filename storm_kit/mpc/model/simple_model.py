@@ -26,15 +26,17 @@ import matplotlib
 matplotlib.use('tkagg')
 import matplotlib.pyplot as plt
 import torch
+import torch.nn as nn
 from typing import List, Tuple, Dict, Optional, Any
 
-from .model_base import DynamicsModelBase
+# from .model_base import DynamicsModelBase
 from .integration_utils import tensor_step_vel, tensor_step_acc, build_int_matrix, build_fd_matrix, tensor_step_jerk, tensor_step_pos
 
 
-class HolonomicModel(DynamicsModelBase):
+class HolonomicModel(nn.Module):
     def __init__(self, dt, batch_size=1000, horizon=5, tensor_args={'device':'cpu','dtype':torch.float32}, dt_traj_params=None,
                  control_space='acc'):
+        super().__init__()
         self.tensor_args = tensor_args
         self.dt = dt
         self.n_dofs = 2 # x,y position

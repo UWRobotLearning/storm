@@ -20,11 +20,10 @@ from task_map import task_map
 @hydra.main(config_name="config", config_path="../content/configs/gym")
 def main(cfg: DictConfig):
     torch.set_default_dtype(torch.float32)
-
+    from storm_kit.envs import IsaacGymRobotEnv
     task_details = task_map[cfg.task.name]
-    env_cls = task_details['env_cls']
     task_cls = task_details['task_cls']    
-    envs = env_cls(
+    envs = IsaacGymRobotEnv(
         cfg.task, 
         cfg.rl_device, 
         cfg.sim_device, 

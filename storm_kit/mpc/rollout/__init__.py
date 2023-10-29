@@ -29,6 +29,5 @@ from .arm_base import ArmBase
 from .arm_reacher import ArmReacher
 from .point_robot_pusher import PointRobotPusher
 from .arm_pusher import ArmPusher
-from .tray_reacher import TrayReacher
 
 

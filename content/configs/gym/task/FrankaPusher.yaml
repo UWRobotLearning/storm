@@ -11,15 +11,16 @@ env:
   enableDebugVis: False
   controlFrequencyInv: 1
   num_objects: 1
-  # clipObservations: 5.0
-  # # clipActions: 1.0
   aggregateMode: 3
-  # actionScale: 1.0 #7.5
-  # dofVelocityScale: 0.1
+  joint_control_mode: 'inverse_dynamics'
+  robot_p_gains: [100.0, 100.0, 100.0, 100.0, 40.0, 30.0, 20.0]
+  robot_d_gains: [10.0, 10.0, 10.0, 10.0, 7.5, 5.0, 1.0]
+  robot_default_dof_pos: [0.0, -0.7853, 0.0, -2.3561, 0.0, 1.5707, 0.7853]
+
 
   asset:
-    assetRoot: "../../content/assets"
-    assetFileNameFranka: "urdf/franka_description/franka_panda_no_gripper_sim.urdf"
+    assetFileNameRobot: "urdf/franka_description/franka_panda_no_gripper_sim.urdf"
+    assetFileNameObject: "urdf/ball.urdf"
 
   # set to True if you use camera sensors in the environment
   enableCameraSensors: False

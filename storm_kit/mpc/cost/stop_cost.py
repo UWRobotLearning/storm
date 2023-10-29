@@ -22,8 +22,6 @@
 # DEALINGS IN THE SOFTWARE.#
 import torch
 import torch.nn as nn
-# import torch.nn.functional as F
-from .gaussian_projection import GaussianProjection
 
 class StopCost(nn.Module):
     def __init__(self, device=torch.device('cpu'),

@@ -24,8 +24,8 @@ from typing import Dict, Optional, Tuple
 import torch
 from torch.profiler import record_function
 
-from ...differentiable_robot_model.coordinate_transform import matrix_to_quaternion, quaternion_to_matrix, rpy_angles_to_matrix
-from ..cost import DistCost, PoseCost, PoseCostQuaternion, ZeroCost, FiniteDifferenceCost
+from ...differentiable_robot_model.spatial_vector_algebra import matrix_to_quaternion, quaternion_to_matrix, rpy_angles_to_matrix
+from ..cost import DistCost, PoseCost, ZeroCost, FiniteDifferenceCost
 from ...mpc.rollout.arm_base import ArmBase
 
 class ArmPusher(ArmBase):

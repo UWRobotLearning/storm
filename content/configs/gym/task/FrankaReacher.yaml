@@ -16,10 +16,14 @@ env:
   aggregateMode: 3
   # actionScale: 1.0 #7.5
   # dofVelocityScale: 0.1
+  joint_control_mode: 'inverse_dynamics'
+  robot_p_gains: [1000.0, 1000.0, 1000.0, 1000.0, 4000.0, 3000.0, 2000.0]
+  robot_d_gains: [10.0, 10.0, 10.0, 10.0, 7.5, 5.0, 1.0]
+  robot_default_dof_pos: [0.0, -0.7853, 0.0, -2.3561, 0.0, 1.5707, 0.7853]
+  robot_z_offset: 0.0
 
   asset:
-    assetRoot: "../../content/assets"
-    assetFileNameFranka: "urdf/franka_description/franka_panda_no_gripper_sim.urdf"
+    assetFileNameRobot: "urdf/franka_description/franka_panda_no_gripper_sim.urdf"
 
   # set to True if you use camera sensors in the environment
   enableCameraSensors: False
@@ -73,15 +77,28 @@ rollout:
   cost:
     goal_pose:
       vec_weight: [1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
-      weight: [15.0, 100.0] #[15.0, 100.0]
+      weight: [30.0, 100.0] #[10.0, 50.0] #[50.0, 100.0]
+      cost_type: 'se3_twist'
+      norm_type: 'l1'
       hinge_val: -1
       convergence_val: [0.0, 0.0] # orientation, position
 
-    zero_vel:
+    ee_vel_twist:
+      weight: 1.0
+      norm_type: 'l1'
+      # hinge_val: 0.01
+      # vec_weight: [1.0, 1.0, 1.0] 
+
+    ee_acc_twist:
+      weight: 0.0
+      norm_type: 'l1'
+      # vec_weight: [1.0, 1.0, 1.0] 
+
+    zero_q_vel:
       weight: 0.0
       hinge_val: 0.2 #0.2
 
-    zero_acc:
+    zero_q_acc:
       weight: 0.0 #0.01
       hinge_val: -1.0
       
@@ -90,18 +107,15 @@ rollout:
       vec_weight: [1.0, 1.0, 1.0, 1.0, 1.0, 0.5, 0.5]
       
     manipulability:
-      weight: 30.0 #10.0 #100.0 #0.05 #0.5 #1.0
-      thresh: 0.1 #0.05 #0.03
+      weight: 20.0 #30.0 #10.0 #100.0 #0.05 #0.5 #1.0
+      thresh: 0.1 #0.1 #0.05 #0.03
 
     joint_l2:
       weight: 0.0
-
-    ee_vel:
-      weight: 0.0
-      vec_weight: [1.0, 1.0, 1.0] 
+      norm_type: 'l1'
 
     stop_cost:
-      weight: 50.0 #50.0 #10.0 #10.0 
+      weight: 30.0 #50.0 #50.0 #10.0 #10.0 
       max_nlimit: 2.0 #1.5 #0.2
 
     stop_cost_acc:
@@ -142,7 +156,7 @@ mpc:
     step_size_cov     : 0.7
     beta              : 0.1
     alpha             : 1
-    num_particles     : 1000 #10000
+    num_particles     : 500 #1000 #10000
     update_cov        : False
     cov_type          : 'diag_AxA' # 
     kappa             : 0.005

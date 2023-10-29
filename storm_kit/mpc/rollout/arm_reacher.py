@@ -24,8 +24,8 @@ from typing import Dict, Optional, Tuple
 import torch
 from torch.profiler import record_function
 
-from ...differentiable_robot_model.coordinate_transform import matrix_to_quaternion, quaternion_to_matrix, rpy_angles_to_matrix
-from ..cost import DistCost, PoseCost, PoseCostQuaternion, ZeroCost, FiniteDifferenceCost
+from ...differentiable_robot_model.spatial_vector_algebra import matrix_to_quaternion, quaternion_to_matrix, rpy_angles_to_matrix
+from ..cost import NormCost, PoseCost
 from ...mpc.rollout.arm_base import ArmBase
 
 class ArmReacher(ArmBase):
@@ -47,13 +47,9 @@ class ArmReacher(ArmBase):
         self.goal_ee_pos = None
         self.goal_ee_rot = None
         
-        self.dist_cost = DistCost(**self.cfg['cost']['joint_l2'], device=self.device)
-
-        # self.goal_cost = PoseCostQuaternion(**cfg['cost']['goal_pose'],
-        #                                     device = self.device,
-        #                                     quat_inputs=False)
-
+        self.dist_cost = NormCost(**self.cfg['cost']['joint_l2'], device=self.device)
         self.goal_cost = PoseCost(**cfg['cost']['goal_pose'], device=self.device)
+
         self.task_specs = cfg['task_specs']
         self.default_ee_goal = torch.tensor(self.task_specs['default_ee_target'], device=self.device)
         self.init_buffers()
@@ -66,27 +62,30 @@ class ArmReacher(ArmBase):
             self, 
             state_dict: Dict[str, torch.Tensor], 
             action_batch: Optional[torch.Tensor]=None,
-            termination: Optional[Dict[str, torch.Tensor]]=None, 
+            termination_cost: Optional[Dict[str, torch.Tensor]]=None, 
             horizon_cost: bool=True, return_dist:bool=False):
 
         cost, cost_terms, state_dict = super(ArmReacher, self).compute_cost(
             state_dict = state_dict,
             action_batch = action_batch,
-            termination = termination,
+            termination_cost = termination_cost,
             horizon_cost = horizon_cost)
 
         # num_instances, curr_batch_size, num_traj_points, _ = state_dict['state_seq'].shape
         # cost = cost.view(num_instances, curr_batch_size, num_traj_points)
 
         ee_pos_batch, ee_rot_batch = state_dict['ee_pos_seq'], state_dict['ee_rot_seq']
-        # ee_pos_batch = ee_pos_batch#.view(num_instances*curr_batch_size, num_traj_points, 3)
-        # ee_rot_batch = ee_rot_batch#.view(num_instances*curr_batch_size, num_traj_points, 3, 3)
+        # lin_jac_batch, ang_jac_batch = state_dict['lin_jac_seq'], state_dict['ang_jac_seq']
+        # lin_jac_batch = lin_jac_batch.view(self.num_instances*self.batch_size, self.horizon, 3, self.n_dofs)
+        # ang_jac_batch = ang_jac_batch.view(self.num_instances*self.batch_size, self.horizon, 3, self.n_dofs)
+        ee_jacobian_seq = state_dict['ee_jacobian_seq'].view(self.num_instances*self.batch_size, self.horizon, 6, self.n_dofs)
 
         state_batch = state_dict['state_seq']#.view(num_instances*curr_batch_size, num_traj_points, -1)
+
         goal_ee_pos = self.goal_ee_pos
         goal_ee_rot = self.goal_ee_rot
         goal_state = self.goal_state
-        
+
 
         # with record_function("pose_cost"):
         #     goal_cost, rot_err_norm, goal_dist = self.goal_cost.forward(ee_pos_batch, ee_rot_batch,
@@ -94,7 +93,7 @@ class ArmReacher(ArmBase):
 
         with record_function("pose_cost"):
             goal_cost, rot_err_norm, goal_dist = self.goal_cost.forward(ee_pos_batch, ee_rot_batch,
-                                                                        goal_ee_pos, goal_ee_rot)
+                                                                        goal_ee_pos, goal_ee_rot) #jac_batch=J_full
             # goal_cost[:,:,0:-1] = 0.
         cost += goal_cost
         
@@ -107,10 +106,10 @@ class ArmReacher(ArmBase):
         if return_dist:
             return cost, state_dict, rot_err_norm, goal_dist
 
-        if self.cfg['cost']['zero_acc']['weight'] > 0:
+        if self.cfg['cost']['zero_q_acc']['weight'] > 0:
             cost += self.zero_acc_cost.forward(state_batch[:, :, self.n_dofs*2:self.n_dofs*3], goal_dist=goal_dist)
 
-        if self.cfg['cost']['zero_vel']['weight'] > 0:
+        if self.cfg['cost']['zero_q_vel']['weight'] > 0:
             cost += self.zero_vel_cost.forward(state_batch[:, :, self.n_dofs:self.n_dofs*2], goal_dist=goal_dist)
         
         return cost, cost_terms, state_dict
@@ -142,7 +141,7 @@ class ArmReacher(ArmBase):
         
         if goal_rotation_noise > 0.:
             #randomize goal orientation
-            raise NotImplementedError('oritentation randomization not implemented')
+            raise NotImplementedError('orientation randomization not implemented')
 
         self.goal_ee_pos = self.ee_goal_buff[..., 0:3]
         self.goal_ee_quat = self.ee_goal_buff[..., 3:7]

@@ -397,7 +397,7 @@ def z_rot(angle: torch.Tensor):
     return R
 
 @torch.jit.script
-def rpy_angles_to_matrix(euler_angles: torch.Tensor):
+def rpy_angles_to_matrix(euler_angles: torch.Tensor) -> torch.Tensor:
     """
     Convert rotations given as RPY euler angles in radians to rotation matrices.
 
@@ -449,14 +449,9 @@ class CoordinateTransform(object):
                 trans: Optional[torch.Tensor]=None, 
                 pose: Optional[torch.Tensor]=None,
                 device: torch.device=torch.device("cpu")):
-                # dtype: torch.dtype=torch.float32):
 
 
         self.device = device
-        # self.dtype = dtype
-        # self.float_dtype = tensor_args['float_dtype']
-        # self.tensor_args = tensor_args
-
         self._rot = torch.eye(3, device=self.device).unsqueeze(0) #.to(device)
         
         # if rot is None:

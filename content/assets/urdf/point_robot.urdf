@@ -5,7 +5,8 @@
 
   <link name="robot">
   </link>
-  <link name="robot_y">
+  <link name="robot_y"/>
+  <link name="robot_z">
     <visual>
       <geometry>
         <sphere radius="0.03"/>
@@ -33,7 +34,6 @@
     <axis xyz="1 0 0"/>
     <limit lower="-0.6" upper="0.6" effort="1" velocity="1"/>
     <dynamics/>
-
   </joint>
 
   <joint name="y_joint" type="prismatic">
@@ -45,17 +45,16 @@
     <dynamics/>
   </joint>
 
-  <!-- <link name="base_link"/>
-    <visual>
-      <geometry>
-        <sphere radius="0.2"/>
-      </geometry>
-    </visual>
-    <collision>
-      <geometry>
-        <sphere radius="0.2"/>
-      </geometry>    
-    </collision>>
-  </link> -->
-    
+  <joint name="z_joint" type="prismatic">
+    <origin rpy="0 0 0" xyz="0 0 0.0"/>
+    <parent link="robot"/>
+    <child link="robot_z"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="-0.6" upper="0.6" effort="1" velocity="1"/>
+    <dynamics/>
+  </joint>
+
+
+
+
 </robot>
