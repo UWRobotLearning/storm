@@ -595,11 +595,10 @@ class TrayEnv():
             object_vel = self.object_state[:,7:10]
             object_ang_vel = self.object_state[:,10:13]
 
-            state_dict['object_pos'] = object_pos[:,0:2].to(self.rl_device)
-            state_dict['object_rot'] = object_rot[:,0:2].to(self.rl_device)
-            state_dict['object_vel'] = object_vel[:,0:2].to(self.rl_device)
-            state_dict['object_ang_vel'] = object_ang_vel[:,0:2].to(self.rl_device)
-
+            state_dict['object_pos'] = object_pos.to(self.rl_device)
+            state_dict['object_rot'] = object_rot.to(self.rl_device)
+            state_dict['object_vel'] = object_vel.to(self.rl_device)
+            state_dict['object_ang_vel'] = object_ang_vel.to(self.rl_device)
 
 
         return state_dict
