@@ -7,7 +7,7 @@ physics_engine: ${..physics_engine}
 env:
   num_envs: ${resolve_default:1,${...num_envs}}
   envSpacing: 1.5
-  episodeLength: 500
+  episodeLength: 100 #500
   enableDebugVis: False
   controlFrequencyInv: 1
   num_objects: 0
@@ -52,7 +52,6 @@ rollout:
     ee_link_name: "ee_link"
     init_state: [0.8, 0.3, 0.0, -1.57, 0.0, 1.86, 0.] #check
     link_names: ['panda_link1', 'panda_link2','panda_link3','panda_link4','panda_link5', 'panda_link6','panda_hand']
-    # vel_scale: 1.0
     collision_spheres: '../robot/franka.yml'
     
     robot_collision_params:
@@ -150,7 +149,8 @@ mpc:
     num_instances     : ${task.env.num_envs}
     horizon           : 30
     init_cov          : 0.1 #0.005 #.5 #.5
-    gamma             : 0.999 #0.98
+    gamma             : 0.99 #0.98
+    td_lam            : 0.97
     n_iters           : 1
     step_size_mean    : 0.98
     step_size_cov     : 0.7

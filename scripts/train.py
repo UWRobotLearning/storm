@@ -87,10 +87,15 @@ def main(cfg: DictConfig):
                         buffer=buffer, policy=policy, critic=critic, logger=log, tb_writer=writer, device=cfg.rl_device)
     
     elif cfg.train.agent.name == 'MPQ':
-        nn_policy = GaussianPolicy(obs_dim=obs_dim, act_dim=act_dim, config=cfg.train.nn_policy, device=cfg.rl_device)
-        critic = TwinQFunction(obs_dim=obs_dim, act_dim=act_dim, config=cfg.train.critic, device=cfg.rl_device)
-        mpc_policy = MPCPolicy(obs_dim=obs_dim, act_dim=act_dim, config=cfg.task.mpc, rollout_cls=task_cls, value_function=critic, device=cfg.rl_device)
-        target_mpc_policy = MPCPolicy(obs_dim=obs_dim, act_dim=act_dim, config=cfg.train.target_mpc_policy, rollout_cls=task_cls, value_function=critic, device=cfg.rl_device)
+        nn_policy = GaussianPolicy(obs_dim=obs_dim, act_dim=act_dim, config=cfg.train.policy, device=cfg.rl_device)
+        if cfg.train.agent.random_ensemble_q:
+            critic = EnsembleQFunction(obs_dim=obs_dim, act_dim=act_dim, config=cfg.train.critic, device=cfg.rl_device) 
+        else:
+            critic = TwinQFunction(obs_dim=obs_dim, act_dim=act_dim, config=cfg.train.critic, device=cfg.rl_device)
+        mpc_policy = MPCPolicy(obs_dim=obs_dim, act_dim=act_dim, config=cfg.task.mpc, rollout_cls=task_cls, device=cfg.rl_device) # value_function=critic,
+        mpc_policy = JointControlWrapper(config=cfg.task.mpc, policy=mpc_policy, device=cfg.rl_device)
+        target_mpc_policy = MPCPolicy(obs_dim=obs_dim, act_dim=act_dim, config=cfg.train.target_mpc_policy, rollout_cls=task_cls, device=cfg.rl_device) # value_function=critic
+        target_mpc_policy = JointControlWrapper(config=cfg.train.target_mpc_policy, policy=target_mpc_policy, device=cfg.rl_device)
         # world_model = GaussianWorldModel(obs_dim=obs_dim, act_dim=act_dim, config=cfg.train.world_model, device=cfg.rl_device)
         agent = MPQAgent(cfg.train.agent, envs=envs, task=task, obs_dim=obs_dim, action_dim=act_dim,
                         buffer=buffer, policy=nn_policy, mpc_policy=mpc_policy, target_mpc_policy=target_mpc_policy, critic=critic, runner_fn=episode_runner, 

@@ -77,38 +77,48 @@ rollout:
 
   task_specs:
     default_ee_target: [0.3, 0.0, 0.3, 0.0, 0.707, 0.707, 0.0]
-    target_position_noise: 0.0
+    target_position_noise: 0.2
     target_rotation_noise: 0.0
 
   cost:
     goal_pose:
       vec_weight: [1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
-      weight: [15.0, 100.0]
+      weight: [30.0, 100.0] #[10.0, 50.0] #[50.0, 100.0]
+      cost_type: 'se3_twist'
+      norm_type: 'l1'
       hinge_val: -1
       convergence_val: [0.0, 0.0] # orientation, position
 
-    zero_vel:
+    ee_vel_twist:
+      weight: 1.0
+      norm_type: 'l1'
+      # hinge_val: 0.01
+      # vec_weight: [1.0, 1.0, 1.0] 
+
+    ee_acc_twist:
+      weight: 0.0
+      norm_type: 'l1'
+      # vec_weight: [1.0, 1.0, 1.0] 
+
+    zero_q_vel:
       weight: 0.0
       hinge_val: 0.2 #0.2
 
-    zero_acc:
+    zero_q_acc:
       weight: 0.0 #0.01
       hinge_val: -1.0
-      
+
     null_space:
       weight: 0.0 #0.01 #0.05 #0.5 #1.0
       vec_weight: [1.0, 1.0, 1.0, 1.0, 1.0, 0.5, 0.5]
       
     manipulability:
-      weight: 30.0 #10.0 #100.0 #0.05 #0.5 #1.0
+      weight: 20.0 #30.0 #10.0 #100.0 #0.05 #0.5 #1.0
       thresh: 0.1 #0.03
 
     joint_l2:
       weight: 0.0
-
-    ee_vel:
-      weight: 0.0
-      vec_weight: [1.0, 1.0, 1.0] #, 0.0, 0.0, 0.0]
+      norm_type: 'l1'
 
     stop_cost:
       weight: 50.0
@@ -118,7 +128,7 @@ rollout:
       weight: 0.0
       max_limit: 0.1 #0.2
 
-    jerk_cost:
+    smooth_cost:
       weight: 0.0 
       order: 1
 
@@ -148,12 +158,13 @@ mpc:
     horizon           : 30
     init_cov          : 0.02 #0.005
     gamma             : 0.99
+    td_lam            : 0.97
     n_iters           : 1
     step_size_mean    : 0.98
     step_size_cov     : 0.01
     beta              : 0.1 #1.0
     alpha             : 1
-    num_particles     : 1000 #10000
+    num_particles     : 500 #1000 #10000
     update_cov        : False
     cov_type          : 'diag_AxA' # 
     kappa             : 0.005
@@ -185,25 +196,6 @@ train:
 
 
 sim:
-  # dt: 0.0166 # 1/60
-  # substeps: 1
-  # up_axis: "z"
-  # use_gpu_pipeline: ${eq:${...pipeline},"gpu"}
-  # gravity: [0.0, 0.0, -9.81]
-  # physx:
-  #   num_threads: ${....num_threads}
-  #   solver_type: ${....solver_type}
-  #   use_gpu: ${contains:"cuda",${....sim_device}} # set to False to run on CPU
-  #   num_position_iterations: 12
-  #   num_velocity_iterations: 1
-  #   contact_offset: 0.005
-  #   rest_offset: 0.0
-  #   bounce_threshold_velocity: 0.2
-  #   max_depenetration_velocity: 1000.0
-  #   default_buffer_size_multiplier: 5.0
-  #   max_gpu_contact_pairs: 1048576 # 1024*1024
-  #   num_subscenes: ${....num_subscenes}
-  #   contact_collection: 0 # 0: CC_NEVER (don't collect contact info), 1: CC_LAST_SUBSTEP (collect only contacts on last substep), 2: CC_ALL_SUBSTEPS (broken - do not use!)
 
 task:
   randomize: False

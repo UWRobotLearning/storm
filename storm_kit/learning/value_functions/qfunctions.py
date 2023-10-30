@@ -35,6 +35,7 @@ class QFunction(nn.Module):
 
     def forward(self, obs_dict: Dict[str,torch.Tensor], actions: torch.Tensor):
         obs = obs_dict['obs']
+
         # act = torch.cat([act_dict[k] for k in act_dict])
         # assert obs.ndim == act_batch.ndim
         input = torch.cat([obs, actions], dim=-1)

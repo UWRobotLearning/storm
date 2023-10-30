@@ -80,8 +80,13 @@ class PoseCost(NormCost):
         
         ee_pos_batch = ee_pos_batch.view(num_instances*batch_size*horizon, 3)
         ee_rot_batch = ee_rot_batch.view(num_instances*batch_size*horizon, 3, 3)
-        ee_goal_pos = ee_goal_pos.expand(num_instances*batch_size*horizon, 3)
-        ee_goal_rot = ee_goal_rot.expand(num_instances*batch_size*horizon, 3,3)
+        if num_instances == 1:
+            ee_goal_pos = ee_goal_pos.expand(num_instances*batch_size*horizon, 3)
+            ee_goal_rot = ee_goal_rot.expand(num_instances*batch_size*horizon, 3,3)
+        else:
+            ee_goal_pos = ee_goal_pos.repeat(batch_size*horizon, 1)
+            ee_goal_rot = ee_goal_rot.repeat(batch_size*horizon, 1,1)
+
         if jac_batch is not None:
             jac_batch = jac_batch.view(num_instances*batch_size*horizon, 6, -1)
         

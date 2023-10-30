@@ -87,7 +87,6 @@ class URDFKinematicModel(nn.Module):
             # self.state_upper_bounds[i+2*self.n_dofs] = max_acc
             # self.state_lower_bounds[i+2*self.n_dofs] = -1.0 * max_acc
         
-        #print(self.state_upper_bounds, self.state_lower_bounds)
         # #pre-allocating memory for rollouts
         self.state_seq = torch.zeros(self.num_instances, self.batch_size, self.num_traj_points, self.d_state, device=self.device, dtype=self.dtype)
         self.ee_pos_seq = torch.zeros(self.num_instances, self.batch_size, self.num_traj_points, 3, device=self.device, dtype=self.dtype)
@@ -217,9 +216,8 @@ class URDFKinematicModel(nn.Module):
             # self.prev_state_buffer = torch.zeros((self.num_instances, 10, self.d_state), device=self.device, dtype=self.dtype)
         # self.prev_state_buffer[:,:,:] = curr_robot_state.unsqueeze(1)
             # self.initial_step = False
-
         self.prev_state_buffer = self.prev_state_buffer.roll(-1, dims=1)
-        self.prev_state_buffer[:,-1,:] = curr_robot_state
+        self.prev_state_buffer[:,-1,:] = curr_robot_state.squeeze(1)
 
         # compute dt w.r.t previous data?
         state_seq = self.state_seq

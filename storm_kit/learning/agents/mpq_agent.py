@@ -23,7 +23,6 @@ class MPQAgent(SACAgent):
             target_mpc_policy,
             critic,
             runner_fn,
-            state_filter=None,
             logger=None,
             tb_writer=None,
             device=torch.device('cpu'),
@@ -33,29 +32,128 @@ class MPQAgent(SACAgent):
         super().__init__(
             cfg, envs, task, obs_dim, action_dim,
             buffer=buffer, policy=policy, critic=critic,
-            runner_fn=runner_fn, state_filter=state_filter, logger=logger, 
+            runner_fn=runner_fn, logger=logger, 
             tb_writer=tb_writer, device=device        
         )
         self.mpc_policy = mpc_policy
         self.target_mpc_policy = target_mpc_policy
-        self.collect_data_with_mpc = cfg.collect_data_with_mpc
 
 
-    def collect_experience(self):
-        if self.collect_data_with_mpc:
-            self.buffer, play_metrics = self.runner_fn(
-                envs=self.envs,
-                num_episodes=self.num_train_episodes_per_epoch, 
-                policy=self.mpc_policy,
-                task=self.task,
-                state_filter = self.state_filter,
-                buffer=self.buffer,
-                device=self.device
-            )
-            return play_metrics
-        else:
-            return super().collect_experience()
+    def collect_experience(self, debug:bool = False):
+        # if self.collect_data_with_mpc:
+        self.buffer, play_metrics = self.runner_fn(
+            envs=self.envs,
+            num_episodes=self.num_train_episodes_per_epoch, 
+            policy=self.mpc_policy,
+            task=self.task,
+            buffer=self.buffer,
+            debug=debug,
+            device=self.device
+        )
+        return play_metrics
+        # else:
+        #     return super().collect_experience()
 
+    def train(self, debug:bool=False, model_dir=None):
+        num_epochs = int(self.cfg['num_epochs'])
+        total_env_steps = 0
+
+        # self.best_policy = copy.deepcopy(self.policy)
+        # best_policy_perf = -torch.inf
+        # best_policy_step = 0
+        
+        pbar = tqdm(range(int(num_epochs)), desc='train')
+        for i in pbar:
+            #collect new experience
+            play_metrics = self.collect_experience(debug=debug)
+            print(play_metrics)
+            num_steps_collected = play_metrics['num_steps_collected'] 
+            total_env_steps += num_steps_collected
+
+            #update agent
+            if len(self.buffer) >= self.min_buffer_size:
+                
+                num_update_steps = int(self.update_to_data_ratio * num_steps_collected)
+                print('Running {} updates'.format(num_update_steps))
+
+                for k in range(num_update_steps):
+                    batch = self.buffer.sample(self.cfg['train_batch_size'])
+                    train_metrics = self.update(batch, k, num_update_steps)
+                    pbar.set_postfix(train_metrics)
+
+                if (i % self.log_freq == 0) or (i == num_epochs -1):
+                    if self.tb_writer is not None:
+                        for k, v in play_metrics.items():
+                            self.tb_writer.add_scalar('Train/' + k, v, total_env_steps)
+                        for k, v in train_metrics.items():
+                            self.tb_writer.add_scalar('Train/' + k, v, total_env_steps)
+
+
+    def update(self, batch_dict, step_num, num_update_steps):
+        batch_dict = dict_to_device(batch_dict, self.device)
+        train_metrics = {}
+
+        #Compute critic loss
+        self.critic_optimizer.zero_grad()
+        critic_loss, avg_q_value = self.compute_critic_loss(batch_dict)
+        critic_loss.backward()
+        self.critic_optimizer.step()
+
+        #Update target critic using exponential moving average
+        for (param1, param2) in zip(self.target_critic.parameters(), self.critic.parameters()):
+            param1.data.mul_(1. - self.polyak_tau).add_(param2.data, alpha=self.polyak_tau)
+
+        train_metrics['critic_loss'] = critic_loss.item()
+        train_metrics['avg_q_value'] = avg_q_value.item()
+
+        return train_metrics
+
+    def compute_critic_loss(self, batch_dict):
+        cost_batch = batch_dict['cost'].squeeze(-1)
+        obs_batch = batch_dict['obs']
+        act_batch = batch_dict['actions']
+        next_obs_batch = batch_dict['next_obs']
+        next_state_batch = batch_dict['next_state_dict']
+        done_batch = batch_dict['done'].squeeze(-1).float()
+        goal_dict = batch_dict['goal_dict']
+
+        with torch.no_grad():
+            policy_input = {
+                'states': next_state_batch,
+                'obs': next_obs_batch}
+
+            reset_data = {}
+            reset_data['goal_dict'] = goal_dict
+            self.target_mpc_policy.reset(reset_data)
+            next_actions, _ = self.target_mpc_policy.get_action(policy_input)
+            next_actions = next_actions[:,14:21]
+            next_actions = next_actions.unsqueeze(0)
+            # next_actions, next_actions_log_prob = self.policy.entropy(policy_input)
+            # next_actions_log_prob = next_actions_log_prob.mean(-1) #mean along action dimension
+
+            target_pred = self.target_critic(
+                {'obs': next_obs_batch.unsqueeze(0).repeat(self.num_action_samples, 1, 1)}, 
+                next_actions)
+            target_pred = target_pred.mean(0) #mean across num action samples
+            
+            # if self.backup_entropy:
+            #     alpha = self.log_alpha.exp()
+            #     q_pred_next =  target_pred + alpha * next_actions_log_prob # sign is flipped in entropy since we are minimizing costs
+            # else:
+            q_pred_next = target_pred
+            q_target = self.reward_scale * cost_batch +  (1. - done_batch) * self.discount * q_pred_next
+
+        qf_all = self.critic.all({'obs': obs_batch}, act_batch)
+        q_target = q_target.unsqueeze(-1).repeat(1, qf_all.shape[-1])
+
+        qf_loss = F.mse_loss(qf_all, q_target, reduction='none')
+        qf_loss = qf_loss.sum(-1).mean(0) #sum along ensemble dimension and mean along batch
+
+        avg_q_value = torch.max(qf_all, dim=-1)[0].mean() #max instead of min since we are minimizing costs
+
+
+
+        return qf_loss, avg_q_value
 
     # def update(self, batch_dict):
     #     batch_dict = dict_to_device(batch_dict, self.device)

@@ -294,7 +294,7 @@ class ArmReacher(ArmBase):
 
     @property
     def obs_dim(self)->int:
-        return 23
+        return 29
 
     @property
     def action_dim(self)->int:

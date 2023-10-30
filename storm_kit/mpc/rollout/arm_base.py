@@ -90,9 +90,9 @@ class ArmBase(RolloutBase):
         self.manipulability_cost = ManipulabilityCost(ndofs=self.n_dofs, device=device,
                                                       **cfg['cost']['manipulability'])
 
-        self.zero_vel_cost = ZeroCost(device=device,  **cfg['cost']['zero_q_vel'])
+        # self.zero_vel_cost = ZeroCost(device=device,  **cfg['cost']['zero_q_vel'])
 
-        self.zero_acc_cost = ZeroCost(device=device,  **cfg['cost']['zero_q_acc'])
+        # self.zero_acc_cost = ZeroCost(device=device,  **cfg['cost']['zero_q_acc'])
         
         self.stop_cost = StopCost(**cfg['cost']['stop_cost'],
                                   device=self.device,
@@ -268,9 +268,10 @@ class ArmBase(RolloutBase):
         #     dim=-1
         # )
         state_dict = self.compute_full_state(state_dict)
+        ee_vel_twist = state_dict['ee_vel_twist_seq']
         # return obs
         obs = torch.cat(
-            (state_dict['q_pos'], state_dict['q_vel']), dim=-1)
+            (state_dict['q_pos'], state_dict['q_vel'], ee_vel_twist), dim=-1)
         return obs, state_dict
 
 
@@ -311,15 +312,10 @@ class ArmBase(RolloutBase):
 
         #mark any trajectory with terminal states as terminal
         # termination[num_term_states_per_traj > 0] = 1.0
-        # print(termination)
         # non_zero =  torch.nonzero(termination, as_tuple=False).long()
         # if non_zero.numel() > 0:
-        #     print(termination)
         #     # termination[non_zero[:,0], non_zero[:,1]:] = 1.0
-        #     print(non_zero)
         #     print(torch.count_nonzero(termination, dim=-1))
-        #     print(termination[non_zero])
-        #     # print(termination)
 
         return termination, termination_cost, state_dict
     

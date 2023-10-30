@@ -37,13 +37,14 @@ class Controller(nn.Module):
                  action_lows,
                  action_highs,
                  horizon,
-                 gamma,
-                 n_iters,
+                 gamma:float,
+                 td_lam:float,
+                 n_iters:int,
                  rollout_fn=None,
-                 sample_mode='mean',
-                 hotstart=True,
-                 num_instances=1,
-                 seed=0,
+                 sample_mode:str='mean',
+                 hotstart:bool=True,
+                 num_instances:int=1,
+                 seed:int=0,
                  tensor_args={'device':torch.device('cpu'), 'dtype':torch.float32}):
         """
         Defines an abstract base class for 
@@ -92,9 +93,10 @@ class Controller(nn.Module):
         self.action_highs = torch.as_tensor(action_highs).to(**self.tensor_args)
         self.horizon = horizon
         self.gamma = gamma
+        self.td_lam = td_lam
         self.n_iters = n_iters
-        self.gamma_seq = torch.cumprod(torch.tensor([1.0] + [self.gamma] * (horizon - 1)),dim=0).reshape(1, horizon)
-        self.gamma_seq = self.gamma_seq.to(**self.tensor_args)
+        self.gamma_seq = torch.cumprod(torch.tensor([1.0] + [self.gamma] * (horizon - 1)), dim=0).reshape(1, horizon).to(**self.tensor_args)
+        self.gammalam_seq = torch.cumprod(torch.tensor([1.0] + [self.gamma*self.td_lam] * (horizon - 1)), dim=0).reshape(1, self.horizon).to(**self.tensor_args)
         self._rollout_fn = rollout_fn
         self.sample_mode = sample_mode
         self.num_steps = 0
@@ -243,7 +245,7 @@ class Controller(nn.Module):
             self.reset_distribution()
             
 
-        with torch.cuda.amp.autocast(enabled=False):
+        with torch.cuda.amp.autocast(enabled=True):
             with torch.no_grad():
                 for _ in range(n_iters):
                     # generate random simulated trajectories

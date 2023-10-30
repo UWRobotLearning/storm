@@ -59,10 +59,11 @@ class MPCPolicy(Policy):
         return dist
 
     def get_action(self, obs_dict, deterministic=False, num_samples=1):
-        st=time.time()
+        # st=time.time()
         state_dict = obs_dict['states']
         state_dict['prev_action'] = self.prev_action
-    
+        # for k in state_dict:
+        #     print(state_dict[k].shape)
         # states = torch.cat(
         #     (state_dict['q_pos'], 
         #      state_dict['q_vel'], 
@@ -96,9 +97,17 @@ class MPCPolicy(Policy):
         # }
 
         self.prev_action = action.clone()
-        print(time.time()-st)
+        # print(time.time()-st)
         return action
 
+    def compute_value_estimate(self, obs_dict):
+        state_dict = obs_dict['states']
+        state_dict['prev_action'] = self.prev_action
+        curr_action_seq, value, info = self.controller.forward(
+            state_dict, calc_val=True, shift_steps=1)
+        action = curr_action_seq[:, 0]
+        self.prev_action = action.clone()
+        return action, value
 
     def log_prob(self, input_dict: Dict[str, torch.Tensor], act_dict: Dict[str, torch.Tensor]):
         dist = self.forward(input_dict)
@@ -161,7 +170,7 @@ class MPCPolicy(Policy):
 
     def update_rollout_params(self, param_dict):
         self.controller.rollout_fn.update_params(param_dict)
-    
+        
     def reset(self, reset_data=None):
         if reset_data is not None:
             self.update_rollout_params(param_dict=reset_data)

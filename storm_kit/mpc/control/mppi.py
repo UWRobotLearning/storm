@@ -60,6 +60,7 @@ class MPPI(OLGaussianMPC):
                  step_size_cov,
                  alpha,
                  gamma,
+                 td_lam,
                  kappa,
                  n_iters,
                  action_lows,
@@ -87,6 +88,7 @@ class MPPI(OLGaussianMPC):
                                    base_action,
                                    num_particles,
                                    gamma,
+                                   td_lam,
                                    n_iters,
                                    step_size_mean,
                                    step_size_cov, 
@@ -250,14 +252,16 @@ class MPPI(OLGaussianMPC):
         if value_preds is not None:
             costs[:,:,-1] = value_preds[:,:,-1] 
 
-        traj_returns = cost_to_go(costs, self.gamma_seq)
+        # traj_returns = cost_to_go(costs, self.gamma_seq)
+        traj_returns = cost_to_go(costs, self.gammalam_seq)
+        # assert torch.allclose(traj_returns, traj_returns_2)
         # if not self.time_based_weights: traj_returns = traj_returns[:,0]
         traj_returns = traj_returns[:,:,0]
         #control_costs = self._control_costs(actions)
         # total_returns = traj_returns #+ self.beta * control_costs
         if self.normalize_returns:
-            max_return = torch.max(traj_returns, dim=-1)[0]
-            min_return = torch.min(traj_returns, dim=-1)[0]
+            max_return = torch.max(traj_returns, dim=-1)[0][:,None]
+            min_return = torch.min(traj_returns, dim=-1)[0][:,None]
             traj_returns = (traj_returns - min_return) / (max_return - min_return)
 
         # #calculate soft-max
