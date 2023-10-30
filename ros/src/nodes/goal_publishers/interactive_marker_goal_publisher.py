@@ -12,7 +12,7 @@ from visualization_msgs.msg import *
 import rospkg
 
 from storm_kit.differentiable_robot_model import DifferentiableRobotModel
-from storm_kit.differentiable_robot_model.coordinate_transform import matrix_to_quaternion
+from storm_kit.differentiable_robot_model.spatial_vector_algebra import matrix_to_quaternion
 
 
 class InteractiveMarkerGoalPub():
@@ -192,7 +192,7 @@ class InteractiveMarkerGoalPub():
 
 
         curr_ee_pos, curr_ee_rot = self.robot_model.compute_forward_kinematics(
-            q_robot, qd_robot, link_name=self.ee_frame)
+            q_robot, link_name=self.ee_frame)
         curr_ee_quat = matrix_to_quaternion(curr_ee_rot)
         # self.curr_ee_quat = self.curr_ee_quat / torch.norm(self.curr_ee_quat) #normalize quaternion
 

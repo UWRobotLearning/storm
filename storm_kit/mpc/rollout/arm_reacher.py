@@ -259,7 +259,6 @@ class ArmReacher(ArmBase):
         retract_state = goal_dict['retract_state'] if 'retract_state' in goal_dict else None
         ee_goal = goal_dict['ee_goal'] if 'ee_goal' in goal_dict else None
         joint_goal = goal_dict['joint_goal'] if 'joint_goal' in goal_dict else None
-        
         # goal_ee_pos = goal_dict['goal_ee_pos'] if 'goal_ee_pos' in goal_dict else None
         # goal_ee_rot = goal_dict['goal_ee_rot'] if 'goal_ee_rot' in goal_dict else None
         # goal_ee_quat = goal_dict['goal_ee_quat'] if 'goal_ee_quat' in goal_dict else None

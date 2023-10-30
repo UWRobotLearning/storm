@@ -14,7 +14,7 @@ from hydra import initialize, compose
 
 from storm_kit.util_file import get_configs_path, get_gym_configs_path, join_path, load_yaml, get_assets_path
 from storm_kit.differentiable_robot_model import DifferentiableRobotModel
-from storm_kit.differentiable_robot_model.coordinate_transform import quaternion_to_matrix, CoordinateTransform
+from storm_kit.differentiable_robot_model.spatial_vector_algebra import quaternion_to_matrix, CoordinateTransform
 from storm_kit.geom.sdf.robot import RobotSphereCollision
 
 class RobotWorldPublisher():
@@ -98,7 +98,7 @@ class RobotWorldPublisher():
 
     def get_robot_collision_spheres(self, robot_state):
         _,_,_,_ = self.robot_model.compute_fk_and_jacobian(
-            robot_state['position'].unsqueeze(0), robot_state['velocity'].unsqueeze(0), link_name=self.ee_link_name)
+            robot_state['position'].unsqueeze(0), link_name=self.ee_link_name)
         link_pos_seq, link_rot_seq = [], []
 
         for _,k in enumerate(self.link_names):

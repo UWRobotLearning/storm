@@ -2,9 +2,10 @@
 
 #General imports
 import os
+from collections import defaultdict
+import pickle
 import numpy as np
 from hydra import compose, initialize
-from omegaconf import OmegaConf
 import torch
 torch.multiprocessing.set_start_method('spawn',force=True)
 torch.set_num_threads(8)
@@ -17,8 +18,6 @@ import rospy
 from geometry_msgs.msg import PoseStamped 
 from sensor_msgs.msg import JointState
 import rospkg
-# from diagnostic_msgs.msg import DiagnosticArray, DiagnosticStatus, KeyValue
-# from std_msgs.msg import String, Header
 
 #STORM imports
 from storm_kit.mpc.rollout import ArmReacher
@@ -48,12 +47,12 @@ class MPCReacherNode():
         act_dim = 1
         self.policy = MPCPolicy(
             obs_dim=obs_dim, act_dim=act_dim, 
-            config=self.config.task.mpc, rollout_cls = ArmReacher, 
+            config=self.config.task.mpc, rollout_cls=ArmReacher, 
             device=self.device)
         self.policy = JointControlWrapper(config=self.config.task.mpc, policy=self.policy, device=self.device)
 
-        # if self.save_data:
-        #     buffer = RobotBuffer(capacity=1e-6)
+        if self.save_data:
+            self.dataset = defaultdict(lambda: [])
 
 
         #buffers for different messages
@@ -181,6 +180,15 @@ class MPCReacherNode():
                 # self.mpc_command.effort =  command['qdd_des'][0].cpu().numpy()
                 self.command_pub.publish(self.mpc_command)
 
+                if self.save_data:
+                    self.dataset['q_pos'].append(self.robot_state['q_pos'].cpu().numpy()) 
+                    self.dataset['q_vel'].append(self.robot_state['q_vel'].cpu().numpy())
+                    self.dataset['ee_goal'].append(self.goal_dict['ee_goal'].cpu().numpy())
+                    self.dataset['q_pos_cmd'].append(command_tensor[0][0:7].cpu().numpy())
+                    self.dataset['q_vel_cmd'].append(command_tensor[0][7:14].cpu().numpy())
+                    self.dataset['q_acc_cmd'].append(command_tensor[0][14:21].cpu().numpy())
+                    
+
                 #update tstep
                 if self.tstep == 0:
                     rospy.loginfo('[MPCPoseReacher]: Controller running')
@@ -197,6 +205,10 @@ class MPCReacherNode():
             self.rate.sleep()
     
     def close(self):
+        if self.save_data:
+            print('saving data in pickle')
+            print(self.dataset)
+
         self.command_pub.unregister()
         self.state_sub.unregister()
         self.ee_goal_sub.unregister()

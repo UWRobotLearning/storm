@@ -10,7 +10,6 @@ from sensor_msgs.msg import JointState
 
 from storm_ros.srv import ReachGoal, ReachGoalResponse
 from storm_ros.msg import GoalMsg
-from storm_kit.learning.experience_collector import ExperienceCollector
 from storm_kit.learning.replay_buffers import RobotBuffer
 from storm_kit.learning.policies import MPCPolicy
 from storm_kit.util_file import get_data_path
@@ -110,92 +109,70 @@ class FrankaRealRobotEnv():
         self.obs_dict = {'states':self.robot_state_tensor}
 
 
-    def collect_episodes(self,
-                         num_episodes: int,
-                         data_folder: str = None):
-        
-        collect_data = False
-        if data_folder is not None:
-            collect_data = True
-        
-        print('Collecting episodes')        
-        input('Press any key to initiate reset')
-        self.reset()
-        for ep_num in range(num_episodes):
-            input('Press any key to start collecting episode = {}'.format(ep_num))
-            episode_buffer = self.collect_episode(collect_data=collect_data)
-            if data_folder is not None:
-                if not os.path.exists(data_folder):
-                    os.makedirs(data_folder)
-                filepath = data_folder + '/episode_{}.p'.format(ep_num)
-                print('Saving episode to {}'.format(filepath))
-                episode_buffer.save(filepath)
 
-            input('Episode {}/{} done. Press any key to initiate reset'.format(ep_num, num_episodes))
-            self.reset()
+    def allocate_buffers(self):
+        pass
+
+    def _create_envs(self):
+        pass
+
+    def init_data(self):
+        pass
 
 
-    def collect_episode(self, collect_data=False):
-        tstep = 0
-        ee_goal = self.ee_goal.clone()
-        
-        episode_buffer=None
-        if collect_data:
-            episode_buffer = RobotBuffer(capacity=self.episode_length, n_dofs=self.n_dofs)
+    def pre_physics_steps(self, actions:torch.Tensor):
+        pass
 
-        print(ee_goal)
-        self.policy.reset()
-        self.policy.update_goal(ee_goal=ee_goal)
-        for i in range(self.episode_length):
-            #only do something if state has been received
-            if self.state_sub_on:
-                input_dict = {}
-                input_dict['states'] = torch.cat(
-                    (self.obs_dict['states'], 
-                        torch.as_tensor([tstep]).unsqueeze(0)),
-                        dim=-1)
-                input_dict = copy.deepcopy(input_dict) #we deepcopy here to ensure state does not change in the background
-                
-                #get mpc command
-                command = self.policy.get_action(
-                    obs_dict=input_dict)
+    def step(self, actions:torch.Tensor);
+            #only do something if state and goal have been received
+            if self.state_sub_on and self.goal_sub_on:
+                # #check if goal was updated
+                # if self.new_ee_goal:
+                #     param_dict = {'goal_dict': dict_to_device(self.goal_dict, device=self.device)}
+                #     self.policy.update_rollout_params(param_dict)
+                #     self.new_ee_goal = False
+
+                # for k in self.robot_state.keys():
+                #     self.policy_input['states'][k] = self.robot_state[k].clone().to(self.device)
+                                
+                # self.tstep_tensor[0,0] = self.tstep
+                # self.policy_input['states']['tstep'] = self.tstep_tensor
+                # self.policy_input['obs'] = self.robot_state_tensor.to(self.device)
+
+                # for k in self.policy_input['states'].keys():
+                #     print('in node', k, self.policy_input['states'][k].device)
+
+
+
+                # #get mpc command
+                # command_tensor, policy_info = self.policy.get_action(self.policy_input)
 
                 #publish mpc command
-                mpc_command = JointState()
-                mpc_command.header = self.command_header
-                mpc_command.name = self.joint_names
-                mpc_command.header.stamp = rospy.Time.now()
-                mpc_command.position = command['q_des'][0].cpu().numpy()
-                mpc_command.velocity = command['qd_des'][0].cpu().numpy()
-                mpc_command.effort =  command['qdd_des'][0].cpu().numpy()
+                self.mpc_command.header = self.command_header
+                self.mpc_command.header.stamp = rospy.Time.now()
+                self.mpc_command.position = actions[0][0:7].cpu().numpy()
+                self.mpc_command.velocity = actions[0][7:14].cpu().numpy()
+                self.mpc_command.effort =  actions[0][14:21].cpu().numpy()
 
-                self.command_pub.publish(mpc_command)
-
-                if collect_data:
-                    episode_buffer.add(
-                        q_pos=input_dict['states'][:, 0:self.n_dofs], 
-                        q_vel=input_dict['states'][:, self.n_dofs:2*self.n_dofs], 
-                        q_acc=input_dict['states'][:, 2*self.n_dofs:3*self.n_dofs], 
-                        q_pos_cmd=command['q_des'], 
-                        q_vel_cmd=command['qd_des'], 
-                        q_acc_cmd=command['qdd_des'],
-                        ee_goal=ee_goal)
+                # self.mpc_command.position = command['q_des'][0].cpu().numpy()
+                # self.mpc_command.velocity = command['qd_des'][0].cpu().numpy()
+                # self.mpc_command.effort =  command['qdd_des'][0].cpu().numpy()
+                self.command_pub.publish(self.mpc_command)
 
                 #update tstep
-                if tstep == 0:
-                    rospy.loginfo('[MPCPoseReacher]: Controller running')
-                    start_t = rospy.get_time()
-                tstep = rospy.get_time() - start_t
+                if self.tstep == 0:
+                    rospy.loginfo('[FrankaRobotEnv]: Env Setup')
+                    self.start_t = rospy.get_time()
+                self.tstep = rospy.get_time() - self.start_t
+
             else:
                 if (not self.state_sub_on) and (self.first_iter):
-                    rospy.loginfo('[MPCPoseReacher]: Waiting for robot state.')
+                    rospy.loginfo('[FrankaRobotEnv]: Waiting for robot state.')
+                if (not self.goal_sub_on) and (self.first_iter):
+                    rospy.loginfo('[FrankaRobotEnv]: Waiting for ee goal.')
             
             self.first_iter = False
             self.rate.sleep()
-        return episode_buffer
-
-    def step(self):
-        pass
 
     def reset(self):
         tstep = 0
@@ -276,6 +253,90 @@ class FrankaRealRobotEnv():
         self.command_pub.unregister()
         self.state_sub.unregister()
 
+    # def collect_episodes(self,
+    #                      num_episodes: int,
+    #                      data_folder: str = None):
+        
+    #     collect_data = False
+    #     if data_folder is not None:
+    #         collect_data = True
+        
+    #     print('Collecting episodes')        
+    #     input('Press any key to initiate reset')
+    #     self.reset()
+    #     for ep_num in range(num_episodes):
+    #         input('Press any key to start collecting episode = {}'.format(ep_num))
+    #         episode_buffer = self.collect_episode(collect_data=collect_data)
+    #         if data_folder is not None:
+    #             if not os.path.exists(data_folder):
+    #                 os.makedirs(data_folder)
+    #             filepath = data_folder + '/episode_{}.p'.format(ep_num)
+    #             print('Saving episode to {}'.format(filepath))
+    #             episode_buffer.save(filepath)
+
+    #         input('Episode {}/{} done. Press any key to initiate reset'.format(ep_num, num_episodes))
+    #         self.reset()
+
+
+    # def collect_episode(self, collect_data=False):
+    #     tstep = 0
+    #     ee_goal = self.ee_goal.clone()
+        
+    #     episode_buffer=None
+    #     if collect_data:
+    #         episode_buffer = RobotBuffer(capacity=self.episode_length, n_dofs=self.n_dofs)
+
+    #     print(ee_goal)
+    #     self.policy.reset()
+    #     self.policy.update_goal(ee_goal=ee_goal)
+    #     for i in range(self.episode_length):
+    #         #only do something if state has been received
+    #         if self.state_sub_on:
+    #             input_dict = {}
+    #             input_dict['states'] = torch.cat(
+    #                 (self.obs_dict['states'], 
+    #                     torch.as_tensor([tstep]).unsqueeze(0)),
+    #                     dim=-1)
+    #             input_dict = copy.deepcopy(input_dict) #we deepcopy here to ensure state does not change in the background
+                
+    #             #get mpc command
+    #             command = self.policy.get_action(
+    #                 obs_dict=input_dict)
+
+    #             #publish mpc command
+    #             mpc_command = JointState()
+    #             mpc_command.header = self.command_header
+    #             mpc_command.name = self.joint_names
+    #             mpc_command.header.stamp = rospy.Time.now()
+    #             mpc_command.position = command['q_des'][0].cpu().numpy()
+    #             mpc_command.velocity = command['qd_des'][0].cpu().numpy()
+    #             mpc_command.effort =  command['qdd_des'][0].cpu().numpy()
+
+    #             self.command_pub.publish(mpc_command)
+
+    #             if collect_data:
+    #                 episode_buffer.add(
+    #                     q_pos=input_dict['states'][:, 0:self.n_dofs], 
+    #                     q_vel=input_dict['states'][:, self.n_dofs:2*self.n_dofs], 
+    #                     q_acc=input_dict['states'][:, 2*self.n_dofs:3*self.n_dofs], 
+    #                     q_pos_cmd=command['q_des'], 
+    #                     q_vel_cmd=command['qd_des'], 
+    #                     q_acc_cmd=command['qdd_des'],
+    #                     ee_goal=ee_goal)
+
+    #             #update tstep
+    #             if tstep == 0:
+    #                 rospy.loginfo('[MPCPoseReacher]: Controller running')
+    #                 start_t = rospy.get_time()
+    #             tstep = rospy.get_time() - start_t
+    #         else:
+    #             if (not self.state_sub_on) and (self.first_iter):
+    #                 rospy.loginfo('[MPCPoseReacher]: Waiting for robot state.')
+            
+    #         self.first_iter = False
+    #         self.rate.sleep()
+    #     return episode_buffer
+
 
 if __name__ == "__main__":
     from datetime import datetime
@@ -286,7 +347,7 @@ if __name__ == "__main__":
     np.random.seed(0)
 
 
-    rospy.init_node("robot_experience_collector", anonymous=True, disable_signals=True)    
+    rospy.init_node("franka_real_robot_env", anonymous=True, disable_signals=True)    
 
     torch.set_default_dtype(torch.float32)
     initialize(config_path="../../content/configs/gym", job_name="mpc")
@@ -305,10 +366,10 @@ if __name__ == "__main__":
     now_str = datetime.now().strftime('%m-%d-%y_%H.%M.%S')
     rand_str = ''.join(random.choices(string.ascii_lowercase, k=4))
     data_folder =  os.path.join(get_data_path(), f'{now_str}_{rand_str}')
-    experience_collector = RobotExperienceCollector(config, policy=policy, device=device)
-    try:
-        experience_collector.collect_episodes(num_episodes=50, data_folder=data_folder)
-    except KeyboardInterrupt:
-        print('Exiting')
-        pass
-    experience_collector.close()
+    env = FrankaRealRobotEnv(config, policy=policy, device=device)
+    # try:
+    #     experience_collector.collect_episodes(num_episodes=50, data_folder=data_folder)
+    # except KeyboardInterrupt:
+    #     print('Exiting')
+    #     pass
+    env.close()
