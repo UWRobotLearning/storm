@@ -1,14 +1,25 @@
 import argparse
 import pickle
-import matplotlib.pyplot as plot
+import matplotlib.pyplot as plt
 import os
+from storm_kit.util_file import get_root_path
+
+ROOT_DIR = os.path.join(get_root_path(), 'robot_data')
+
+JOINT_IDXS_TO_PLOT = [0, 1, 2, 3, 4, 5, 6]
 
 def plot_data(filename):
-    root_dir = '../../robot_data'
-    filepath = os.path.abspath(os.path.join(root_dir, filename + '.pkl'))
+    filepath = os.path.join(ROOT_DIR, filename)
     with open(filepath, 'rb') as f:
         data = pickle.load(f)
-    print(data.keys())
+    fig, ax = plt.subplots(3,1)
+    # for key in data.keys():
+    for i in range(data['q_vel'].shape[1]):
+        ax[0].plot(data['q_vel'][:,i])
+    
+    plt.show()
+
+
 
 
 

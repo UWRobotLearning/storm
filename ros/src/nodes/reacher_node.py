@@ -1,6 +1,8 @@
 #!/usr/bin/env python
 
 #General imports
+import copy
+from datetime import datetime
 import os
 from collections import defaultdict
 import pickle
@@ -23,6 +25,20 @@ import rospkg
 from storm_kit.mpc.rollout import ArmReacher
 from storm_kit.learning.policies import MPCPolicy, JointControlWrapper
 from storm_kit.learning.learning_utils import dict_to_device
+from storm_kit.util_file import get_root_path
+
+ROOT_DIR = os.path.join(get_root_path(), 'robot_data')
+
+def get_clean_dataset(dataset):
+    clean_dataset = dict.fromkeys(dataset.keys())
+    for key in dataset:
+        clean_data_list = dataset[key]
+        # clean_data_list = [data.cpu().numpy() if isinstance(data, torch.Tensor) else data 
+        #                     for data in dataset[key]]
+        clean_data_np_array = np.concatenate(clean_data_list, axis=0)
+        clean_dataset[key] = clean_data_np_array
+    return clean_dataset 
+
 
 class MPCReacherNode():
     def __init__(self) -> None:
@@ -52,7 +68,12 @@ class MPCReacherNode():
         self.policy = JointControlWrapper(config=self.config.task.mpc, policy=self.policy, device=self.device)
 
         if self.save_data:
-            self.dataset = defaultdict(lambda: [])
+            date_time = datetime.now().strftime("%m_%d_%Y_%H_%M")
+            filename = 'mpc_data_{0}.p'.format(date_time)
+            self.filepath = os.path.join(ROOT_DIR, filename)
+            if not os.path.exists(ROOT_DIR):
+                os.makedirs(ROOT_DIR)
+            self.dataset = defaultdict(list)
 
 
         #buffers for different messages
@@ -184,9 +205,9 @@ class MPCReacherNode():
                     self.dataset['q_pos'].append(self.robot_state['q_pos'].cpu().numpy()) 
                     self.dataset['q_vel'].append(self.robot_state['q_vel'].cpu().numpy())
                     self.dataset['ee_goal'].append(self.goal_dict['ee_goal'].cpu().numpy())
-                    self.dataset['q_pos_cmd'].append(command_tensor[0][0:7].cpu().numpy())
-                    self.dataset['q_vel_cmd'].append(command_tensor[0][7:14].cpu().numpy())
-                    self.dataset['q_acc_cmd'].append(command_tensor[0][14:21].cpu().numpy())
+                    self.dataset['q_pos_cmd'].append(command_tensor[:, 0:7].cpu().numpy())
+                    self.dataset['q_vel_cmd'].append(command_tensor[:, 7:14].cpu().numpy())
+                    self.dataset['q_acc_cmd'].append(command_tensor[:, 14:21].cpu().numpy())
                     
 
                 #update tstep
@@ -206,9 +227,12 @@ class MPCReacherNode():
     
     def close(self):
         if self.save_data:
-            print('saving data in pickle')
-            print(self.dataset)
-
+            print('Saving data to {0}'.format(self.filepath))
+            clean_dataset = get_clean_dataset(self.dataset)
+            
+            with open(self.filepath, 'wb') as file:
+                pickle.dump(clean_dataset, file)
+        
         self.command_pub.unregister()
         self.state_sub.unregister()
         self.ee_goal_sub.unregister()
