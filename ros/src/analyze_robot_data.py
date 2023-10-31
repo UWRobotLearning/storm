@@ -20,10 +20,6 @@ def plot_data(filename):
     plt.show()
 
 
-
-
-
-
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
                         prog='DataAnalyzer',
