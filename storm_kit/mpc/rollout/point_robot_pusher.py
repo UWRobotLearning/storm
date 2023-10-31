@@ -238,8 +238,8 @@ class PointRobotPusher(RolloutBase):
                 'obs': obs,
                 'states': state_dict
             }
-            value_preds = -1.0 * self.value_function.forward(input_dict, act_seq) #value function is trained to maximize rewards
-
+            value_preds = self.value_function.forward(input_dict, act_seq)
+            
         return value_preds, state_dict
 
     def compute_metrics(self, episode_data: Dict[str, torch.Tensor]):

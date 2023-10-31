@@ -54,6 +54,7 @@ class ArmBase(RolloutBase):
         self.batch_size = cfg['batch_size']
         self.horizon = cfg['horizon']
         self.num_instances = cfg['num_instances']
+        self.value_function = value_function
         
         assets_path = get_assets_path()
         # initialize dynamics model:
@@ -271,12 +272,11 @@ class ArmBase(RolloutBase):
         ee_vel_twist = state_dict['ee_vel_twist_seq']
         # return obs
         obs = torch.cat(
-            (state_dict['q_pos'], state_dict['q_vel'], ee_vel_twist), dim=-1)
+            (state_dict['q_pos_seq'], state_dict['q_vel_seq'], ee_vel_twist), dim=-1)
         return obs, state_dict
 
 
     def compute_termination(self, state_dict: Dict[str,torch.Tensor], act_batch: torch.Tensor):
-        
 
         state_dict = self.compute_full_state(state_dict)
 
@@ -319,6 +319,18 @@ class ArmBase(RolloutBase):
 
         return termination, termination_cost, state_dict
     
+    def compute_value_predictions(self, state_dict: torch.Tensor, act_seq):
+        value_preds = None
+        if self.value_function is not None:
+            obs, state_dict = self.compute_observations(state_dict)
+            input_dict = {
+                'obs': obs,
+                'states': state_dict
+            }
+            value_preds = self.value_function.forward(input_dict, act_seq) 
+
+        return value_preds, state_dict
+
     def rollout_fn(self, start_state, act_seq):
         """
         Return sequence of costs and states encountered
@@ -339,14 +351,16 @@ class ArmBase(RolloutBase):
         with record_function("compute_cost"):
             cost_seq, _, _ = self.compute_cost(state_dict, act_seq, termination_cost=term_cost)
 
+        with record_function("value_fn_inference"):
+            value_preds, _ = self.compute_value_predictions(state_dict, act_seq)
+
+
         sim_trajs = dict(
             actions=act_seq,#.clone(),
             costs=cost_seq,#clone(),
             terminations=term_seq,
             ee_pos_seq=state_dict['ee_pos_seq'],#.clone(),
-            value_preds=None,
-            #link_pos_seq=link_pos_seq,
-            #link_rot_seq=link_rot_seq,
+            value_preds=value_preds,
             rollout_time=0.0
         )
 

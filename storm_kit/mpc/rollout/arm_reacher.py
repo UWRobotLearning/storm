@@ -246,11 +246,16 @@ class ArmReacher(ArmBase):
         #     obs, 
         #     goal_ee_pos, goal_ee_rot,
         #     goal_ee_pos - state_dict['ee_pos_seq']), dim=-1)
+        obs = obs.view(self.num_instances*self.batch_size*self.horizon, -1)
+        ee_pos_seq = state_dict['ee_pos_seq'].view(self.num_instances*self.batch_size*self.horizon, -1)
+        ee_goal_pos_seq = self.ee_goal_buff[:, 0:3].repeat(self.batch_size*self.horizon, 1)
         obs = torch.cat((
             obs, 
-            self.ee_goal_buff[:, 0:3],
-            state_dict['ee_pos_seq'],
-            self.ee_goal_buff[:, 0:3] - state_dict['ee_pos_seq']), dim=-1)
+            ee_goal_pos_seq,
+            ee_pos_seq,
+            ee_goal_pos_seq - ee_pos_seq), dim=-1)
+    
+        obs = obs.view(self.num_instances, self.batch_size, self.horizon, -1)
 
         return obs, state_dict
     

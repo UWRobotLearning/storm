@@ -112,6 +112,7 @@ class MPQAgent(SACAgent):
         cost_batch = batch_dict['cost'].squeeze(-1)
         obs_batch = batch_dict['obs']
         act_batch = batch_dict['actions']
+        state_batch = batch_dict['state_dict']
         next_obs_batch = batch_dict['next_obs']
         next_state_batch = batch_dict['next_state_dict']
         done_batch = batch_dict['done'].squeeze(-1).float()
@@ -125,11 +126,11 @@ class MPQAgent(SACAgent):
             reset_data = {}
             reset_data['goal_dict'] = goal_dict
             self.target_mpc_policy.reset(reset_data)
-            next_actions, _ = self.target_mpc_policy.get_action(policy_input)
-            next_actions = next_actions[:,14:21]
-            next_actions = next_actions.unsqueeze(0)
-            # next_actions, next_actions_log_prob = self.policy.entropy(policy_input)
-            # next_actions_log_prob = next_actions_log_prob.mean(-1) #mean along action dimension
+            # next_actions, _ = self.target_mpc_policy.get_action(policy_input)
+            # next_actions = next_actions[:,14:21]
+            # next_actions = next_actions.unsqueeze(0)
+            next_actions, next_actions_log_prob = self.target_mpc_policy.entropy(policy_input)
+            next_actions_log_prob = next_actions_log_prob.mean(-1) #mean along action dimension
 
             target_pred = self.target_critic(
                 {'obs': next_obs_batch.unsqueeze(0).repeat(self.num_action_samples, 1, 1)}, 

@@ -124,14 +124,7 @@ class MPCPolicy(Policy):
     def init_controller(self):
         # world_params = self.cfg.world
         rollout_params = self.cfg.rollout
-
-        # with open_dict(rollout_params):
-        #     self.cfg['rollout']['num_instances'] = self.cfg['mppi']['num_instances']
-        #     self.cfg['rollout']['horizon'] = self.cfg['mppi']['horizon']
-        #     self.cfg['rollout']['num_particles'] = self.cfg['mppi']['num_particles']
-
-        # rollout_fn = self.get_rollout_fn(
-        #     cfg=self.cfg['rollout'], device=self.device, world_params=world_params)        
+      
         mppi_params = self.cfg.mppi
         with open_dict(mppi_params):
             mppi_params.d_action = self.n_dofs #dynamics_model.d_action

@@ -92,7 +92,7 @@ def main(cfg: DictConfig):
             critic = EnsembleQFunction(obs_dim=obs_dim, act_dim=act_dim, config=cfg.train.critic, device=cfg.rl_device) 
         else:
             critic = TwinQFunction(obs_dim=obs_dim, act_dim=act_dim, config=cfg.train.critic, device=cfg.rl_device)
-        mpc_policy = MPCPolicy(obs_dim=obs_dim, act_dim=act_dim, config=cfg.task.mpc, rollout_cls=task_cls, device=cfg.rl_device) # value_function=critic,
+        mpc_policy = MPCPolicy(obs_dim=obs_dim, act_dim=act_dim, config=cfg.task.mpc, value_function=critic, rollout_cls=task_cls, device=cfg.rl_device) # value_function=critic,
         mpc_policy = JointControlWrapper(config=cfg.task.mpc, policy=mpc_policy, device=cfg.rl_device)
         target_mpc_policy = MPCPolicy(obs_dim=obs_dim, act_dim=act_dim, config=cfg.train.target_mpc_policy, rollout_cls=task_cls, device=cfg.rl_device) # value_function=critic
         target_mpc_policy = JointControlWrapper(config=cfg.train.target_mpc_policy, policy=target_mpc_policy, device=cfg.rl_device)
