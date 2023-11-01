@@ -1,7 +1,9 @@
 #!/usr/bin/env python
 import copy, os
 import torch
+import hydra
 from hydra import initialize, compose
+from omegaconf import DictConfig
 import numpy as np
 import rospy
 import rospkg
@@ -13,6 +15,7 @@ from storm_ros.msg import GoalMsg
 from storm_kit.learning.replay_buffers import RobotBuffer
 from storm_kit.learning.policies import MPCPolicy
 from storm_kit.util_file import get_data_path
+from storm_kit.mpc.rollout import ArmReacher
 
 class FrankaRealRobotEnv():
     def __init__(self, cfg, device=torch.device('cpu')):
@@ -40,7 +43,7 @@ class FrankaRealRobotEnv():
         self.reset_mpc_cfg.task.rollout.cost.joint_l2.weight = 100.0
         self.reset_mpc_cfg.task.rollout.cost.manipulability.weight = 0.0
         self.reset_mpc_cfg.mpc.mppi.horizon=20
-        self.reset_policy = MPCPolicy(obs_dim=obs_dim, act_dim=act_dim, config=self.reset_mpc_cfg.mpc, rollout_cls=ArmReacher, device=self.device)
+        self.reset_policy = MPCPolicy(obs_dim=0, act_dim=7, config=self.reset_mpc_cfg.mpc, rollout_cls=ArmReacher, device=self.device)
 
         self.command_header = None
         self.gripper_state = {
@@ -123,7 +126,7 @@ class FrankaRealRobotEnv():
     def pre_physics_steps(self, actions:torch.Tensor):
         pass
 
-    def step(self, actions:torch.Tensor);
+    def step(self, actions:torch.Tensor):
             #only do something if state and goal have been received
             if self.state_sub_on and self.goal_sub_on:
                 # #check if goal was updated
@@ -241,7 +244,6 @@ class FrankaRealRobotEnv():
 
         return None
 
-
     def check_goal_reached(self, curr_error, delta_error_list):
         reached = False
         reached = curr_error <= 1e-2
@@ -338,6 +340,33 @@ class FrankaRealRobotEnv():
     #     return episode_buffer
 
 
+@hydra.main(config_name="config", config_path="../../content/configs/gym")
+def main(cfg: DictConfig):
+    rospy.init_node("franka_real_robot_env", anonymous=True, disable_signals=True)    
+
+    torch.set_default_dtype(torch.float32)
+    # initialize(config_path="../../content/configs/gym", job_name="mpc")
+    # config = compose(config_name="config", overrides=["task=FrankaReacherRealRobot"])
+    # control_dt = config.task.rollout.control_dt
+    # n_dofs = config.task.rollout.n_dofs
+
+    device = torch.device('cuda', 0)
+
+
+    # #STORM Initialization
+    # obs_dim = 1
+    # act_dim = 1
+    # policy = MPCPolicy(obs_dim=obs_dim, act_dim=act_dim, config=config.mpc, device=device)
+
+    # now_str = datetime.now().strftime('%m-%d-%y_%H.%M.%S')
+    # rand_str = ''.join(random.choices(string.ascii_lowercase, k=4))
+    # data_folder =  os.path.join(get_data_path(), f'{now_str}_{rand_str}')
+    env = FrankaRealRobotEnv(cfg, device=device)
+    env.reset()
+    env.close()
+
+
+
 if __name__ == "__main__":
     from datetime import datetime
     import random
@@ -347,29 +376,4 @@ if __name__ == "__main__":
     np.random.seed(0)
 
 
-    rospy.init_node("franka_real_robot_env", anonymous=True, disable_signals=True)    
-
-    torch.set_default_dtype(torch.float32)
-    initialize(config_path="../../content/configs/gym", job_name="mpc")
-    config = compose(config_name="config", overrides=["task=FrankaReacherRealRobot"])
-    control_dt = config.task.rollout.control_dt
-    n_dofs = config.task.rollout.n_dofs
-
-    device = torch.device('cuda', 0)
-
-
-    #STORM Initialization
-    obs_dim = 1
-    act_dim = 1
-    policy = MPCPolicy(obs_dim=obs_dim, act_dim=act_dim, config=config.mpc, device=device)
-
-    now_str = datetime.now().strftime('%m-%d-%y_%H.%M.%S')
-    rand_str = ''.join(random.choices(string.ascii_lowercase, k=4))
-    data_folder =  os.path.join(get_data_path(), f'{now_str}_{rand_str}')
-    env = FrankaRealRobotEnv(config, policy=policy, device=device)
-    # try:
-    #     experience_collector.collect_episodes(num_episodes=50, data_folder=data_folder)
-    # except KeyboardInterrupt:
-    #     print('Exiting')
-    #     pass
-    env.close()
+    main()

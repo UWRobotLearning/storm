@@ -12,6 +12,9 @@ task_map['PointRobotPusher'] = {
 task_map['FrankaPusher'] = {
     'task_cls': ArmPusher
 }
+task_map['FrankaTrayReacher'] = {
+    'task_cls': ArmReacher
+}
 # task_map['TrayReacher'] = {
 #     'task_cls': TrayReacher
 # }
