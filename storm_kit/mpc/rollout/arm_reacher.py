@@ -105,12 +105,6 @@ class ArmReacher(ArmBase):
 
         if return_dist:
             return cost, state_dict, rot_err_norm, goal_dist
-
-        if self.cfg['cost']['zero_q_acc']['weight'] > 0:
-            cost += self.zero_acc_cost.forward(state_batch[:, :, self.n_dofs*2:self.n_dofs*3], goal_dist=goal_dist)
-
-        if self.cfg['cost']['zero_q_vel']['weight'] > 0:
-            cost += self.zero_vel_cost.forward(state_batch[:, :, self.n_dofs:self.n_dofs*2], goal_dist=goal_dist)
         
         return cost, cost_terms, state_dict
 

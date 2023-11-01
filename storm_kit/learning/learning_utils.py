@@ -361,6 +361,7 @@ def episode_runner(
                 next_obs = next_obs.view(envs.num_envs, obs_dim)
                 done_task = done_task.view(envs.num_envs,)
                 cost = cost.view(envs.num_envs,)
+                done_cost = done_cost.view(envs.num_envs, )
                 
             curr_costs += cost
             episode_lens += 1
@@ -424,6 +425,7 @@ def episode_runner(
                 #especially this is true for MPC policies
                 policy.reset(reset_data)
                 obs, state_dict_full = task.compute_observations(state_dict=state_dict)
+                obs = obs.view(envs.num_envs, obs_dim)
                 
             curr_num_eps_dones = torch.sum(done).item()
             if curr_num_eps_dones > 0:

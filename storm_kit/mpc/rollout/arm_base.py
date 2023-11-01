@@ -90,6 +90,9 @@ class ArmBase(RolloutBase):
         
         self.manipulability_cost = ManipulabilityCost(ndofs=self.n_dofs, device=device,
                                                       **cfg['cost']['manipulability'])
+        
+        self.zero_q_vel_cost = NormCost(**self.cfg['cost']['zero_q_vel'], device=self.device)
+        self.zero_q_acc_cost = NormCost(**self.cfg['cost']['zero_q_acc'], device=self.device)
 
         # self.zero_vel_cost = ZeroCost(device=device,  **cfg['cost']['zero_q_vel'])
 
@@ -105,6 +108,7 @@ class ArmBase(RolloutBase):
 
         self.ee_vel_twist_cost = NormCost(**self.cfg['cost']['ee_vel_twist'], device=self.device)
         self.ee_acc_twist_cost = NormCost(**self.cfg['cost']['ee_acc_twist'], device=self.device)
+
 
         #EEVelCost(ndofs=self.n_dofs, device=device, **cfg['cost']['ee_twist'])
 
@@ -191,11 +195,17 @@ class ArmBase(RolloutBase):
         with record_function('manipulability_cost'):
             cost = self.manipulability_cost.forward(ee_jacobian)
         
+        if self.cfg['cost']['zero_q_vel']['weight'] > 0:
+            with record_function('zero_q_vel_cost'):
+                cost += self.zero_q_vel_cost.forward(q_vel_batch).view(self.num_instances * self.batch_size, self.horizon)
+
+        if self.cfg['cost']['zero_q_acc']['weight'] > 0:
+            with record_function('zero_q_acc_cost'):
+                cost += self.zero_q_vel_cost.forward(q_acc_batch).view(self.num_instances * self.batch_size, self.horizon)
+
+
         if self.cfg['cost']['ee_vel_twist']['weight'] > 0:
             with record_function('ee_vel_twist_cost'):
-                # J_full = ee_jacobian.view(self.num_instances * self.batch_size * self.horizon, 6, -1)
-                # q_vel_batch = q_vel_batch.view(self.num_instances * self.batch_size * self.horizon, -1)[:, :, None]
-                # ee_twist = J_full @ q_vel_batch
                 cost += self.ee_vel_twist_cost.forward(ee_vel_twist_batch).view(self.num_instances * self.batch_size, self.horizon)
 
         if self.cfg['cost']['ee_acc_twist']['weight'] > 0:

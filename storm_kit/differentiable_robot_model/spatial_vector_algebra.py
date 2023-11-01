@@ -474,6 +474,10 @@ def rpy_angles_to_matrix(euler_angles: torch.Tensor) -> torch.Tensor:
     return matrices
 
 
+#[qw, qx, qy, qz]
+# Test 1: Convert [0, 1, 0, 0] to rot and convert back
+# Test 2: Convert [-1, 0, 0, 0] to rot and convert back
+# TODO: Test also quaternion_to_matrix
 @torch.jit.script
 def matrix_to_quaternion(matrix: torch.Tensor):
     """
