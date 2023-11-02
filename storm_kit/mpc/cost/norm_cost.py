@@ -1,6 +1,8 @@
 from typing import Optional
 import torch.nn as nn
+import torch.nn.functional as F
 import torch
+
 
 class NormCost(nn.Module):
     def __init__(
@@ -15,6 +17,7 @@ class NormCost(nn.Module):
         self.device = device
         self.weight = weight
         self.hinge_val = hinge_val
+        self.log_two = torch.log(torch.tensor([2.0], device=self.device))
 
     def forward(self, x:torch.Tensor, hinge_x:Optional[torch.Tensor]=None, keepdim:bool=False) -> torch.Tensor:
         if self.norm_type == 'l2':
@@ -23,6 +26,11 @@ class NormCost(nn.Module):
             dist = (torch.sum(torch.square(x), dim=-1, keepdim=keepdim))
         elif self.norm_type == 'l1':
             dist = torch.norm(x, p=1, dim=-1, keepdim=keepdim)
+        elif self.norm_type == 'logcosh':
+            #computes logcosh(x) using softplus and +ve,-ve splitting
+            # for numerical stability
+            dist = torch.where(x > 0, F.softplus(-2.0 * x) + x - self.log_two, F.softplus(2.0 * x) - x - self.log_two)
+            dist = torch.sum(dist, dim=-1, keepdim=keepdim)
         elif self.norm_type == 'smooth_l1':
             l1_dist = torch.norm(x, p=1, dim=-1)
             dist = None

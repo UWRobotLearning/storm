@@ -4,11 +4,15 @@ import torch
 import torch.nn as nn
 
 class LogCoshTransform(nn.Module):
-    def __init__(self):
-        pass
+    def __init__(self, alpha: float = 1.0,device:torch.device = torch.device('cpu')):
+        self.alpha = alpha
+        self.device = device
 
-    def forward(self, x):
-        pass
+    def forward(self, x, eps=1e-12):
+        inp_device = x.device
+        x = x.to(self.device)
+
+
 
 
 class TanhSquaredTransform(nn.Module):
@@ -21,16 +25,16 @@ class TanhSquaredTransform(nn.Module):
 
 
 class GaussianProjectionTransform(nn.Module):
-    def __init__(self, gaussian_params={'n':0,'c':0,'s':0,'r':0}):
+    def __init__(self, params={'n':0,'c':0,'s':0,'r':0}):
         super().__init__()
 
         #self.tensor_args = tensor_args
         # model parameters: omega
-        self.omega = gaussian_params
-        self._ws = gaussian_params['s']
-        self._wc = gaussian_params['c']
-        self._wn = gaussian_params['n']
-        self._wr = gaussian_params['r']
+        self.omega = params
+        self._ws = params['s']
+        self._wc = params['c']
+        self._wn = params['n']
+        self._wr = params['r']
         
                             
         if len(self.omega.keys()) > 0:
@@ -47,8 +51,6 @@ class GaussianProjectionTransform(nn.Module):
         cost = 1.0 - self.n_pow * torch.exp(exp_term) + self._wr * torch.pow(cost_value - self._ws, 4)
         #cost = cost_value
         return cost
-
-
 
 
 if __name__ == "__main__":

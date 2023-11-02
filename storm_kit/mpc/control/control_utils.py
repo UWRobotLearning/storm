@@ -385,28 +385,28 @@ def cost_to_go_np(cost_seq, gamma_seq):
 ############
 ##Cholesky##
 ############
-def matrix_cholesky(A):
-    L = torch.zeros_like(A)    
+def matrix_cholesky(A:torch.Tensor)->torch.Tensor:
+    L = torch.zeros_like(A)   
     for i in range(A.shape[-1]):
         for j in range(i+1):
             s = 0.0
             for k in range(j):
-                s = s + L[i,k] * L[j,k]            
+                s = s + L[...,i,k] * L[...,j,k]            
             
-            L[i,j] = torch.sqrt(A[i,i] - s) if (i == j) else \
-                      (1.0 / L[j,j] * (A[i,j] - s))
-    return L
-
-# Batched Cholesky decomp
-def batch_cholesky(A):
-    L = torch.zeros_like(A)
-
-    for i in range(A.shape[-1]):
-        for j in range(i+1):
-            s = 0.0
-            for k in range(j):
-                s = s + L[...,i,k] * L[...,j,k]
-
             L[...,i,j] = torch.sqrt(A[...,i,i] - s) if (i == j) else \
                       (1.0 / L[...,j,j] * (A[...,i,j] - s))
     return L
+
+# # Batched Cholesky decomp
+# def batch_cholesky(A):
+#     L = torch.zeros_like(A)
+
+#     for i in range(A.shape[-1]):
+#         for j in range(i+1):
+#             s = 0.0
+#             for k in range(j):
+#                 s = s + L[...,i,k] * L[...,j,k]
+
+#             L[...,i,j] = torch.sqrt(A[...,i,i] - s) if (i == j) else \
+#                       (1.0 / L[...,j,j] * (A[...,i,j] - s))
+#     return L

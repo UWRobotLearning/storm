@@ -26,7 +26,7 @@ from torch.profiler import record_function
 import time
 import matplotlib.pyplot as plt
 
-from ..cost import DistCost, PoseCost
+from ..cost import NormCost, PoseCost
 from ..cost.bound_cost import BoundCost
 from ..cost.manipulability_cost import ManipulabilityCost
 from ..model import URDFKinematicModel
@@ -88,25 +88,25 @@ class PointRobotPusher(RolloutBase):
 
         self.init_buffers()
 
-        self.object_position_cost = DistCost(
+        self.object_position_cost = NormCost(
             weight=0.0,
             vec_weight=[1.0, 1.0, 1.0],
             device=self.device
         )
 
-        self.object_robot_cost = DistCost(
+        self.object_robot_cost = NormCost(
             weight=10.0,
             vec_weight=[1.0, 1.0, 1.0],
             device=self.device
         )
 
-        self.object_vel_cost = DistCost(
+        self.object_vel_cost = NormCost(
             weight=0.0,
             vec_weight=[1.0, 1.0, 1.0],
             device=self.device
         )
 
-        self.robot_vel_cost = DistCost(
+        self.robot_vel_cost = NormCost(
             weight=0.0,
             vec_weight=[1.0, 1.0, 1.0],
             device=self.device

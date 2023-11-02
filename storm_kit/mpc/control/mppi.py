@@ -31,7 +31,7 @@ from torch.distributions.multivariate_normal import MultivariateNormal
 from torch.nn.functional import normalize as f_norm
 from torch.profiler import record_function
 
-from .control_utils import cost_to_go, matrix_cholesky, batch_cholesky
+from .control_utils import cost_to_go, matrix_cholesky
 from .olgaussian_mpc import OLGaussianMPC
 
 class MPPI(OLGaussianMPC):
@@ -136,14 +136,20 @@ class MPPI(OLGaussianMPC):
         # print(vis_seq.shape, top_idx.shape)
         # self.top_trajs = torch.index_select(vis_seq, 1, top_idx).squeeze(1) #.squeeze(0)
         
-        weighted_seq = w.T * actions.T
+        # print("mean", w.shape, actions.shape, w.T.shape, actions.T.shape)
+        # weighted_seq = w.T * actions.T
+        # mean_update = torch.sum(weighted_seq.T, dim=1)
+        w = w.unsqueeze(-1).unsqueeze(-1)
+        weighted_seq = w * actions
+        mean_update = torch.sum(weighted_seq, dim=1)
+        # print("weightted_seq", weighted_seq.shape)
+        # assert torch.allclose(weighted_seq.T, weighted_seq_2)
 
-        mean_update = torch.sum(weighted_seq.T, dim=1)
         # new_mean = sum_seq
         
         delta = actions - self.mean_action.unsqueeze(1)
         #Update Covariance
-        if self.update_cov:
+        if self.update_cov: 
             if self.cov_type == 'sigma_I':
                 #weighted_delta = w * (delta ** 2).T
                 #cov_update = torch.mean(torch.sum(weighted_delta.T, dim=0))
@@ -152,16 +158,40 @@ class MPPI(OLGaussianMPC):
             
             elif self.cov_type == 'diag_AxA':
                 #Diagonal covariance of size AxA
-                weighted_delta = w * (delta ** 2).T
+                # weighted_delta = w * (delta ** 2).T
+                weighted_delta = w * (delta**2)
+                # assert(torch.allclose(weighted_delta, weighted_delta_2))
                 # cov_update = torch.diag(torch.mean(torch.sum(weighted_delta.T, dim=0), dim=0))
-                cov_update = torch.mean(torch.sum(weighted_delta.T, dim=0), dim=0)
+                #sum across batch dimension and mean across temporal dimension aka horizon
+                cov_update = torch.mean(torch.sum(weighted_delta, dim=1), dim=1)
             elif self.cov_type == 'diag_HxH':
+                weighted_delta = w * (delta**2)
+                # assert(torch.allclose(weighted_delta, weighted_delta_2))
+                # cov_update = torch.diag(torch.mean(torch.sum(weighted_delta.T, dim=0), dim=0))
+                #sum across batch dimension and mean across temporal dimension aka horizon
+                cov_update = torch.sum(weighted_delta, dim=1)
                 raise NotImplementedError
             elif self.cov_type == 'full_AxA':
                 #Full Covariance of size AxA
-                weighted_delta = torch.sqrt(w) * (delta).T
-                weighted_delta = weighted_delta.T.reshape((self.horizon * self.num_particles, self.d_action))
-                cov_update = torch.matmul(weighted_delta.T, weighted_delta) / self.horizon
+                delta = delta.unsqueeze(-1)
+                cov_update = torch.matmul(delta, delta.transpose(-1,-2))
+                cov_update = w.unsqueeze(-1) * cov_update
+                cov_update = torch.mean(torch.sum(cov_update, dim=1), dim=1)
+
+                # weighted_delta = torch.sqrt(w.unsqueeze(-1).unsqueeze(-1)) * delta
+                # weighted_delta = weighted_delta.view(self.num_instances, self.num_particles*self.horizon, -1)
+                # cov_update = torch.matmul(weighted_delta.transpose(-2,-1), weighted_delta) / self.horizon
+
+                # weighted_delta_2 = torch.sqrt(w.unsqueeze(-1).unsqueeze(-1)) * delta
+                # weighted_delta_2 = weighted_delta_2.unsqueeze(-1)
+                # cov_update_2 = torch.matmul(weighted_delta_2, weighted_delta_2.transpose(-1,-2))
+                # cov_update_2 = torch.mean(torch.sum(cov_update_2, dim=1), dim=1)
+                # assert torch.allclose(cov_update, cov_update_2)
+
+                # assert torch.allclose(cov_update_2, cov_update_3)
+
+                # weighted_delta = weighted_delta.T.reshape((self.horizon * self.num_particles, self.d_action))
+                # cov_update = torch.matmul(weighted_delta.T, weighted_delta) / self.horizon
             elif self.cov_type == 'full_HAxHA':# and self.sample_type != 'stomp':
                 weighted_delta = torch.sqrt(w) * delta.view(delta.shape[0], delta.shape[1] * delta.shape[2]).T #.unsqueeze(-1)
                 cov_update = torch.matmul(weighted_delta, weighted_delta.T)

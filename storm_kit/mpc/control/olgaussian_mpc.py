@@ -31,7 +31,7 @@ import torch.nn as nn
 from torch.distributions.multivariate_normal import MultivariateNormal
 
 from .control_base import Controller
-from .control_utils import generate_noise, scale_ctrl, generate_gaussian_halton_samples, generate_gaussian_sobol_samples, gaussian_entropy, matrix_cholesky, batch_cholesky, get_stomp_cov
+from .control_utils import generate_noise, scale_ctrl, gaussian_entropy, matrix_cholesky
 from .sample_libs import StompSampleLib, HaltonSampleLib, RandomSampleLib, HaltonStompSampleLib, MultipleSampleLib
 
 class OLGaussianMPC(Controller):
@@ -138,7 +138,7 @@ class OLGaussianMPC(Controller):
         self.stomp_matrix = None #self.sample_lib.stomp_cov_matrix
         # initialize covariance types:
         if self.cov_type == 'full_HAxHA':
-            self.I = torch.eye(self.horizon * self.d_action, **self.tensor_args)
+            self.I = torch.eye(self.horizon * self.d_action, **self.tensor_args).unsqueeze(0).repeat(self.num_instances, 1)
         else: # AxA
             self.I = torch.eye(self.d_action, **self.tensor_args).unsqueeze(0).repeat(self.num_instances, 1, 1)
         
@@ -186,7 +186,7 @@ class OLGaussianMPC(Controller):
         if self.cov_type == 'full_HAxHA':
             # delta: N * H * A -> N * HA
             delta = delta.view(delta.shape[0], delta.shape[1], self.horizon * self.d_action)
-
+        
         scaled_delta = torch.matmul(delta, self.full_scale_tril.unsqueeze(1)).view(delta.shape[0],
                                                                       delta.shape[1],
                                                                       self.horizon,

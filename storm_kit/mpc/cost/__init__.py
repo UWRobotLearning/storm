@@ -21,13 +21,13 @@
 # FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 # DEALINGS IN THE SOFTWARE.#
 from .norm_cost import NormCost
-from .dist_cost import DistCost
+# from .deprecated.dist_cost import DistCost
 from .finite_difference_cost import FiniteDifferenceCost
 # from .deprecated.jacobian_cost import JacobianCost
 from .pose_cost import PoseCost
 # from .pose_cost_quaternion import PoseCostQuaternion
 from .stop_cost import StopCost
-from .projected_dist_cost import ProjectedDistCost
+# from .projected_dist_cost import ProjectedDistCost
 from .null_costs import get_inv_null_cost, get_transpose_null_cost
 # from .deprecated.zero_cost import ZeroCost
 # from .deprecated.ee_vel_cost import EEVelCost
@@ -38,5 +38,5 @@ from .primitive_collision_cost import PrimitiveCollisionCost
 from .voxel_collision_cost import VoxelCollisionCost
 
 
-__all__ = ['NormCost', 'DistCost', 'FiniteDifferenceCost', 'PoseCost', 'ProjectedDistCost', \
+__all__ = ['NormCost', 'FiniteDifferenceCost', 'PoseCost', \
            'StopCost', 'ManipulabilityCost', 'get_inv_null_cost','get_transpose_null_cost']

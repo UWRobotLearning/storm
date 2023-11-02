@@ -25,7 +25,7 @@ import torch
 from torch.profiler import record_function
 import time
 
-from ..cost import NormCost, ProjectedDistCost, StopCost, FiniteDifferenceCost 
+from ..cost import NormCost, StopCost, FiniteDifferenceCost 
 from ..cost.bound_cost import BoundCost
 from ..cost.manipulability_cost import ManipulabilityCost
 from ..cost import CollisionCost, VoxelCollisionCost, PrimitiveCollisionCost
@@ -85,8 +85,8 @@ class ArmBase(RolloutBase):
         #                                   float_dtype=float_dtype,
         #                                   retract_weight=cfg['cost']['retract_weight'])
         
-        self.null_cost = ProjectedDistCost(ndofs=self.n_dofs, device=device, 
-                                           **cfg['cost']['null_space'])
+        # self.null_cost = ProjectedDistCost(ndofs=self.n_dofs, device=device, 
+        #                                    **cfg['cost']['null_space'])
         
         self.manipulability_cost = ManipulabilityCost(ndofs=self.n_dofs, device=device,
                                                       **cfg['cost']['manipulability'])

@@ -28,7 +28,7 @@ import scipy.interpolate as si
 import torch
 from torch.distributions.multivariate_normal import MultivariateNormal
 
-from .control_utils import generate_noise, scale_ctrl, generate_gaussian_halton_samples, generate_gaussian_sobol_samples, gaussian_entropy, matrix_cholesky, batch_cholesky, get_stomp_cov
+from .control_utils import generate_gaussian_halton_samples, get_stomp_cov
 
 
 class SampleLib:

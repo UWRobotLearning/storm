@@ -25,7 +25,7 @@ import torch
 from torch.profiler import record_function
 
 from ...differentiable_robot_model.spatial_vector_algebra import matrix_to_quaternion, quaternion_to_matrix
-from ..cost import DistCost, PoseCost
+from ..cost import NormCost, PoseCost
 from ...mpc.rollout.arm_base import ArmBase
 
 class ArmPusher(ArmBase):
@@ -47,7 +47,7 @@ class ArmPusher(ArmBase):
         self.goal_ee_pos = None
         self.goal_ee_rot = None
         
-        self.dist_cost = DistCost(**self.cfg['cost']['joint_l2'], device=self.device)
+        self.dist_cost = NormCost(**self.cfg['cost']['joint_l2'], device=self.device)
 
         # self.goal_cost = PoseCostQuaternion(**cfg['cost']['goal_pose'],
         #                                     device = self.device,
