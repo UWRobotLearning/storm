@@ -54,6 +54,7 @@ headless: False
 # set default task and default training config based on task
 defaults:
   - task: FrankaReacher
+  - mpc: ${task}MPC
   - train: ${task}SAC
   - hydra/job_logging: disabled
 

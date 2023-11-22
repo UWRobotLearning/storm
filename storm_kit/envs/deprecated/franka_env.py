@@ -669,9 +669,9 @@ class FrankaEnv(): #VecTask
 
     def get_state_dict(self):
         self._refresh()
-        self.robot_q_pos_buff[:] = self.robot_dof_pos
-        self.robot_q_vel_buff[:] = self.robot_dof_vel
-        self.robot_q_acc_buff[:] = self.robot_dof_acc
+        self.robot_q_pos_buff[:] = self.robot_dof_pos.clone()
+        self.robot_q_vel_buff[:] = self.robot_dof_vel.clone()
+        self.robot_q_acc_buff[:] = self.robot_dof_acc.clone()
         sim_time = self.gym.get_sim_time(self.sim)
         self.episode_time = sim_time - self.last_sim_time
 
@@ -704,9 +704,9 @@ class FrankaEnv(): #VecTask
         #     self.franka_default_dof_pos.unsqueeze(0) + 0.25 * (torch.rand((len(env_ids), self.num_franka_dofs), device=self.device) - 0.5),
         #     self.franka_dof_lower_limits, self.franka_dof_upper_limits)
         pos = self.robot_default_dof_pos.unsqueeze(0)
-        self.robot_dof_pos[env_ids, :] = pos
+        self.robot_dof_pos[env_ids, :] = pos.clone()
         self.robot_dof_vel[env_ids, :] = torch.zeros_like(self.robot_dof_vel[env_ids])
-        self.robot_dof_targets[env_ids, :self.num_robot_dofs] = pos
+        self.robot_dof_targets[env_ids, :self.num_robot_dofs] = pos.clone()
         self.effort_control[env_ids, :] = torch.zeros_like(pos)
 
         # multi_env_ids_int32 = self.global_indices[env_ids, 1:3].flatten()

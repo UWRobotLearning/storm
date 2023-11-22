@@ -46,7 +46,6 @@ class URDFKinematicModel(nn.Module):
         # vel_scale: float = 0.5, 
         # max_acc: float = 10.0,
         control_space: str ='acc',
-
         robot_keys: List[str] = ['q_pos', 'q_vel', 'q_acc'],
         device: torch.device = torch.device('cpu')):
         

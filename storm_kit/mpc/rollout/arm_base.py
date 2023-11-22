@@ -34,7 +34,7 @@ from ...util_file import join_path, get_assets_path
 from ...differentiable_robot_model.spatial_vector_algebra import matrix_to_quaternion, quaternion_to_matrix
 from ...mpc.model.integration_utils import build_fd_matrix
 from ...mpc.rollout.rollout_base import RolloutBase
-from ..cost.robot_self_collision_cost import RobotSelfCollisionCost
+from storm_kit.mpc.cost.robot_self_collision_cost import RobotSelfCollisionCost
 
 class ArmBase(RolloutBase):
     """

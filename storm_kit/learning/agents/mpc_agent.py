@@ -26,22 +26,8 @@ class MPCAgent(Agent):
         )
 
 
-    def collect_experience(self, num_episodes: int, update_buffer:bool = True, debug: bool = False):
-        
-        buff = None
-        if update_buffer:
-            buff = self.buffer
-        
-        buff, metrics = self.runner_fn(
-            envs = self.envs,
-            num_episodes=num_episodes, 
-            policy = self.policy,
-            task = self.task,
-            buffer = buff,
-            debug = debug,
-            device=self.device
-        )
-
+    def collect_experience(self, num_episodes: int, update_buffer:bool= True, deterministic:bool=True, debug:bool=False):
+        self.buffer, metrics = super().collect_experience(num_episodes, update_buffer, deterministic, debug)
         if self.logger is not None:
             self.logger.row(metrics)
         if self.tb_writer is not None:

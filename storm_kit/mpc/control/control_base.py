@@ -41,7 +41,6 @@ class Controller(nn.Module):
                  td_lam:float,
                  n_iters:int,
                  rollout_fn=None,
-                 sample_mode:str='mean',
                  hotstart:bool=True,
                  num_instances:int=1,
                  seed:int=0,
@@ -88,6 +87,7 @@ class Controller(nn.Module):
         """
         super().__init__()
         self.tensor_args = tensor_args
+        self.device = tensor_args['device']
         self.d_action = d_action
         self.action_lows = torch.as_tensor(action_lows).to(**self.tensor_args)
         self.action_highs = torch.as_tensor(action_highs).to(**self.tensor_args)
@@ -98,26 +98,25 @@ class Controller(nn.Module):
         self.gamma_seq = torch.cumprod(torch.tensor([1.0] + [self.gamma] * (horizon - 1)), dim=0).reshape(1, horizon).to(**self.tensor_args)
         self.gammalam_seq = torch.cumprod(torch.tensor([1.0] + [self.gamma*self.td_lam] * (horizon - 1)), dim=0).reshape(1, self.horizon).to(**self.tensor_args)
         self._rollout_fn = rollout_fn
-        self.sample_mode = sample_mode
         self.num_steps = 0
         self.hotstart = hotstart
         self.num_instances = num_instances
         self.seed_val = seed
         self.trajectories = None
         
-    @abstractmethod
-    def _get_action_seq(self, mode='mean'):
-        """
-        Get action sequence to execute on the system based
-        on current control distribution
+    # @abstractmethod
+    # def _get_action_seq(self, deterministic:bool=True):
+    #     """
+    #     Get action sequence to execute on the system based
+    #     on current control distribution
         
-        Args:
-            mode : {'mean', 'sample'}  
-                how to choose action to be executed
-                'mean' plays mean action and  
-                'sample' samples from the distribution
-        """        
-        pass
+    #     Args:
+    #         mode : {'mean', 'sample'}  
+    #             how to choose action to be executed
+    #             'mean' plays mean action and  
+    #             'sample' samples from the distribution
+    #     """        
+    #     pass
 
     def sample_actions(self):
         """
@@ -177,19 +176,6 @@ class Controller(nn.Module):
         """
         return False
         
-    # @property
-    # def set_sim_state_fn(self):
-    #     return self._set_sim_state_fn
-    
-    
-    # @set_sim_state_fn.setter
-    # def set_sim_state_fn(self, fn):
-    #     """
-    #     Set function that sets the simulation 
-    #     environment to a particular state
-    #     """
-    #     self._set_sim_state_fn = fn
-
     @property
     def rollout_fn(self):
         return self._rollout_fn
@@ -206,11 +192,17 @@ class Controller(nn.Module):
     def generate_rollouts(self, state):
         pass
 
-    def forward(self, state, calc_val=False, shift_steps=1, n_iters=None):
-        return self.optimize(state, calc_val, shift_steps, n_iters)
+    def forward(self, state, calc_val:bool=False, shift_steps:int=1, n_iters=None):
+        distrib_info, value, aux_info =  self.optimize(state, calc_val, shift_steps, n_iters)
+        return distrib_info, value, aux_info
+    
+    @abstractmethod
+    def sample(self, state, calc_val:bool=False, shift_steps:int=1, n_iters=None, deterministic:bool=False, num_samples:int=1):
+        pass
 
 
-    def optimize(self, state, calc_val=False, shift_steps=1, n_iters=None):
+
+    def optimize(self, state, calc_val:bool=False, shift_steps:int=1, n_iters:int=None):
         """
         Optimize for best action at current state
 
@@ -235,8 +227,8 @@ class Controller(nn.Module):
 
         n_iters = n_iters if n_iters is not None else self.n_iters
 
-        info = {}
-        info['rollout_time'] = 0.0
+        aux_info = {}
+
         # shift distribution to hotstart from previous timestep
         if self.hotstart:
             with record_function('mpc:hotstart'):
@@ -255,19 +247,18 @@ class Controller(nn.Module):
                     # update distribution parameters
                     with record_function("mpc:update_distribution"):
                         distrib_info = self._update_distribution(trajectory)
-                    info['rollout_time'] += trajectory['rollout_time']
 
                     # check if converged
                     if self.check_convergence():
                         break
 
-                info['distrib'] = distrib_info
-
         self.trajectories = trajectory
         #calculate best action
         # curr_action = self._get_next_action(state, mode=self.sample_mode)
-        with record_function('mpc:get_action_seq'):
-            curr_action_seq = self._get_action_seq(mode=self.sample_mode)
+        # with record_function('mpc:get_action_seq'):
+        #     # curr_action_seq = self._get_action_seq(mode=self.sample_mode)
+        #     curr_action_seq = self._get_action_seq(deterministic=deterministic)
+
         #calculate optimal value estimate if required
         value = 0.0
         if calc_val:
@@ -279,12 +270,9 @@ class Controller(nn.Module):
         #     self._shift()
         # else:
         #     self.reset_distribution()
-
-        info['entropy'] = self.entropy
-
         self.num_steps += 1
 
-        return curr_action_seq, value, info #.to(inp_device, dtype=inp_dtype)
+        return distrib_info, value, aux_info
 
     def get_optimal_value(self, state):
         """
@@ -301,8 +289,9 @@ class Controller(nn.Module):
             optimal value estimate of the state
         """
         self.reset() #reset the control distribution
-        _, value = self.optimize(state, calc_val=True, shift_steps=0)
+        _, value, _ = self.optimize(state, calc_val=True, shift_steps=0)
         return value
+    
     
     # def seed(self, seed=None):
     #     self.np_random, seed = seeding.np_random(seed)

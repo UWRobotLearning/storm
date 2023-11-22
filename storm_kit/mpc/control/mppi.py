@@ -25,16 +25,15 @@
 import copy
 
 import numpy as np
-import scipy.special
+# import scipy.special
 import torch
-from torch.distributions.multivariate_normal import MultivariateNormal
-from torch.nn.functional import normalize as f_norm
+# from torch.nn.functional import normalize as f_norm
 from torch.profiler import record_function
 
 from .control_utils import cost_to_go, matrix_cholesky
-from .olgaussian_mpc import OLGaussianMPC
+from .gaussian_mpc import GaussianMPC
 
-class MPPI(OLGaussianMPC):
+class MPPI(GaussianMPC):
     """
     .. inheritance-diagram:: MPPI
        :parts: 1
@@ -67,7 +66,6 @@ class MPPI(OLGaussianMPC):
                  action_highs,
                  null_act_frac=0.,
                  rollout_fn=None,
-                 sample_mode='mean',
                  hotstart=True,
                  num_instances=1,
                  squash_fn='clamp',
@@ -94,7 +92,6 @@ class MPPI(OLGaussianMPC):
                                    step_size_cov, 
                                    null_act_frac,
                                    rollout_fn,
-                                   sample_mode,
                                    hotstart,
                                    num_instances,
                                    squash_fn,
@@ -294,7 +291,7 @@ class MPPI(OLGaussianMPC):
             min_return = torch.min(traj_returns, dim=-1)[0][:,None]
             traj_returns = (traj_returns - min_return) / (max_return - min_return)
 
-        # #calculate soft-max
+        # calculate soft-max
         w = torch.softmax((-1.0/self.beta) * traj_returns, dim=1)
         self.total_costs = traj_returns
         return w
@@ -319,13 +316,14 @@ class MPPI(OLGaussianMPC):
         return control_costs
     
     def _calc_val(self, trajectories):
-        costs = trajectories["costs"].to(**self.tensor_args)
-        actions = trajectories["actions"].to(**self.tensor_args)
-        delta = actions - self.mean_action.unsqueeze(0)
+        costs = trajectories["costs"]#.to(**self.tensor_args)
+        actions = trajectories["actions"]#.to(**self.tensor_args)
+        value_preds = trajectories["value_preds"]
+        # delta = actions - self.mean_action.unsqueeze(0)
         
-        traj_costs = cost_to_go(costs, self.gamma_seq)[:,0]
-        control_costs = self._control_costs(delta)
-        total_costs = traj_costs + self.beta * control_costs
+        traj_returns = cost_to_go(costs, self.gammalam_seq)[:,:,0]
+        # control_costs = self._control_costs(delta)
+        # traj_returns +=  self.beta * control_costs
         # calculate log-sum-exp
         # c = (-1.0/self.beta) * total_costs.copy()
         # cmax = np.max(c)
@@ -335,7 +333,7 @@ class MPPI(OLGaussianMPC):
         # val1 = -self.beta * val1
 
         # val = -self.beta * scipy.special.logsumexp((-1.0/self.beta) * total_costs, b=(1.0/total_costs.shape[0]))
-        val = -self.beta * torch.logsumexp((-1.0/self.beta) * total_costs)
+        val = -self.beta * torch.logsumexp((-1.0/self.beta) * traj_returns, dim=1)
         return val
         
 

@@ -13,6 +13,8 @@ class GaussianPolicy(Policy):
             obs_dim: int,
             act_dim: int,
             config,
+            act_highs=None,
+            act_lows=None,
             device: torch.device = torch.device('cpu'),
             ):
         
@@ -24,6 +26,9 @@ class GaussianPolicy(Policy):
         self.std_type = self.cfg['std_type']
         self.learn_logvar_bounds = self.cfg['learn_logvar_bounds']
         self.use_tanh = self.cfg['use_tanh']
+        self.act_highs = act_highs
+        self.act_lows = act_lows
+        self.rescale_action = self.use_tanh
 
         self.mlp = GaussianMLP(
             in_dim = self.obs_dim,
@@ -50,6 +55,8 @@ class GaussianPolicy(Policy):
         act = self.mlp.sample(inp, deterministic=deterministic, num_samples=num_samples)
         if self.use_tanh:
             act = torch.tanh(act)
+        if self.rescale_action:
+            act = self.scale_action(act)
         return act
     
     def log_prob(self, input_dict: Dict[str, torch.Tensor], actions: torch.Tensor):
@@ -69,6 +76,12 @@ class GaussianPolicy(Policy):
     def extra_repr(self):
         repr_str = '(use_tanh): {}\n'.format(self.use_tanh)
         return repr_str
+
+    def scale_action(self, action:torch.Tensor):
+        act_half_range = (self.act_highs - self.act_lows) / 2.0
+        act_mid_range = (self.act_highs + self.act_lows) / 2.0
+    
+        return act_mid_range.unsqueeze(0) + action * act_half_range.unsqueeze(0)
 
 
 if __name__ == "__main__":

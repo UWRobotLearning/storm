@@ -30,17 +30,19 @@ class QFunction(nn.Module):
             output_activation=self.mlp_params['output_activation'],
             dropout_prob=self.mlp_params['dropout_prob'],
             layer_norm=self.mlp_params['layer_norm'],
-            squeeze_output=True)
+            squeeze_output=False)
         self.to(self.device)
 
-    def forward(self, obs_dict: Dict[str,torch.Tensor], actions: torch.Tensor):
+    def all(self, obs_dict: Dict[str,torch.Tensor], actions: torch.Tensor):
         obs = obs_dict['obs']
+        input = torch.cat([obs, actions], -1)
+        preds =  self.net(input)
+        return preds
 
-        # act = torch.cat([act_dict[k] for k in act_dict])
-        # assert obs.ndim == act_batch.ndim
-        input = torch.cat([obs, actions], dim=-1)
-        q_pred = self.net(input)
-        return q_pred
+
+    def forward(self, obs_dict: Dict[str,torch.Tensor], actions: torch.Tensor):
+        preds = self.all(obs_dict, actions).squeeze(-1)
+        return preds
 
 
 
@@ -69,7 +71,7 @@ class TwinQFunction(nn.Module):
             output_activation=self.mlp_params['output_activation'],
             dropout_prob=self.mlp_params['dropout_prob'],
             layer_norm=self.mlp_params['layer_norm'],
-            squeeze_output=True)
+            squeeze_output=False)
 
         self.net2 = mlp(
             layer_sizes=self.layer_sizes, 
@@ -77,17 +79,20 @@ class TwinQFunction(nn.Module):
             output_activation=self.mlp_params['output_activation'],
             dropout_prob=self.mlp_params['dropout_prob'],
             layer_norm=self.mlp_params['layer_norm'],
-            squeeze_output=True)
+            squeeze_output=False)
         self.to(self.device)
     
     def all(self, obs_dict: Dict[str,torch.Tensor], actions: torch.Tensor):
         obs = obs_dict['obs']
         input = torch.cat([obs, actions], -1)
-        return [self.net1(input), self.net2(input)]
+        preds =  torch.cat([self.net1(input), self.net2(input)], dim=-1)
+        return preds
+
 
     def forward(self, obs_dict: Dict[str,torch.Tensor], actions: torch.Tensor):
         # return torch.min(*self.all(obs_dict, actions))
-        return torch.max(*self.all(obs_dict, actions))
+        preds = torch.max(self.all(obs_dict, actions), dim=-1)[0]
+        return preds
 
 
 class EnsembleQFunction(nn.Module):

@@ -32,6 +32,7 @@ agent:
   save_buffer: false
   num_epochs: 1e4
   num_train_episodes_per_epoch: 1
+  num_updates_per_epoch: 10
   update_to_data_ratio: 5
   policy_update_delay: 5
   discount: 0.99

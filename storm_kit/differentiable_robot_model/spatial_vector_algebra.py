@@ -4,11 +4,11 @@ Spatial vector algebra
 TODO
 """
 from __future__ import annotations
-from typing import Optional
+from typing import Optional, Tuple
 import torch
 import math
 from storm_kit.differentiable_robot_model import utils
-from .utils import vector3_to_skew_symm_matrix
+from storm_kit.differentiable_robot_model.utils import vector3_to_skew_symm_matrix
 from storm_kit.differentiable_robot_model.utils import cross_product
 
 @torch.jit.script
@@ -347,7 +347,7 @@ class DifferentiableSpatialRigidBodyInertia(torch.nn.Module):
 
 #torch JIT compatible functions
 @torch.jit.script
-def _copysign(a: torch.Tensor, b: torch.Tensor):
+def _copysign(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
     """
     Return a tensor where each element has the absolute value taken from the,
     corresponding element of a, with sign taken from the corresponding
@@ -379,7 +379,7 @@ def x_rot(angle: torch.Tensor) -> torch.Tensor:
     return R
 
 @torch.jit.script
-def y_rot(angle: torch.Tensor)->torch.Tensor:
+def y_rot(angle: torch.Tensor) -> torch.Tensor:
     #  if len(angle.shape) == 0:
     # angle = angle.unsqueeze(0)
     # angle = utils.convert_into_at_least_2d_pytorch_tensor(angle).squeeze(1)
@@ -406,54 +406,152 @@ def z_rot(angle: torch.Tensor) -> torch.Tensor:
     R[:, 2, 2] = torch.ones(batch_size, device=angle.device, dtype=angle.dtype)
     return R
 
+@torch.jit.script
+def _axis_angle_rotation(axis: str, angle: torch.Tensor) -> torch.Tensor:
+    """
+    Return the rotation matrices for one of the rotations about an axis
+    of which Euler angles describe, for each value of the angle given.
+
+    Args:
+        axis: Axis label "X" or "Y or "Z".
+        angle: any shape tensor of Euler angles in radians
+
+    Returns:
+        Rotation matrices as tensor of shape (..., 3, 3).
+    """
+
+    cos = torch.cos(angle)
+    sin = torch.sin(angle)
+    one = torch.ones_like(angle)
+    zero = torch.zeros_like(angle)
+
+    if axis == "X":
+        R_flat = (one, zero, zero, zero, cos, -sin, zero, sin, cos)
+    elif axis == "Y":
+        R_flat = (cos, zero, sin, zero, one, zero, -sin, zero, cos)
+    elif axis == "Z":
+        R_flat = (cos, -sin, zero, sin, cos, zero, zero, zero, one)
+    else:
+        raise ValueError("letter must be either X, Y or Z.")
+
+    return torch.stack(R_flat, -1).reshape(angle.shape + (3, 3))
+
+@torch.jit.script
+def _angle_from_tan(
+    axis: str, other_axis: str, data, horizontal: bool, tait_bryan: bool
+) -> torch.Tensor:
+    """
+    Extract the first or third Euler angle from the two members of
+    the matrix which are positive constant times its sine and cosine.
+
+    Args:
+        axis: Axis label "X" or "Y or "Z" for the angle we are finding.
+        other_axis: Axis label "X" or "Y or "Z" for the middle axis in the
+            convention.
+        data: Rotation matrices as tensor of shape (..., 3, 3).
+        horizontal: Whether we are looking for the angle for the third axis,
+            which means the relevant entries are in the same row of the
+            rotation matrix. If not, they are in the same column.
+        tait_bryan: Whether the first and third axes in the convention differ.
+
+    Returns:
+        Euler Angles in radians for each matrix in data as a tensor
+        of shape (...).
+    """
+
+    i1, i2 = {"X": (2, 1), "Y": (0, 2), "Z": (1, 0)}[axis]
+    if horizontal:
+        i2, i1 = i1, i2
+    even = (axis + other_axis) in ["XY", "YZ", "ZX"]
+    if horizontal == even:
+        return torch.atan2(data[..., i1], data[..., i2])
+    if tait_bryan:
+        return torch.atan2(-data[..., i2], data[..., i1])
+    return torch.atan2(data[..., i2], -data[..., i1])
+
+@torch.jit.script
+def _index_from_letter(letter: str) -> int:
+    if letter == "X":
+        return 0
+    if letter == "Y":
+        return 1
+    if letter == "Z":
+        return 2
+    raise ValueError("letter must be either X, Y or Z.")
+
+@torch.jit.script
+def matrix_to_euler_angles(matrix: torch.Tensor, convention: str) -> torch.Tensor:
+    """
+    Convert rotations given as rotation matrices to Euler angles in radians.
+
+    Args:
+        matrix: Rotation matrices as tensor of shape (..., 3, 3).
+        convention: Convention string of three uppercase letters.
+
+    Returns:
+        Euler angles in radians as tensor of shape (..., 3).
+    """
+    if len(convention) != 3:
+        raise ValueError("Convention must have 3 letters.")
+    if convention[1] in (convention[0], convention[2]):
+        raise ValueError(f"Invalid convention {convention}.")
+    for letter in convention:
+        if letter not in ("X", "Y", "Z"):
+            raise ValueError(f"Invalid letter {letter} in convention string.")
+    if matrix.size(-1) != 3 or matrix.size(-2) != 3:
+        raise ValueError(f"Invalid rotation matrix shape {matrix.shape}.")
+    i0 = _index_from_letter(convention[0])
+    i2 = _index_from_letter(convention[2])
+    tait_bryan = i0 != i2
+    if tait_bryan:
+        central_angle = torch.asin(
+            matrix[..., i0, i2] * (-1.0 if i0 - i2 in [-1, 2] else 1.0)
+        )
+    else:
+        central_angle = torch.acos(matrix[..., i0, i0])
+
+    o = (
+        _angle_from_tan(
+            convention[0], convention[1], matrix[..., i2], False, tait_bryan
+        ),
+        central_angle,
+        _angle_from_tan(
+            convention[2], convention[1], matrix[..., i0, :], True, tait_bryan
+        ),
+    )
+    return torch.stack(o, -1)
 
 
 @torch.jit.script
-def matrix_to_euler_angles(R: torch.Tensor, cy_thresh: float = 1e-6):
-    # if cy_thresh is None:
-    #     try:
-    #         cy_thresh = np.finfo(M.dtype).eps * 4
-    #     except ValueError:
-    #         cy_thresh = _FLOAT_EPS_4
-    # r11, r12, r13, r21, r22, r23, r31, r32, r33 = M.flat
-    inp_device = R.device
-    #if(len(R.shape) == 4):
-    Z = torch.zeros(R.shape[:-2], device=inp_device, dtype=R.dtype)
-    #print(Z.shape)
-    #else:
-    #    Z = torch.zeros(R.shape[0], device=inp_device, dtype=R.dtype)
-    r11 = R[...,0,0]
-    r12 = R[...,0,1]
-    r13 = R[...,0,2]
-    r21 = R[...,1,0]
-    r22 = R[...,1,1]
-    r23 = R[...,1,2]
-    r31 = R[...,2,0]
-    r32 = R[...,2,1]
-    r33 = R[...,2,2]
+def euler_angles_to_matrix(euler_angles: torch.Tensor, convention: str) -> torch.Tensor:
+    """
+    Convert rotations given as Euler angles in radians to rotation matrices.
 
+    Args:
+        euler_angles: Euler angles in radians as tensor of shape (..., 3).
+        convention: Convention string of three uppercase letters from
+            {"X", "Y", and "Z"}.
 
-    # cy: sqrt((cos(y)*cos(z))**2 + (cos(x)*cos(y))**2)
-    cy = torch.sqrt(r33*r33 + r23*r23)
-
-    cond = cy > cy_thresh
-
-    z = torch.where(cond, torch.atan2(-r12,  r11), torch.atan2(r21,  r22)).unsqueeze(-1)
-    y = torch.atan2(r13,  cy).unsqueeze(-1)
-    x = torch.where(cond, torch.atan2(-r23, r33), Z).unsqueeze(-1) 
-
-    # if cy > cy_thresh: # cos(y) not close to zero, standard form
-    #     z = torch.atan2(-r12,  r11) # atan2(cos(y)*sin(z), cos(y)*cos(z))
-    #     y = torch.atan2(r13,  cy) # atan2(sin(y), cy)
-    #     x = torch.atan2(-r23, r33) # atan2(cos(y)*sin(x), cos(x)*cos(y))
-    # else: # cos(y) (close to) zero, so x -> 0.0 (see above)
-    #     # so r21 -> sin(z), r22 -> cos(z) and
-    #     z = torch.atan2(r21,  r22)
-    #     y = torch.atan2(r13,  cy) # atan2(sin(y), cy)
-    #     x = 0.0
+    Returns:
+        Rotation matrices as tensor of shape (..., 3, 3).
+    """
+    if euler_angles.dim() == 0 or euler_angles.shape[-1] != 3:
+        raise ValueError("Invalid input euler angles.")
+    if len(convention) != 3:
+        raise ValueError("Convention must have 3 letters.")
+    if convention[1] in (convention[0], convention[2]):
+        raise ValueError(f"Invalid convention {convention}.")
+    for letter in convention:
+        if letter not in ("X", "Y", "Z"):
+            raise ValueError(f"Invalid letter {letter} in convention string.")
     
-    # return z, y, x
-    return torch.cat([x, y, z], dim=-1)
+    matrices = [
+        _axis_angle_rotation(c, e)
+        for c, e in zip(convention, torch.unbind(euler_angles, -1))
+    ]
+    # return functools.reduce(torch.matmul, matrices)
+    return torch.matmul(torch.matmul(matrices[0], matrices[1]), matrices[2])
+
 
 @torch.jit.script
 def rpy_angles_to_matrix(euler_angles: torch.Tensor) -> torch.Tensor:
@@ -479,7 +577,7 @@ def rpy_angles_to_matrix(euler_angles: torch.Tensor) -> torch.Tensor:
 # Test 2: Convert [-1, 0, 0, 0] to rot and convert back
 # TODO: Test also quaternion_to_matrix
 @torch.jit.script
-def matrix_to_quaternion(matrix: torch.Tensor):
+def matrix_to_quaternion(matrix: torch.Tensor) -> torch.Tensor:
     """
     Convert rotations given as rotation matrices to quaternions.
 
@@ -489,8 +587,8 @@ def matrix_to_quaternion(matrix: torch.Tensor):
     Returns:
         quaternions with real part first, as tensor of shape (..., 4). [qw, qx,qy,qz]
     """
-    if matrix.size(-1) != 3 or matrix.size(-2) != 3:
-        raise ValueError(f"Invalid rotation matrix  shape f{matrix.shape}.")
+    # if matrix.size(-1) != 3 or matrix.size(-2) != 3:
+    #     raise ValueError(f"Invalid rotation matrix  shape f{matrix.shape}.")
     zero = matrix.new_zeros((1,))
     m00 = matrix[..., 0, 0]
     m11 = matrix[..., 1, 1]
@@ -504,8 +602,9 @@ def matrix_to_quaternion(matrix: torch.Tensor):
     o3 = _copysign(z, matrix[..., 1, 0] - matrix[..., 0, 1])
     return torch.stack((o0, o1, o2, o3), -1)
 
+
 @torch.jit.script
-def quaternion_to_matrix(quaternions: torch.Tensor):
+def quaternion_to_matrix(quaternions: torch.Tensor)->torch.Tensor:
     """
     Convert rotations given as quaternions to rotation matrices.
 
@@ -536,7 +635,6 @@ def quaternion_to_matrix(quaternions: torch.Tensor):
     return o.reshape(quaternions.shape[:-1] + (3, 3))
 
 
-
 @torch.jit.script   
 def multiply_transform(w_rot_l: torch.Tensor, w_trans_l: torch.Tensor, l_rot_c: torch.Tensor, l_trans_c: torch.Tensor)-> Tuple[torch.Tensor, torch.Tensor]:
     w_rot_c = w_rot_l @ l_rot_c    
@@ -560,3 +658,77 @@ def transform_point(point: torch.Tensor, rot: torch.Tensor, trans: torch.Tensor)
     #new_point = (rot @ (point).unsqueeze(-1)).squeeze(-1) + trans
     new_point = (point @ rot.transpose(-1,-2)) + trans
     return new_point
+
+
+
+
+if __name__ == "__main__":
+    # Test 1: Convert [0, 1, 0, 0] to rot and convert back
+    # Test 2: Convert [-1, 0, 0, 0] to rot and convert back
+
+    quat1 = torch.Tensor([0.0, -0.7071, -0.7071, 0.0]).unsqueeze(0)
+    quat2 = torch.Tensor([-1.0, 0.0, 0.0, 0.0]).unsqueeze(0)
+
+    print(matrix_to_quaternion(quaternion_to_matrix(quat1)))
+    print(matrix_to_quaternion(quaternion_to_matrix(quat2)))
+
+    mat2 = quaternion_to_matrix(quat2)
+    transform = CoordinateTransform(rot=mat2)
+    print(transform.get_quaternion())
+
+
+
+
+
+
+
+
+
+
+
+# @torch.jit.script
+# def matrix_to_euler_angles(R: torch.Tensor, cy_thresh: float = 1e-6) -> torch.Tensor:
+#     # if cy_thresh is None:
+#     #     try:
+#     #         cy_thresh = np.finfo(M.dtype).eps * 4
+#     #     except ValueError:
+#     #         cy_thresh = _FLOAT_EPS_4
+#     # r11, r12, r13, r21, r22, r23, r31, r32, r33 = M.flat
+#     inp_device = R.device
+#     #if(len(R.shape) == 4):
+#     Z = torch.zeros(R.shape[:-2], device=inp_device, dtype=R.dtype)
+#     #print(Z.shape)
+#     #else:
+#     #    Z = torch.zeros(R.shape[0], device=inp_device, dtype=R.dtype)
+#     r11 = R[...,0,0]
+#     r12 = R[...,0,1]
+#     r13 = R[...,0,2]
+#     r21 = R[...,1,0]
+#     r22 = R[...,1,1]
+#     r23 = R[...,1,2]
+#     r31 = R[...,2,0]
+#     r32 = R[...,2,1]
+#     r33 = R[...,2,2]
+
+
+#     # cy: sqrt((cos(y)*cos(z))**2 + (cos(x)*cos(y))**2)
+#     cy = torch.sqrt(r33*r33 + r23*r23)
+
+#     cond = cy > cy_thresh
+
+#     z = torch.where(cond, torch.atan2(-r12,  r11), torch.atan2(r21,  r22)).unsqueeze(-1)
+#     y = torch.atan2(r13,  cy).unsqueeze(-1)
+#     x = torch.where(cond, torch.atan2(-r23, r33), Z).unsqueeze(-1) 
+
+#     # if cy > cy_thresh: # cos(y) not close to zero, standard form
+#     #     z = torch.atan2(-r12,  r11) # atan2(cos(y)*sin(z), cos(y)*cos(z))
+#     #     y = torch.atan2(r13,  cy) # atan2(sin(y), cy)
+#     #     x = torch.atan2(-r23, r33) # atan2(cos(y)*sin(x), cos(x)*cos(y))
+#     # else: # cos(y) (close to) zero, so x -> 0.0 (see above)
+#     #     # so r21 -> sin(z), r22 -> cos(z) and
+#     #     z = torch.atan2(r21,  r22)
+#     #     y = torch.atan2(r13,  cy) # atan2(sin(y), cy)
+#     #     x = 0.0
+    
+#     # return z, y, x
+#     return torch.cat([x, y, z], dim=-1)

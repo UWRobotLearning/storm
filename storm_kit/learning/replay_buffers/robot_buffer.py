@@ -1,9 +1,8 @@
 from typing import Optional, Dict
 from collections import defaultdict
-from storm_kit.learning.replay_buffers import ReplayBuffer
 import torch
 
-class RobotBuffer(ReplayBuffer):
+class RobotBuffer():
     def __init__(self, capacity:int, device:torch.device = torch.device('cpu')):
         self.capacity = capacity
         self.device = device
@@ -84,24 +83,25 @@ class RobotBuffer(ReplayBuffer):
         self.capacity = state['num_stored']
         self.num_stored = state['num_stored']
 
-        buffers = state[buffers]
-        for k, v in buffers:
+        buffers = state['buffers']
+        
+        for k, v in buffers.items():
             if isinstance(v, dict):
+                self.buffers[k] = {}
                 for k2, v2 in v.items():
                     self.buffers[k][k2] = v2.to(self.device)
             else:
                 self.buffers[k] = v.to(self.device)
 
     def state_dict(self):
-        state = {}
+        state = dict(buffers={}, curr_idx=self.curr_idx, num_stored=self.num_stored)
         for k, v in self.buffers.items():
             if isinstance(v, dict):
+                state['buffers'][k]={}
                 for k2, v2 in v.items():
                     state['buffers'][k][k2] = v2[0:self.num_stored]
             else:
                 state['buffers'][k] = v[0:self.num_stored]
-        state['curr_idx'] = self.curr_idx
-        state['num_stored'] = self.num_stored
         return state
 
     def __len__(self):

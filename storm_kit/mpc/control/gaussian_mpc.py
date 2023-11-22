@@ -34,7 +34,7 @@ from .control_base import Controller
 from .control_utils import generate_noise, scale_ctrl, gaussian_entropy, matrix_cholesky
 from .sample_libs import StompSampleLib, HaltonSampleLib, RandomSampleLib, HaltonStompSampleLib, MultipleSampleLib
 
-class OLGaussianMPC(Controller):
+class GaussianMPC(Controller):
     """
         .. inheritance-diagram:: OLGaussianMPC
            :parts: 1
@@ -55,7 +55,6 @@ class OLGaussianMPC(Controller):
                  step_size_cov,
                  null_act_frac=0.,
                  rollout_fn=None,
-                 sample_mode='mean',
                  hotstart=True,
                  num_instances=1,
                  squash_fn='clamp',
@@ -76,20 +75,20 @@ class OLGaussianMPC(Controller):
             Number of action sequences sampled at every iteration
         """
 
-        super(OLGaussianMPC, self).__init__(d_action,
-                                            action_lows,
-                                            action_highs,
-                                            horizon,
-                                            gamma,
-                                            td_lam,
-                                            n_iters,
-                                            rollout_fn,
-                                            sample_mode,
-                                            hotstart,
-                                            num_instances,
-                                            seed,
-                                            tensor_args)
-        
+        super(GaussianMPC, self).__init__(
+            d_action,
+            action_lows,
+            action_highs,
+            horizon,
+            gamma,
+            td_lam,
+            n_iters,
+            rollout_fn,
+            hotstart,
+            num_instances,
+            seed,
+            tensor_args)
+    
         self.init_cov = init_cov 
         self.init_mean = init_mean.clone().to(**self.tensor_args)
         if self.init_mean.ndim == 2:
@@ -151,27 +150,40 @@ class OLGaussianMPC(Controller):
             
         self.delta = None
 
-    def _get_action_seq(self, mode='mean'):
-        if mode == 'mean':
-            act_seq = self.mean_action.data#.clone()
-        elif mode == 'sample':
-            delta = self.generate_noise(shape=torch.Size((1, self.horizon)),
-                                        base_seed=self.seed_val + 123 * self.num_steps)
-            act_seq = self.mean_action.data + torch.matmul(delta, self.full_scale_tril)
-        else:
-            raise ValueError('Unidentified sampling mode in get_next_action')
+    # def _get_action_seq(self, deterministic:bool=True):
+    #     if deterministic:
+    #         act_seq = self.mean_action.data#.clone()
+    #     else:
+    #         print('in here!!!!!')
+    #         delta = self.generate_noise(shape=torch.Size(self.horizon),
+    #                                     base_seed=self.seed_val + 123 * self.num_steps)
+
+    #         act_seq = self.mean_action.data + torch.matmul(delta, self.full_scale_tril)
+    #         print(delta.shape, act_seq.shape, self.mean_action.data.shape, self.full_scale_tril.shape)
+    #     act_seq = scale_ctrl(act_seq, self.action_lows, self.action_highs, squash_fn=self.squash_fn)
+
+    #     return act_seq
+    def sample(self, state, calc_val:bool=False, shift_steps:int=1, n_iters=None, deterministic:bool=False, num_samples:int=1):
+        distrib_info, value, aux_info =  self.optimize(state, calc_val, shift_steps, n_iters)
         
-        act_seq = scale_ctrl(act_seq, self.action_lows, self.action_highs, squash_fn=self.squash_fn)
+        if deterministic:
+            return distrib_info['mean'].data.unsqueeze(0) , value, aux_info
+        
+        samples = self.generate_noise(distrib_info, num_samples)
+        return samples, value, aux_info
 
-        return act_seq
 
 
-    def generate_noise(self, shape, base_seed=None):
+    def generate_noise(self, distrib_info, num_samples):
         """
             Generate correlated noisy samples using autoregressive process
         """
-        delta = self.sample_lib.get_samples(sample_shape=shape, seed=base_seed)
-        return delta
+        mean = distrib_info['mean']
+        scale_tril = distrib_info['scale_tril']
+        random_samples = torch.randn(num_samples, mean.shape[0], mean.shape[1], mean.shape[2], device=self.device)
+        scaled_samples = torch.matmul(random_samples, scale_tril)
+        return mean + scaled_samples
+
         
     def sample_actions(self, state=None):
         delta = self.sample_lib.get_samples(sample_shape=self.sample_shape, base_seed=self.seed_val + self.num_steps)

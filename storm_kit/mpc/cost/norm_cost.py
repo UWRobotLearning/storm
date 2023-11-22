@@ -12,7 +12,7 @@ class NormCost(nn.Module):
             hinge_val: float = 0.0,
             device: torch.device = torch.device('cpu'),
             ):
-        
+        super().__init__()
         self.norm_type = norm_type
         self.device = device
         self.weight = weight

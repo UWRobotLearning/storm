@@ -2,18 +2,12 @@ from typing import Dict
 from omegaconf import open_dict
 import torch
 from torch.distributions import Normal, MultivariateNormal, TransformedDistribution
-
 import time
-
-from torch.profiler import profile, record_function, ProfilerActivity
 
 
 from storm_kit.learning.policies import Policy
 from storm_kit.mpc.control import MPPI
-from storm_kit.mpc.rollout.arm_reacher import ArmReacher
-from storm_kit.mpc.utils.state_filter import JointStateFilter
-
-
+from storm_kit.mpc.rollout.arm_rollout import ArmRollout
 
 class MPCPolicy(Policy):
     def __init__(
@@ -21,7 +15,7 @@ class MPCPolicy(Policy):
             obs_dim, 
             act_dim, 
             config, 
-            rollout_cls,
+            task_cls,
             sampling_policy = None,
             value_function = None,
             device=torch.device('cpu')):
@@ -32,8 +26,8 @@ class MPCPolicy(Policy):
 
         self.sampling_policy = sampling_policy
         self.value_function = value_function
-        self.rollout = self.init_rollout(rollout_cls) 
-        self.controller = self.init_controller()
+        # self.rollout = self.init_rollout(task_cls) 
+        self.controller = self.init_controller(task_cls)
         self.prev_action = self.init_action[:,0].clone()
         self.prev_command_time = time.time()
         # self.dt = self.cfg.rollout.control_dt
@@ -79,9 +73,15 @@ class MPCPolicy(Policy):
         # planning_state_dict['q_pos'] = planning_state[:, 0:self.n_dofs]
         # planning_state_dict['q_vel'] = planning_state[:, 0:self.n_dofs]
         # planning_state_dict['q_acc'] = planning_state[:, 0:self.n_dofs]
-        curr_action_seq, value, info = self.controller.forward(
-            state_dict, calc_val=False, shift_steps=1)
-        action = curr_action_seq[:, 0]
+
+        ################
+        # curr_action_seq, value, info = self.controller.forward(
+        #     state_dict, calc_val=False, shift_steps=1, deterministic=deterministic)
+        ####################
+        curr_action_seq, _, _ = self.controller.sample(state_dict, calc_val=False, shift_steps=1, deterministic=deterministic, num_samples=num_samples)
+        action = curr_action_seq[:, :, 0]
+        
+        
         # command = self.state_filter.predict_internal_state(q_acc_des)
 
 
@@ -121,15 +121,16 @@ class MPCPolicy(Policy):
         log_prob = dist.log_prob(actions)
         return actions, log_prob.mean(0)
 
-    def init_controller(self):
+    def init_controller(self, task_cls):
         # world_params = self.cfg.world
+        rollout = self.init_rollout(task_cls)
         rollout_params = self.cfg.rollout
       
         mppi_params = self.cfg.mppi
         with open_dict(mppi_params):
             mppi_params.d_action = self.n_dofs #dynamics_model.d_action
-            mppi_params.action_lows =  [-1.0 * rollout_params.model.max_acc] * self.n_dofs #dynamics_model.d_action # * torch.ones(#dynamics_model.d_action, **self.tensor_args)
-            mppi_params.action_highs = [ rollout_params.model.max_acc] * self.n_dofs #dynamics_model.d_action # * torch.ones(#dynamics_model.d_action, **self.tensor_args)
+            mppi_params.action_lows =  [-1.0 * rollout_params.max_acc] * self.n_dofs #dynamics_model.d_action # * torch.ones(#dynamics_model.d_action, **self.tensor_args)
+            mppi_params.action_highs = [ rollout_params.max_acc] * self.n_dofs #dynamics_model.d_action # * torch.ones(#dynamics_model.d_action, **self.tensor_args)
         
         # init_q = torch.tensor(self.cfg.model.init_state, **self.tensor_args)
         #TODO: This should be read from the environment
@@ -144,22 +145,27 @@ class MPCPolicy(Policy):
         controller = MPPI(
             **mppi_params, 
             init_mean=init_mean,
-            rollout_fn=self.rollout,
+            rollout_fn=rollout,
             tensor_args=self.tensor_args)
         
         return controller
 
 
-    def init_rollout(self, rollout_cls):
+    def init_rollout(self, task_cls):
         world_params = self.cfg.world
         rollout_params = self.cfg.rollout
         with open_dict(rollout_params):
            rollout_params['num_instances'] = self.cfg['mppi']['num_instances']
            rollout_params['horizon'] = self.cfg['mppi']['horizon']
            rollout_params['batch_size'] = self.cfg['mppi']['num_particles']
+           rollout_params['dt_traj_params'] = rollout_params['model']['dt_traj_params']
+                
+        task = task_cls(cfg = rollout_params, world_params = world_params, device=self.device)
 
-        return rollout_cls(
-            cfg = rollout_params, world_params = world_params, value_function=self.value_function, viz_rollouts=self.cfg.viz_rollouts, device=self.device)
+        return ArmRollout(cfg = rollout_params, task=task, value_function=self.value_function, viz_rollouts=self.cfg.viz_rollouts, device=self.device)
+
+        # return rollout_cls(
+        #     cfg = rollout_params, world_params = world_params, value_function=self.value_function, viz_rollouts=self.cfg.viz_rollouts, device=self.device)
 
     def update_rollout_params(self, param_dict):
         self.controller.rollout_fn.update_params(param_dict)

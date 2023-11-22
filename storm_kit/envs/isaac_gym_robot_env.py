@@ -78,6 +78,7 @@ class IsaacGymRobotEnv():
         self.render_fps: int = self.cfg["env"].get("renderFPS", -1)
         self.robot_z_offset: float = self.cfg["env"].get("robot_z_offset", 0.0)
         self.floating_base_robot: bool = self.cfg["env"].get("floating_base_robot", False)
+        self.ee_link_name = self.cfg.get("ee_link_name", "ee_link")
         
         self.last_frame_time: float = 0.0
         self.total_train_env_frames: int = 0
@@ -375,7 +376,7 @@ class IsaacGymRobotEnv():
 
     def init_data(self):
         
-        self.ee_handle = self.gym.find_actor_rigid_body_handle(self.envs[0], self.robots[0], "ee_link")
+        self.ee_handle = self.gym.find_actor_rigid_body_handle(self.envs[0], self.robots[0], self.ee_link_name)
 
         #  get gym GPU state tensors
         actor_root_state_tensor = self.gym.acquire_actor_root_state_tensor(self.sim)
@@ -403,6 +404,7 @@ class IsaacGymRobotEnv():
 
         if self.floating_base_robot:
             self.robot_base_state = self.rigid_body_states[:, 3]
+        self.ee_state = self.rigid_body_states[:, self.ee_handle]
 
 
         #Note: this needs to change to support more than one object!!!
@@ -591,7 +593,7 @@ class IsaacGymRobotEnv():
         #     self.franka_default_dof_pos.unsqueeze(0) + 0.25 * (torch.rand((len(env_ids), self.num_franka_dofs), device=self.device) - 0.5),
         #     self.franka_dof_lower_limits, self.franka_dof_upper_limits)
         pos = self.robot_default_dof_pos.unsqueeze(0)
-        self.robot_dof_pos[env_ids, :] = pos
+        self.robot_dof_pos[env_ids, :] = pos.clone()
         self.robot_dof_vel[env_ids, :] = torch.zeros_like(self.robot_dof_vel[env_ids])
         # self.robot_dof_targets[env_ids, :self.num_robot_dofs] = pos
         self.effort_control[env_ids, :] = torch.zeros_like(pos)
@@ -627,9 +629,10 @@ class IsaacGymRobotEnv():
 
 
     def reset(self, reset_data=None):
-        self.reset_idx(torch.arange(self.num_envs, device=self.device), reset_data=reset_data)
-        state_dict = self.get_state_dict()
-        return state_dict
+        return self.reset_idx(torch.arange(self.num_envs, device=self.device), reset_data=reset_data)
+        # state_dict = self.reset_idx(torch.arange(self.num_envs, device=self.device), reset_data=reset_data)
+        # state_dict = self.get_state_dict()
+        # return state_dict
 
     def render(self, mode="rgb_array"):
         """Draw the frame to the viewer, and check for keyboard events."""
@@ -715,6 +718,26 @@ class IsaacGymRobotEnv():
                     target_pose_world = gymapi.Transform(p=target_pos, r=target_rot)
                 gymutil.draw_lines(axes_geom, self.gym, self.viewer, self.envs[i], target_pose_world)
                 gymutil.draw_lines(sphere_geom, self.gym, self.viewer, self.envs[i], target_pose_world)
+
+                #plot ee axes
+                axes_geom_ee = gymutil.AxesGeometry(0.1)
+                # Plot sphere at target
+                sphere_rot_ee = gymapi.Quat.from_euler_zyx(0.0, 0, 0)
+                sphere_pose_ee = gymapi.Transform(r=sphere_rot_ee)
+                sphere_geom_ee = gymutil.WireframeSphereGeometry(0.02, 12, 12, sphere_pose_ee, color=(0, 0, 1))
+
+                ee_pos = self.ee_state[i, 0:3]
+                ee_rot = self.ee_state[i, 3:7]
+                ee_pos = gymapi.Vec3(x=ee_pos[0], y=ee_pos[1], z=ee_pos[2]) 
+                ee_rot = gymapi.Quat(x=ee_rot[0], y=ee_rot[1], z=ee_rot[2], w=ee_rot[3])
+                ee_pose_world = gymapi.Transform(p=ee_pos, r=ee_rot)
+
+                gymutil.draw_lines(axes_geom_ee, self.gym, self.viewer, self.envs[i], ee_pose_world)
+                gymutil.draw_lines(sphere_geom_ee, self.gym, self.viewer, self.envs[i], ee_pose_world)
+
+
+
+
 
     def __parse_sim_params(self, physics_engine: str, config_sim: Dict[str, Any]) -> gymapi.SimParams:
         """Parse the config dictionary for physics stepping settings.

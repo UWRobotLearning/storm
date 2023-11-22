@@ -21,6 +21,7 @@ class SACAgent(Agent):
             policy,
             critic,
             runner_fn,
+            target_critic=None,
             logger=None,
             tb_writer=None,
             device=torch.device('cpu'),
@@ -35,7 +36,8 @@ class SACAgent(Agent):
             device=device        
         )
         self.critic = critic
-        self.target_critic = copy.deepcopy(self.critic)
+        # self.target_critic = copy.deepcopy(self.critic)
+        self.target_critic = target_critic
         self.policy_optimizer = optim.Adam(self.policy.parameters(), 
                                     lr=float(self.cfg['policy_optimizer']['lr']))
         self.critic_optimizer =  optim.Adam(self.critic.parameters(), 
@@ -44,6 +46,7 @@ class SACAgent(Agent):
         self.discount = self.cfg['discount']
         self.num_action_samples = self.cfg['num_action_samples']
         self.num_train_episodes_per_epoch = self.cfg['num_train_episodes_per_epoch']
+        self.num_updates_per_epoch = self.cfg.get('num_updates_per_epoch', None)
         self.update_to_data_ratio = self.cfg['update_to_data_ratio']
         self.policy_update_delay = self.cfg['policy_update_delay']
         self.automatic_entropy_tuning = self.cfg['automatic_entropy_tuning']
@@ -79,7 +82,13 @@ class SACAgent(Agent):
             #update agent
             if len(self.buffer) >= self.min_buffer_size:
                 
-                num_update_steps = int(self.update_to_data_ratio * num_steps_collected)
+                if self.num_updates_per_epoch is not None:
+                    num_update_steps = int(self.num_updates_per_epoch)
+                elif self.update_to_data_ratio is not None:
+                    num_update_steps = int(self.update_to_data_ratio * num_steps_collected)
+                else:
+                    raise ValueError('Either num_updates_per_epoch or update_to_data_ratio must be provided')
+                
                 print('Running {} updates'.format(num_update_steps))
 
                 for k in range(num_update_steps):

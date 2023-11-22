@@ -63,7 +63,7 @@ rollout:
       # hinge_val: 0.2 #0.2
 
     zero_q_acc:
-      weight: 0.005 #0.01
+      weight: 0.1 #0.01
       norm_type: 'l1'
       # hinge_val: -1.0
 
@@ -116,7 +116,7 @@ mppi:
   init_cov          : 0.1 #0.005 #.5 #.5
   gamma             : 0.99 #0.98
   td_lam            : 1.0
-  n_iters           : 2
+  n_iters           : 1
   step_size_mean    : 0.98
   step_size_cov     : 0.7
   beta              : 0.1

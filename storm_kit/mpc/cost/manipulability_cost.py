@@ -31,7 +31,7 @@ eps = 0.01
 class ManipulabilityCost(nn.Module):
     def __init__(
             self, 
-            ndofs: int, 
+            # ndofs: int, 
             weight = None, 
             device = torch.device('cpu'), 
             float_dtype = torch.float32, 
@@ -40,9 +40,9 @@ class ManipulabilityCost(nn.Module):
         self.device = device
         self.float_dtype = float_dtype
         self.weight = torch.as_tensor(weight, device=device, dtype=float_dtype)
-        self.ndofs = ndofs
+        # self.ndofs = ndofs
         self.thresh = thresh
-        self.i_mat = torch.ones((6,1), device=self.device, dtype=self.float_dtype)
+        # self.i_mat = torch.ones((6,1), device=self.device, dtype=self.float_dtype)
     
     def forward(self, jac_batch:torch.Tensor) -> torch.Tensor:
         inp_device = jac_batch.device
