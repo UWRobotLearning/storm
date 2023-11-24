@@ -51,33 +51,16 @@ class ArmReacher(ArmTask):
         # new_size = reduce(mul, list(orig_size))  
         # obs = obs.view(new_size, -1)
 
-        # ee_goal_pos_seq = self.ee_goal_buff[:, 0:3].repeat(new_size // self.num_instances, 1)
-        # ee_pos_seq = state_dict['ee_pos_seq'].clone() #.view(new_size, -1)
+        ee_goal_pos = self.goal_ee_pos
+        ee_goal_quat = self.goal_ee_quat
+        if obs.ndim > 2:
+            target_shape = list(obs.shape[0:-1])
+            ee_goal_pos = ee_goal_pos.view(ee_goal_pos.shape[0], *(1,)*(len(target_shape)-ee_goal_pos.ndim), ee_goal_pos.shape[-1]).expand(target_shape)
+            ee_goal_quat = ee_goal_quat.view(ee_goal_quat.shape[0], *(1,)*(len(target_shape)-ee_goal_quat.ndim), ee_goal_quat.shape[-1]).expand(target_shape)
 
-        # obs = torch.cat((obs, ee_goal_pos_seq), dim=-1)
-        # obs = torch.cat((obs, ee_pos_seq), dim=-1)
+        obs = torch.cat((obs, ee_goal_pos, ee_goal_quat), dim=-1)
 
-        # goal_ee_pos = self.goal_ee_pos.unsqueeze(1).unsqueeze(1)
-        # # goal_ee_quat = self.goal_ee_quat.unsqueeze(1).unsqueeze(1)
-        # goal_ee_rot = self.goal_ee_rot.unsqueeze(1).unsqueeze(1).flatten(-2,-1)
-        
-        # obs = torch.cat((
-        #     obs, 
-        #     goal_ee_pos, goal_ee_rot,
-        #     goal_ee_pos - state_dict['ee_pos_seq']), dim=-1)
-        # obs = obs.view(self.num_instances*self.batch_size*self.horizon, -1)
-        # ee_pos_seq = state_dict['ee_pos_seq'].view(self.num_instances*self.batch_size*self.horizon, -1)
-        # ee_goal_pos_seq = self.ee_goal_buff[:, 0:3].repeat(self.batch_size*self.horizon, 1)
-        # ee_goal_quat_seq = self.ee_goal_buff[:, 3:7].repeat(self.batch_size*self.horizon, 1)
-        
-        # obs = torch.cat((
-        #     obs, 
-        #     ee_goal_pos_seq,
-        #     ee_goal_pos_seq - ee_pos_seq,
-        #     ee_goal_quat_seq), dim=-1)
-    
-        # obs = obs.view(self.num_instances, self.batch_size, self.horizon, -1)
-        return obs #.view(*orig_size, -1) #, state_dict
+        return obs
 
     def compute_cost(
             self, 
@@ -251,6 +234,8 @@ class ArmReacher(ArmTask):
             goal_ee_quat = ee_goal[:, 3:7]
             goal_ee_rot = None        
         
+
+
         super(ArmReacher, self).update_params(retract_state=retract_state)
         
         if goal_ee_pos is not None:
@@ -273,7 +258,7 @@ class ArmReacher(ArmTask):
     
     @property
     def obs_dim(self)->int:
-        return super().obs_dim #+ 3 #37 
+        return super().obs_dim + 7 #37 
 
     @property
     def action_lims(self)->Tuple[torch.Tensor, torch.Tensor]:

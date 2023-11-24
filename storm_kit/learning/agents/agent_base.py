@@ -124,6 +124,7 @@ class Agent(nn.Module):
         # input('....')
 
         #TODO: Call task.update_params here to make sure goal is updated
+        self.task.update_params(dict(goal_dict=goal_dict))
         new_obs = self.task.compute_observations(state_batch, compute_full_state=True, debug=True)
         # new_obs, new_cost, new_termination, _, _ = self.task.forward(state_batch, act_batch)
         batch_dict['obs'] = new_obs.clone()

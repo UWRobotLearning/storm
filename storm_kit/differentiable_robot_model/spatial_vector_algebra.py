@@ -6,6 +6,8 @@ TODO
 from __future__ import annotations
 from typing import Optional, Tuple
 import torch
+import torch.nn.functional as F
+
 import math
 from storm_kit.differentiable_robot_model import utils
 from storm_kit.differentiable_robot_model.utils import vector3_to_skew_symm_matrix
@@ -17,9 +19,9 @@ class CoordinateTransform(object):
     trans: torch.Tensor
 
     def __init__(self, 
-                rot: torch.Tensor = torch.eye(3).unsqueeze(0), 
-                trans: torch.Tensor = torch.zeros(1,3), 
-                device: torch.device=torch.device("cpu")):
+        rot: torch.Tensor = torch.eye(3).unsqueeze(0), 
+        trans: torch.Tensor = torch.zeros(1,3), 
+        device: torch.device=torch.device("cpu")):
         
         self._device = device
 
@@ -365,6 +367,18 @@ def _copysign(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
     return torch.where(signs_differ, -a, a)
 
 @torch.jit.script
+def _sqrt_positive_part(x: torch.Tensor) -> torch.Tensor:
+    """
+    Returns torch.sqrt(torch.max(0, x))
+    but with a zero subgradient where x is 0.
+    """
+    ret = torch.zeros_like(x)
+    positive_mask = x > 0
+    ret[positive_mask] = torch.sqrt(x[positive_mask])
+    return ret
+
+
+@torch.jit.script
 def x_rot(angle: torch.Tensor) -> torch.Tensor:
     #  if len(angle.shape) == 0:
     # angle = angle.unsqueeze(0)
@@ -572,10 +586,6 @@ def rpy_angles_to_matrix(euler_angles: torch.Tensor) -> torch.Tensor:
     return matrices
 
 
-#[qw, qx, qy, qz]
-# Test 1: Convert [0, 1, 0, 0] to rot and convert back
-# Test 2: Convert [-1, 0, 0, 0] to rot and convert back
-# TODO: Test also quaternion_to_matrix
 @torch.jit.script
 def matrix_to_quaternion(matrix: torch.Tensor) -> torch.Tensor:
     """
@@ -591,17 +601,144 @@ def matrix_to_quaternion(matrix: torch.Tensor) -> torch.Tensor:
     #     raise ValueError(f"Invalid rotation matrix  shape f{matrix.shape}.")
     zero = matrix.new_zeros((1,))
     m00 = matrix[..., 0, 0]
+    m01 = matrix[..., 0, 1]
+    m02 = matrix[..., 0, 2]
+    m10 = matrix[..., 1, 0]
     m11 = matrix[..., 1, 1]
+    m12 = matrix[..., 1, 2]
+    m20 = matrix[..., 2, 0]
+    m21 = matrix[..., 2, 1]
     m22 = matrix[..., 2, 2]
-    o0 = 0.5 * torch.sqrt(torch.max(zero, 1 + m00 + m11 + m22))
-    x = 0.5 * torch.sqrt(torch.max(zero, 1 + m00 - m11 - m22))
-    y = 0.5 * torch.sqrt(torch.max(zero, 1 - m00 + m11 - m22))
-    z = 0.5 * torch.sqrt(torch.max(zero, 1 - m00 - m11 + m22))
-    o1 = _copysign(x, matrix[..., 2, 1] - matrix[..., 1, 2])
-    o2 = _copysign(y, matrix[..., 0, 2] - matrix[..., 2, 0])
-    o3 = _copysign(z, matrix[..., 1, 0] - matrix[..., 0, 1])
-    return torch.stack((o0, o1, o2, o3), -1)
+    qw = 0.5 * torch.sqrt(torch.max(zero, 1.0 + m00 + m11 + m22))
+    qx = 0.5 * torch.sqrt(torch.max(zero, 1.0 + m00 - m11 - m22))
+    qy = 0.5 * torch.sqrt(torch.max(zero, 1.0 - m00 + m11 - m22))
+    qz = 0.5 * torch.sqrt(torch.max(zero, 1.0 - m00 - m11 + m22))
 
+    cond1 = ((qw >= qx) & (qw >= qy) & (qw >= qz))
+    cond2 = (~cond1 & (qx >= qw) & (qx >= qy) & (qx >= qz))
+    cond3 = (~cond1 & ~cond2 & (qy >= qw) & (qy >= qx) & (qy >= qz))
+    cond4 = (~cond1 & ~cond2 & ~cond3 & (qz >= qw) & (qz >= qx) & (qz >= qy))
+    cond1 = cond1.nonzero()
+    cond2 = cond2.nonzero()
+    cond3 = cond3.nonzero()
+    cond4 = cond4.nonzero()
+    
+    #When qw is max
+    qw[cond1] *= 1.0
+    qx[cond1] = _copysign(qx[cond1], m21[cond1] - m12[cond1])
+    qy[cond1] = _copysign(qy[cond1], m02[cond1] - m20[cond1])
+    qz[cond1] = _copysign(qz[cond1], m10[cond1] - m01[cond1])
+    
+    #When qx is max
+    qw[cond2] = _copysign(qw[cond2], m21[cond2] - m12[cond2])
+    qx[cond2] *= 1.0
+    qy[cond2] = _copysign(qy[cond2], m10[cond2] + m01[cond2])
+    qz[cond2] = _copysign(qz[cond2], m02[cond2] + m20[cond2])
+
+    #When qy is max
+    qw[cond3] = _copysign(qw[cond3], m02[cond3] - m20[cond3])
+    qx[cond3] = _copysign(qx[cond3], m10[cond3] + m01[cond3])
+    qy[cond3] *= 1.0
+    qz[cond3] = _copysign(qz[cond3], m21[cond3] + m12[cond3])
+    
+    #When qz is max
+    qw[cond4] = _copysign(qw[cond4], m10[cond4] - m01[cond4])
+    qx[cond4] = _copysign(qx[cond4], m20[cond4] + m02[cond4])
+    qy[cond4] = _copysign(qy[cond4], m21[cond4] + m12[cond4])
+    qz[cond4] *= 1.0
+
+    q = torch.stack((qw, qx, qy, qz), -1)
+    q /= torch.norm(q, dim=-1, p=2)[...,None]
+
+    return q
+
+@torch.jit.script
+def matrix_to_quaternion2(matrix: torch.Tensor) -> torch.Tensor:
+    """
+    Convert rotations given as rotation matrices to quaternions.
+
+    Args:
+        matrix: Rotation matrices as tensor of shape (..., 3, 3).
+
+    Returns:
+        quaternions with real part first, as tensor of shape (..., 4).
+    """
+    # if matrix.size(-1) != 3 or matrix.size(-2) != 3:
+    #     raise ValueError(f"Invalid rotation matrix shape {matrix.shape}.")
+
+    batch_dim = matrix.shape[:-2]
+    m00, m01, m02, m10, m11, m12, m20, m21, m22 = torch.unbind(
+        matrix.reshape(batch_dim + (9,)), dim=-1
+    )
+
+    q_abs = _sqrt_positive_part(
+        torch.stack(
+            [
+                1.0 + m00 + m11 + m22,
+                1.0 + m00 - m11 - m22,
+                1.0 - m00 + m11 - m22,
+                1.0 - m00 - m11 + m22,
+            ],
+            dim=-1,
+        )
+    )
+
+    # we produce the desired quaternion multiplied by each of r, i, j, k
+    quat_by_rijk = torch.stack(
+        [
+            # pyre-fixme[58]: `**` is not supported for operand types `Tensor` and
+            #  `int`.
+            torch.stack([q_abs[..., 0] ** 2, m21 - m12, m02 - m20, m10 - m01], dim=-1),
+            # pyre-fixme[58]: `**` is not supported for operand types `Tensor` and
+            #  `int`.
+            torch.stack([m21 - m12, q_abs[..., 1] ** 2, m10 + m01, m02 + m20], dim=-1),
+            # pyre-fixme[58]: `**` is not supported for operand types `Tensor` and
+            #  `int`.
+            torch.stack([m02 - m20, m10 + m01, q_abs[..., 2] ** 2, m12 + m21], dim=-1),
+            # pyre-fixme[58]: `**` is not supported for operand types `Tensor` and
+            #  `int`.
+            torch.stack([m10 - m01, m20 + m02, m21 + m12, q_abs[..., 3] ** 2], dim=-1),
+        ],
+        dim=-2,
+    )
+
+    # We floor here at 0.1 but the exact level is not important; if q_abs is small,
+    # the candidate won't be picked.
+    flr = torch.tensor(0.1).to(dtype=q_abs.dtype, device=q_abs.device)
+    quat_candidates = quat_by_rijk / (2.0 * q_abs[..., None].max(flr))
+
+    # if not for numerical problems, quat_candidates[i] should be same (up to a sign),
+    # forall i; we pick the best-conditioned one (with the largest denominator)
+
+    return quat_candidates[
+        F.one_hot(q_abs.argmax(dim=-1), num_classes=4) > 0.5, :
+    ].reshape(batch_dim + (4,))
+
+
+# def matrix_to_quaternion(matrix: torch.Tensor) -> torch.Tensor:
+#     """
+#     Convert rotations given as rotation matrices to quaternions.
+
+#     Args:
+#         matrix: Rotation matrices as tensor of shape (..., 3, 3).
+
+#     Returns:
+#         quaternions with real part first, as tensor of shape (..., 4). [qw, qx,qy,qz]
+#     """
+#     # if matrix.size(-1) != 3 or matrix.size(-2) != 3:
+#     #     raise ValueError(f"Invalid rotation matrix  shape f{matrix.shape}.")
+#     zero = matrix.new_zeros((1,))
+#     m00 = matrix[..., 0, 0]
+#     m11 = matrix[..., 1, 1]
+#     m22 = matrix[..., 2, 2]
+#     o0 = 0.5 * torch.sqrt(torch.max(zero, 1 + m00 + m11 + m22))
+#     x = 0.5 * torch.sqrt(torch.max(zero, 1 + m00 - m11 - m22))
+#     y = 0.5 * torch.sqrt(torch.max(zero, 1 - m00 + m11 - m22))
+#     z = 0.5 * torch.sqrt(torch.max(zero, 1 - m00 - m11 + m22))
+#     o1 = _copysign(x, matrix[..., 2, 1] - matrix[..., 1, 2])
+#     o2 = _copysign(y, matrix[..., 0, 2] - matrix[..., 2, 0])
+#     o3 = _copysign(z, matrix[..., 1, 0] - matrix[..., 0, 1])
+#     return torch.stack((o0, o1, o2, o3), -1)
 
 @torch.jit.script
 def quaternion_to_matrix(quaternions: torch.Tensor)->torch.Tensor:
@@ -634,6 +771,55 @@ def quaternion_to_matrix(quaternions: torch.Tensor)->torch.Tensor:
     )
     return o.reshape(quaternions.shape[:-1] + (3, 3))
 
+# def quaternion_to_matrix2(quaternions: torch.Tensor)->torch.Tensor:
+#     """
+#     Convert rotations given as quaternions to rotation matrices.
+
+#     Args:
+#         quaternions: quaternions with real part first,
+#             as tensor of shape (..., 4).
+
+#     Returns:
+#         Rotation matrices as tensor of shape (..., 3, 3).
+#     """
+#     w, x, y, z = torch.unbind(quaternions, -1)
+#     # two_s = 2.0 / (quaternions * quaternions).sum(-1)
+#     tx = 2*x
+#     ty = 2*y
+#     tz = 2*z
+#     # xx = tx * x
+#     # yy = ty * y
+#     # zz = tz * z
+#     xy = ty * x
+#     xz = tz * x
+#     yz = ty * z
+#     wx = tx * w
+#     wy = ty * w
+#     wz = tz * w
+
+#     # diagonal terms
+#     t0 = (w+y)*(w-y); t1 = (x+z)*(x-z)
+#     t2 = (w+x)*(w-x); t3 = (y+z)*(y-z)
+#     m00 = t0+t1
+#     m11 = t2+t3
+#     m22 = t2-t3
+#     # m00 = 1.0 - (yy + zz) 
+#     # m11 = 1.0 - (xx + zz)
+#     # m22 = 1.0 - (xx + yy)
+
+#     m10 = xy + wz 
+#     m01 = xy - wz
+#     m20 = xz - wy
+#     m02 = xz + wy
+#     m21 = yz + wx
+#     m12 = yz - wx
+
+#     row1 = torch.stack((m00, m01, m02), -1)
+#     row2 = torch.stack((m10, m11, m12), -1)
+#     row3 = torch.stack((m20, m21, m22), -1)
+#     m = torch.stack((row1, row2, row3), -1)
+#     return m
+
 
 @torch.jit.script   
 def multiply_transform(w_rot_l: torch.Tensor, w_trans_l: torch.Tensor, l_rot_c: torch.Tensor, l_trans_c: torch.Tensor)-> Tuple[torch.Tensor, torch.Tensor]:
@@ -664,17 +850,19 @@ def transform_point(point: torch.Tensor, rot: torch.Tensor, trans: torch.Tensor)
 
 if __name__ == "__main__":
     # Test 1: Convert [0, 1, 0, 0] to rot and convert back
-    # Test 2: Convert [-1, 0, 0, 0] to rot and convert back
+    # Test 2: Convert [0, 0.7071, 0.7071, 0] to rot and convert back
+    # Test 3: Convert [0, -0.7071, -0.7071, 0] to rot and convert back
+    # Test 4: Convert [-1, 0, 0, 0] to rot and convert back
+    quat1 = torch.tensor([0.0, 1.0, 0.0, 0.0], dtype=torch.float32).unsqueeze(0)
+    quat2 = torch.tensor([0.0, 0.7071, 0.7071, 0.0], dtype=torch.float32).unsqueeze(0)
+    quat3 = torch.tensor([0.0, -0.7071, -0.7071, 0.0], dtype=torch.float32).unsqueeze(0)
+    quat4 = torch.tensor([-1.0, 0.0, 0.0, 0.0], dtype=torch.float32).unsqueeze(0)
 
-    quat1 = torch.Tensor([0.0, -0.7071, -0.7071, 0.0]).unsqueeze(0)
-    quat2 = torch.Tensor([-1.0, 0.0, 0.0, 0.0]).unsqueeze(0)
+    assert torch.allclose(matrix_to_quaternion(quaternion_to_matrix(quat1)), quat1)
+    assert torch.allclose(matrix_to_quaternion(quaternion_to_matrix(quat2)), quat2)
+    assert torch.allclose(matrix_to_quaternion(quaternion_to_matrix(quat3)), quat3)
+    assert torch.allclose(matrix_to_quaternion(quaternion_to_matrix(quat4)), quat4)
 
-    print(matrix_to_quaternion(quaternion_to_matrix(quat1)))
-    print(matrix_to_quaternion(quaternion_to_matrix(quat2)))
-
-    mat2 = quaternion_to_matrix(quat2)
-    transform = CoordinateTransform(rot=mat2)
-    print(transform.get_quaternion())
 
 
 

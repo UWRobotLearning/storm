@@ -211,12 +211,12 @@ class PoseCost(NormCost):
         conj_quat = ee_quat_batch
         conj_quat[..., 1:] *= -1.0
 
+
         quat_res = quat_multiply(ee_goal_quat, conj_quat)
         # quat_res = -1.0 * quat_res * torch.sign(quat_res[..., 0]).unsqueeze(-1)
         # quat_res[..., 0] = 0.0
 
         rotation_err = super().forward(quat_res[..., 1:], keepdim=False)
-
         # rot_err = torch.einsum('bijk, bk -> bij', ee_quat_batch, ee_goal_quat)
 
         # # rot_err = quat_x + quat_y + quat_z + quat_w

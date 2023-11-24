@@ -19,8 +19,7 @@
 # THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 # LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
 # FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
-# DEALINGS IN THE SOFTWARE.#
-import math
+# DEALINGS IN THE SOFTWARE.
 
 import numpy as np
 import torch
@@ -396,17 +395,3 @@ def matrix_cholesky(A:torch.Tensor)->torch.Tensor:
             L[...,i,j] = torch.sqrt(A[...,i,i] - s) if (i == j) else \
                       (1.0 / L[...,j,j] * (A[...,i,j] - s))
     return L
-
-# # Batched Cholesky decomp
-# def batch_cholesky(A):
-#     L = torch.zeros_like(A)
-
-#     for i in range(A.shape[-1]):
-#         for j in range(i+1):
-#             s = 0.0
-#             for k in range(j):
-#                 s = s + L[...,i,k] * L[...,j,k]
-
-#             L[...,i,j] = torch.sqrt(A[...,i,i] - s) if (i == j) else \
-#                       (1.0 / L[...,j,j] * (A[...,i,j] - s))
-#     return L
