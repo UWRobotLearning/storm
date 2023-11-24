@@ -4,6 +4,7 @@ import torch.nn as nn
 import time
 
 from storm_kit.mpc.utils.state_filter import JointStateFilter
+from storm_kit.learning.learning_utils import dict_to_device
 
 class JointControlWrapper(nn.Module):
     def __init__(
@@ -36,9 +37,11 @@ class JointControlWrapper(nn.Module):
         return self.policy.forward(input_dict)
 
     def get_action(self, input_dict, deterministic=False, num_samples:int = 1):
-        state_dict = input_dict['states']
+        state_dict = dict_to_device(input_dict['states'], self.device)
         planning_states = self.state_filter.filter_joint_state(state_dict)
-        new_input_dict = {'states': planning_states, 'obs': input_dict['obs']}
+        new_input_dict = {'states': planning_states}
+        if 'obs' in input_dict:
+            new_input_dict['obs']: input_dict['obs']
 
         action = self.policy.get_action(new_input_dict, deterministic, num_samples)
 

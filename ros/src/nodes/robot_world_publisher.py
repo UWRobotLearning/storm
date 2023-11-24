@@ -31,10 +31,9 @@ class RobotWorldPublisher():
 
         initialize(config_path="../../../content/configs/gym", job_name="robot_world_publisher")
         self.config = compose(config_name="config", overrides=["task=FrankaReacherRealRobot"])
-        model_config = self.config.task.rollout.model
-        self.robot_collision_config = model_config.robot_collision_params
-        self.ee_link_name = model_config.ee_link_name
-        self.n_dofs = self.robot_collision_config.n_dofs
+        self.robot_collision_config = self.config.task.task.robot_collision_params
+        self.ee_link_name = self.config.task.ee_link_name
+        self.n_dofs = self.config.task.n_dofs
         self.urdf_path = join_path(get_assets_path(), self.robot_collision_config['urdf_path'])
         self.link_names = self.robot_collision_config['link_names']
         self.world_params = self.config.task.world['world_model']

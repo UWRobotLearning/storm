@@ -366,7 +366,8 @@ class ArmTask(nn.Module):
             q_pos = state_dict['q_pos'].to(device=self.device)
             q_vel = state_dict['q_vel'].to(device=self.device)
             q_acc = state_dict['q_acc'].to(device=self.device)
-            tstep = state_dict['tstep']
+            tstep = state_dict['tstep'].to(device=self.device)
+
             # if debug:
             #     q_pos_before = q_pos.clone()
             #     print('before', q_pos)

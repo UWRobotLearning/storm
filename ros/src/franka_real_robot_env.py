@@ -10,20 +10,18 @@ import rospkg
 from geometry_msgs.msg import PoseStamped 
 from sensor_msgs.msg import JointState
 
-from storm_ros.srv import ReachGoal, ReachGoalResponse
-from storm_ros.msg import GoalMsg
-from storm_kit.learning.replay_buffers import RobotBuffer
-from storm_kit.learning.policies import MPCPolicy
-from storm_kit.util_file import get_data_path
-from storm_kit.mpc.rollout import ArmReacher
+from storm_kit.learning.policies import MPCPolicy, JointControlWrapper
+from storm_kit.tasks import ArmReacher
 
 class FrankaRealRobotEnv():
     def __init__(self, cfg, device=torch.device('cpu')):
         self.cfg = cfg
-        self.episode_length = cfg['task']['env']['episodeLength']
-        self.n_dofs = cfg.task.rollout.n_dofs
+        self.max_episode_length = cfg['env']['episodeLength']
+        self.n_dofs = cfg.n_dofs
         self.device = device
-    
+        self.num_envs = cfg.env.get('num_envs', 1)
+        self.robot_default_dof_pos = self.cfg["env"]["robot_default_dof_pos"]
+
         rospack = rospkg.RosPack()
         self.pkg_path = rospack.get_path('storm_ros')
         self.storm_path = os.path.dirname(self.pkg_path)
@@ -33,46 +31,26 @@ class FrankaRealRobotEnv():
         self.ee_goal_topic = rospy.get_param('~ee_goal_topic', 'ee_goal')
         self.joint_names = rospy.get_param('~robot_joint_names', ['panda_joint1', 'panda_joint2', 'panda_joint3', 'panda_joint4', 'panda_joint5', 'panda_joint6', 'panda_joint7'])
         
-        self.default_config = torch.tensor([0.0, -0.7853, 0.0, -2.3561, 0.0, 1.5707, 0.7853])
-        self.reset_state = torch.cat((self.default_config, torch.zeros_like(self.default_config), torch.zeros_like(self.default_config))).unsqueeze(0)
-        self.control_dt = self.cfg.task.rollout.control_dt
+        self.control_dt = self.cfg.joint_control.control_dt
+        self.robot_default_dof_pos = torch.tensor(self.robot_default_dof_pos, device=self.device).unsqueeze(0)
 
-        #Initialize reset policy
-        self.reset_mpc_cfg = copy.deepcopy(self.cfg)
-        self.reset_mpc_cfg.task.rollout.cost.goal_pose.weight = [0., 0.]
-        self.reset_mpc_cfg.task.rollout.cost.joint_l2.weight = 100.0
-        self.reset_mpc_cfg.task.rollout.cost.manipulability.weight = 0.0
-        self.reset_mpc_cfg.mpc.mppi.horizon=20
-        self.reset_policy = MPCPolicy(obs_dim=0, act_dim=7, config=self.reset_mpc_cfg.mpc, rollout_cls=ArmReacher, device=self.device)
+        self.mpc_command = JointState()
+        self.mpc_command.name = self.joint_names
 
         self.command_header = None
         self.gripper_state = {
-            'position': torch.zeros(2),
-            'velocity': torch.zeros(2),
-            'acceleration': torch.zeros(2)}
+            'q_pos': torch.zeros(1,2),
+            'q_vel': torch.zeros(1,2),
+            'q_acc': torch.zeros(1,2)}
         self.robot_state = {
-            'position': torch.zeros(7),
-            'velocity': torch.zeros(7),
-            'acceleration': torch.zeros(7)}
-        self.obs_dict = {}
+            'q_pos': torch.zeros(1,7),
+            'q_vel': torch.zeros(1,7),
+            'q_acc': torch.zeros(1,7)}
         self.robot_state_tensor = None
-
-        self.default_ee_goal = torch.zeros(7, device=self.device)
-        self.default_ee_goal[0] = 0.5
-        self.default_ee_goal[1] = 0.0
-        self.default_ee_goal[2] = 0.5
-        self.default_ee_goal[3] = 0.0
-        self.default_ee_goal[4] = 0.707
-        self.default_ee_goal[5] = 0.707
-        self.default_ee_goal[6] = 0.0
-        self.default_ee_goal = self.default_ee_goal.unsqueeze(0)
-        self.ee_goal = self.default_ee_goal.clone()
-
 
         #ROS Initialization
         self.command_pub = rospy.Publisher(self.joint_command_topic, JointState, queue_size=1, tcp_nodelay=True, latch=False)
         self.state_sub = rospy.Subscriber(self.joint_states_topic, JointState, self.robot_state_callback, queue_size=1)
-        # self.service = rospy.Service('mpc', ReachGoal, self.go_to_goal)
 
         self.control_freq = float(1.0/self.control_dt)
         self.rate = rospy.Rate(self.control_freq)
@@ -81,6 +59,9 @@ class FrankaRealRobotEnv():
         self.tstep = 0
         self.start_t = None
         self.first_iter = True
+
+        self.allocate_buffers()
+        self.init_reset_policy()
 
 
     def robot_state_callback(self, msg):
@@ -100,21 +81,30 @@ class FrankaRealRobotEnv():
         # self.robot_state.position = msg.position[2:]
         # self.robot_state.velocity = msg.velocity[2:]
         # self.robot_state.effort = msg.effort[2:]
-        self.robot_state['position'] = torch.tensor(msg.position)
-        self.robot_state['velocity'] = torch.tensor(msg.velocity)
-        self.robot_state['acceleration'] = torch.zeros_like(self.robot_state['velocity'])
+        self.robot_state['q_pos'] = torch.tensor(msg.position).unsqueeze(0)
+        self.robot_state['q_vel'] = torch.tensor(msg.velocity).unsqueeze(0)
+        self.robot_state['q_acc'] = torch.zeros_like(self.robot_state['q_vel'])
 
         self.robot_state_tensor = torch.cat((
-            self.robot_state['position'],
-            self.robot_state['velocity'],
-            self.robot_state['acceleration']
+            self.robot_state['q_pos'],
+            self.robot_state['q_vel'],
+            self.robot_state['q_acc']
         )).unsqueeze(0)
-        self.obs_dict = {'states':self.robot_state_tensor}
-
 
 
     def allocate_buffers(self):
-        pass
+        # allocate buffers
+        self.reset_buf = torch.ones(
+            self.num_envs, device=self.device, dtype=torch.long)
+        self.timeout_buf = torch.zeros(
+             self.num_envs, device=self.device, dtype=torch.long)
+        self.progress_buf = torch.zeros(
+            self.num_envs, device=self.device, dtype=torch.long)
+        # self.prev_action_buff = torch.zeros(
+        #     (self.num_envs, self.n_dofs), device=self.device)
+        self.target_buf = torch.zeros(
+            (self.num_envs, 7), device=self.device
+        )
 
     def _create_envs(self):
         pass
@@ -122,125 +112,161 @@ class FrankaRealRobotEnv():
     def init_data(self):
         pass
 
-
     def pre_physics_steps(self, actions:torch.Tensor):
         pass
 
     def step(self, actions:torch.Tensor):
-            #only do something if state and goal have been received
-            if self.state_sub_on and self.goal_sub_on:
-                # #check if goal was updated
-                # if self.new_ee_goal:
-                #     param_dict = {'goal_dict': dict_to_device(self.goal_dict, device=self.device)}
-                #     self.policy.update_rollout_params(param_dict)
-                #     self.new_ee_goal = False
-
-                # for k in self.robot_state.keys():
-                #     self.policy_input['states'][k] = self.robot_state[k].clone().to(self.device)
-                                
-                # self.tstep_tensor[0,0] = self.tstep
-                # self.policy_input['states']['tstep'] = self.tstep_tensor
-                # self.policy_input['obs'] = self.robot_state_tensor.to(self.device)
-
-                # for k in self.policy_input['states'].keys():
-                #     print('in node', k, self.policy_input['states'][k].device)
-
-
-
-                # #get mpc command
-                # command_tensor, policy_info = self.policy.get_action(self.policy_input)
-
-                #publish mpc command
-                self.mpc_command.header = self.command_header
-                self.mpc_command.header.stamp = rospy.Time.now()
-                self.mpc_command.position = actions[0][0:7].cpu().numpy()
-                self.mpc_command.velocity = actions[0][7:14].cpu().numpy()
-                self.mpc_command.effort =  actions[0][14:21].cpu().numpy()
-
-                # self.mpc_command.position = command['q_des'][0].cpu().numpy()
-                # self.mpc_command.velocity = command['qd_des'][0].cpu().numpy()
-                # self.mpc_command.effort =  command['qdd_des'][0].cpu().numpy()
-                self.command_pub.publish(self.mpc_command)
-
-                #update tstep
-                if self.tstep == 0:
-                    rospy.loginfo('[FrankaRobotEnv]: Env Setup')
-                    self.start_t = rospy.get_time()
-                self.tstep = rospy.get_time() - self.start_t
-
-            else:
-                if (not self.state_sub_on) and (self.first_iter):
-                    rospy.loginfo('[FrankaRobotEnv]: Waiting for robot state.')
-                if (not self.goal_sub_on) and (self.first_iter):
-                    rospy.loginfo('[FrankaRobotEnv]: Waiting for ee goal.')
+        #only do something if state has been received
+        if self.state_sub_on:
+            #publish mpc 
+            self.mpc_command.header = self.command_header
+            self.mpc_command.header.stamp = rospy.Time.now()
+            self.mpc_command.position = actions[0][0:7].cpu().numpy()
+            self.mpc_command.velocity = actions[0][7:14].cpu().numpy()
+            self.mpc_command.effort =  actions[0][14:21].cpu().numpy()
+            self.command_pub.publish(self.mpc_command)
             
-            self.first_iter = False
-            self.rate.sleep()
+            #update tstep
+            if self.tstep == 0:
+                rospy.loginfo('[FrankaRobotEnv]: Env Setup')
+                self.start_t = rospy.get_time()
+            self.tstep = rospy.get_time() - self.start_t
 
-    def reset(self):
-        tstep = 0
-        self.reset_policy.reset()
-
-        self.reset_policy.update_goal(joint_goal = self.reset_state)
-
-        goal_q_pos = self.reset_state[:, 0:self.n_dofs]
-
-        goal_reached = False
-        curr_q_pos = self.obs_dict['states'][:, 0:self.n_dofs]
-        curr_error = torch.norm(curr_q_pos - goal_q_pos, p=2).item()
-        delta_error_list = []
-
-        while not goal_reached:
-            #only do something if state has been received
-            if self.state_sub_on:
-                input_dict = {}
-                input_dict['states'] = torch.cat(
-                    (self.obs_dict['states'],
-                        torch.as_tensor([tstep]).unsqueeze(0)),
-                        dim=-1)
-                
-                #get mpc command
-                command = self.reset_policy.get_action(
-                    obs_dict=copy.deepcopy(input_dict))
-
-                #publish mpc command
-                mpc_command = JointState()
-                mpc_command.header = self.command_header
-                mpc_command.name = self.joint_names
-                mpc_command.header.stamp = rospy.Time.now()
-                mpc_command.position = command['q_des'][0].cpu().numpy()
-                mpc_command.velocity = command['qd_des'][0].cpu().numpy()
-                mpc_command.effort =  command['qdd_des'][0].cpu().numpy()
-
-                self.command_pub.publish(mpc_command)
-
-                #update tstep
-                if tstep == 0:
-                    rospy.loginfo('[MPCPoseReacher]: Controller running')
-                    start_t = rospy.get_time()
-                tstep = rospy.get_time() - start_t
-                
-                new_q_pos = self.obs_dict['states'][:, 0:self.n_dofs]
-                new_error = torch.norm(new_q_pos - goal_q_pos, p=2).item()
-                delta_error = abs(curr_error - new_error)
-                delta_error_list.append(delta_error)
-                goal_reached = self.check_goal_reached(new_error, delta_error_list)
-                curr_error = copy.deepcopy(new_error)
-
-
-            else:
-                if (not self.state_sub_on) and (self.first_iter):
-                    rospy.loginfo('[MPCPoseReacher]: Waiting for robot state.')
-            
-            self.first_iter = False
-            self.rate.sleep()
+        else:
+            if (not self.state_sub_on) and (self.first_iter):
+                rospy.loginfo('[FrankaRobotEnv]: Waiting for robot state.')
         
-        print('[Reset]: Goal Reached. curr_error={}, delta_error={}'.format(curr_error, delta_error))
+        self.first_iter = False
+        self.rate.sleep()
+        state_dict = self.post_physics_step() 
 
-        print('Randomizing ee_goal')
-        self.ee_goal[:,0] = self.default_ee_goal[:,0] + 0.2*torch.rand(1).item() - 0.1
-        self.ee_goal[:,1] = self.default_ee_goal[:,1] + 0.2*torch.rand(1).item() - 0.1
-        print(self.ee_goal)
+        return state_dict, self.reset_buf
+
+    def post_physics_step(self):
+        self.progress_buf += 1                
+        env_ids = self.reset_buf.nonzero(as_tuple=False).squeeze(-1)
+        if len(env_ids) > 0:
+            self.reset()
+        state_dict = self.get_state_dict()
+        self.reset_buf[:] = torch.where(
+            self.progress_buf >= self.max_episode_length - 1, torch.ones_like(self.reset_buf), self.reset_buf)
+
+        return state_dict
+
+
+    def get_state_dict(self):
+        state_dict = copy.deepcopy(self.robot_state)
+        state_dict['tstep'] = torch.as_tensor([self.tstep]).unsqueeze(0)
+        return state_dict
+
+    def reset(self, reset_data=None):
+        input('Press enter to begin reset')
+        print('[FrankaRobotEnv]: Resetting to default joint config')
+        reset_data = {}
+        reset_data['goal_dict'] = dict(joint_goal = self.robot_default_dof_pos)
+        self.reset_policy.reset(reset_data)
+        max_steps = 1000
+        goal_reached = False
+        curr_q_pos = self.robot_state['q_pos']
+        q_pos_goal = self.robot_default_dof_pos.cpu()
+        curr_error = torch.norm(curr_q_pos - q_pos_goal, p=2)
+        curr_num_steps = 0
+        tstep, start_t = 0, 0
+
+        while True:
+            policy_input = {
+                'states': self.get_state_dict()}
+
+            command_tensor, policy_info = self.reset_policy.get_action(policy_input, deterministic=True)
+
+            self.mpc_command.header = self.command_header
+            self.mpc_command.header.stamp = rospy.Time.now()
+            self.mpc_command.position = command_tensor[0][0:7].cpu().numpy()
+            self.mpc_command.velocity = command_tensor[0][7:14].cpu().numpy()
+            self.mpc_command.effort =  command_tensor[0][14:21].cpu().numpy()
+            self.command_pub.publish(self.mpc_command)
+        
+            #update tstep
+            if tstep == 0:
+                start_t = rospy.get_time()
+            tstep = rospy.get_time() - start_t
+
+            curr_q_pos = self.robot_state['q_pos'].clone()
+            curr_error = torch.norm(curr_q_pos - q_pos_goal, p=2).item()
+            curr_num_steps += 1
+            if (curr_error <= 0.005) or (curr_num_steps == max_steps -1):
+                print('[FrankaRobotEnv]: Reset joint error = {}', curr_error)
+                break
+            self.rate.sleep()
+
+
+        self.progress_buf[:] = 0
+        self.reset_buf[:] = 0 
+        input('Press enter to finish reset')
+        return self.get_state_dict()
+        # tstep = 0
+        # self.reset_policy.reset()
+
+        # self.reset_policy.update_goal(joint_goal = self.reset_state)
+
+        # goal_q_pos = self.reset_state[:, 0:self.n_dofs]
+
+        # goal_reached = False
+        # curr_q_pos = self.obs_dict['states'][:, 0:self.n_dofs]
+        # curr_error = torch.norm(curr_q_pos - goal_q_pos, p=2).item()
+        # delta_error_list = []
+
+        # while not goal_reached:
+        #     #only do something if state has been received
+        #     if self.state_sub_on:
+        #         input_dict = {}
+        #         input_dict['states'] = torch.cat(
+        #             (self.obs_dict['states'],
+        #                 torch.as_tensor([tstep]).unsqueeze(0)),
+        #                 dim=-1)
+                
+        #         #get mpc command
+        #         command = self.reset_policy.get_action(
+        #             obs_dict=copy.deepcopy(input_dict))
+
+        #         #publish mpc command
+        #         mpc_command = JointState()
+        #         mpc_command.header = self.command_header
+        #         mpc_command.name = self.joint_names
+        #         mpc_command.header.stamp = rospy.Time.now()
+        #         mpc_command.position = command['q_des'][0].cpu().numpy()
+        #         mpc_command.velocity = command['qd_des'][0].cpu().numpy()
+        #         mpc_command.effort =  command['qdd_des'][0].cpu().numpy()
+
+        #         self.command_pub.publish(mpc_command)
+
+        #         #update tstep
+        #         if tstep == 0:
+        #             rospy.loginfo('[MPCPoseReacher]: Controller running')
+        #             start_t = rospy.get_time()
+        #         tstep = rospy.get_time() - start_t
+                
+        #         new_q_pos = self.obs_dict['states'][:, 0:self.n_dofs]
+        #         new_error = torch.norm(new_q_pos - goal_q_pos, p=2).item()
+        #         delta_error = abs(curr_error - new_error)
+        #         delta_error_list.append(delta_error)
+        #         goal_reached = self.check_goal_reached(new_error, delta_error_list)
+        #         curr_error = copy.deepcopy(new_error)
+
+
+        #     else:
+        #         if (not self.state_sub_on) and (self.first_iter):
+        #             rospy.loginfo('[MPCPoseReacher]: Waiting for robot state.')
+            
+        #     self.first_iter = False
+        #     self.rate.sleep()
+        
+        # print('[Reset]: Goal Reached. curr_error={}, delta_error={}'.format(curr_error, delta_error))
+
+        # print('Randomizing ee_goal')
+        # self.ee_goal[:,0] = self.default_ee_goal[:,0] + 0.2*torch.rand(1).item() - 0.1
+        # self.ee_goal[:,1] = self.default_ee_goal[:,1] + 0.2*torch.rand(1).item() - 0.1
+        # print(self.ee_goal)
 
         return None
 
@@ -254,6 +280,28 @@ class FrankaRealRobotEnv():
     def close(self):
         self.command_pub.unregister()
         self.state_sub.unregister()
+
+    def init_reset_policy(self):
+
+        reset_cfg = compose(config_name="config", overrides=["task=FrankaReacherRealRobot", "mpc=FrankaReacherRealRobotMPC"])
+
+        mpc_config = reset_cfg.mpc
+        mpc_config.rollout.cost.goal_pose.weight = [0.0, 0.0]
+        mpc_config.rollout.cost.joint_l2.weight = 2.0
+        mpc_config.rollout.cost.ee_vel_twist.weight = 0.0
+        mpc_config.rollout.cost.zero_q_vel.weight = 0.1
+        mpc_config.rollout.cost.stop_cost.weight = 2.0
+
+        mpc_config.mppi.horizon = 10
+        mpc_config.mppi.update_cov = False
+
+
+        self.reset_policy = MPCPolicy(
+            obs_dim=1, act_dim=1, 
+            config=mpc_config, task_cls=ArmReacher, 
+            device=self.device)
+        self.reset_policy = JointControlWrapper(config=reset_cfg.task.joint_control, policy=self.reset_policy, device=self.device)
+
 
     # def collect_episodes(self,
     #                      num_episodes: int,

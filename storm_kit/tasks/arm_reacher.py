@@ -95,20 +95,20 @@ class ArmReacher(ArmTask):
         # with record_function("pose_cost"):
         #     goal_cost, rot_err_norm, goal_dist = self.goal_cost.forward(ee_pos_batch, ee_rot_batch,
         #                                                                 goal_ee_pos, goal_ee_rot)
+        if goal_ee_pos is not None and goal_ee_rot is not None:
+            with record_function("pose_cost"):
+                goal_ee_pos = goal_ee_pos.repeat(ee_pos_batch.shape[0] // self.num_instances, 1)
+                goal_ee_rot = goal_ee_rot.repeat(ee_rot_batch.shape[0] // self.num_instances, 1,1)
 
-        with record_function("pose_cost"):
-            goal_ee_pos = goal_ee_pos.repeat(ee_pos_batch.shape[0] // self.num_instances, 1)
-            goal_ee_rot = goal_ee_rot.repeat(ee_rot_batch.shape[0] // self.num_instances, 1,1)
-
-            goal_cost, rot_err_norm, goal_dist = self.goal_cost.forward(ee_pos_batch, ee_rot_batch,
-                                                                        goal_ee_pos, goal_ee_rot) #jac_batch=J_full
+                goal_cost, rot_err_norm, goal_dist = self.goal_cost.forward(ee_pos_batch, ee_rot_batch,
+                                                                            goal_ee_pos, goal_ee_rot) #jac_batch=J_full
             # goal_cost[:,:,0:-1] = 0.
         cost += goal_cost.view(orig_size)
         
         # joint l2 cost
         if self.cfg['cost']['joint_l2']['weight'] > 0.0 and goal_state is not None:
             disp_vec = state_batch[..., 0:self.n_dofs] - goal_state[...,0:self.n_dofs]
-            dist_cost, _ = self.dist_cost.forward(disp_vec)
+            dist_cost = self.dist_cost.forward(disp_vec)
             cost += dist_cost.view(orig_size) #self.dist_cost.forward(disp_vec)
 
         if return_dist:
@@ -122,8 +122,8 @@ class ArmReacher(ArmTask):
 
 
     def compute_metrics(self, episode_data: Dict[str, torch.Tensor]):
-        q_pos = episode_data['state_dict']['q_pos']
-        ee_goal = episode_data['goal_dict']['ee_goal']
+        q_pos = episode_data['state_dict']['q_pos'].to(self.device)
+        ee_goal = episode_data['goal_dict']['ee_goal'].to(self.device)
         ee_goal_pos = ee_goal[:, 0:3]
         ee_goal_quat = ee_goal[:, 3:7]
         ee_goal_rot = quaternion_to_matrix(ee_goal_quat)
@@ -134,7 +134,7 @@ class ArmReacher(ArmTask):
             ee_pos_batch, ee_rot_batch,
             ee_goal_pos, ee_goal_rot) #jac_batch=J_full
         
-        #Last Step Error
+        #Last Step Error{'num_instances': 1, 'control_space': '${task.task.control_space}', 'max_acc': '${task.task.max_acc}', 'n_dofs': '${task.n_dofs}', 'model': {'urdf_path': '${task.robot_urdf}', 'learnable_rigid_body_config': {'learnable_links': []}, 'name': 'franka_panda', 'dt_traj_params': {'base_dt': 0.02, 'base_ratio': 1.0, 'max_dt': 0.2}, 'ee_link_name': '${task.ee_link_name}', 'init_state': [0.8, 0.3, 0.0, -1.57, 0.0, 1.86, 0.0], 'link_names': '${task.task.robot_link_names}', 'collision_spheres': '../robot/franka.yml'}, 'robot_collision_params': '${task.task.robot_collision_params}', 'world_collision_params': '${task.task.world_collision_params}', 'cost': {'goal_pose': {'vec_weight': [1.0, 1.0, 1.0, 1.0, 1.0, 1.0], 'weight': [0.0, 0.0], 'cost_type': 'se3_twist', 'norm_type': 'l1', 'hinge_val': -1, 'convergence_val': [0.0, 0.0]}, 'ee_vel_twist': {'weight': 0.003, 'norm_type': 'l1'}, 'ee_acc_twist': {'weight': 0.0, 'norm_type': 'l1'}, 'zero_q_vel': {'weight': 0.01, 'norm_type': 'l1'}, 'zero_q_acc': {'weight': 0.0, 'norm_type': 'l1'}, 'zero_q_jerk': {'weight': 0.0, 'norm_type': 'l1'}, 'manipulability': {'weight': 0.5, 'thresh': 0.1}, 'joint_l2': {'weight': 10.0, 'norm_type': 'l1'}, 'stop_cost': {'weight': 1.5, 'max_nlimit': 5.0}, 'stop_cost_acc': {'weight': 0.0, 'max_limit': 0.1}, 'smooth_cost': {'weight': 0.0, 'order': 1}, 'primitive_collision': {'weight': 100.0, 'distance_threshold': 0.03}, 'state_bound': {'weight': 100.0, 'bound_thresh': 0.03}, 'retract_state': [0.0, 0.0, 0.0, -1.5, 0.0, 2.0, 0.0], 'retract_weight': [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]}, 'horizon': 20, 'batch_size': 500, 'dt_traj_params': {'base_dt': 0.02, 'base_ratio': 1.0, 'max_dt': 0.2}}
         final_goal_dist_err = dist_err[-1].item()
         final_goal_rot_err = rot_err[-1].item()
         final_goal_dist_err_rel = final_goal_dist_err / dist_err[0].item()
@@ -145,7 +145,7 @@ class ArmReacher(ArmTask):
         last_n_dist_err_rel = last_n_dist_err / dist_err[0].item()
         
         #Max and average joint velocity
-        q_vel = episode_data['state_dict']['q_vel']
+        q_vel = episode_data['state_dict']['q_vel'].to(self.device)
         q_vel_norm = torch.norm(q_vel, p=2, dim=-1)
         max_q_vel = torch.max(q_vel_norm).item()
         avg_q_vel = torch.mean(q_vel_norm).item()
@@ -229,29 +229,29 @@ class ArmReacher(ArmTask):
         ee_goal = goal_dict['ee_goal'] if 'ee_goal' in goal_dict else None
         joint_goal = goal_dict['joint_goal'] if 'joint_goal' in goal_dict else None
 
+        goal_ee_pos, goal_ee_quat, goal_ee_rot = None, None, None
         if ee_goal is not None:
             goal_ee_pos = ee_goal[:, 0:3]
             goal_ee_quat = ee_goal[:, 3:7]
             goal_ee_rot = None        
         
-
-
         super(ArmReacher, self).update_params(retract_state=retract_state)
         
         if goal_ee_pos is not None:
-            self.goal_ee_pos = torch.as_tensor(goal_ee_pos, device=self.device) # , dtype=self.dtype .unsqueeze(0)
+            self.goal_ee_pos = torch.as_tensor(goal_ee_pos, device=self.device)
             self.goal_state = None
         if goal_ee_rot is not None:
-            self.goal_ee_rot = torch.as_tensor(goal_ee_rot, device=self.device) #.unsqueeze(0) dtype=self.dtype
+            self.goal_ee_rot = torch.as_tensor(goal_ee_rot, device=self.device) 
             self.goal_ee_quat = matrix_to_quaternion(self.goal_ee_rot)
             self.goal_state = None
         if goal_ee_quat is not None:
-            self.goal_ee_quat = torch.as_tensor(goal_ee_quat, device=self.device)#.unsqueeze(0) , dtype=self.dtype
+            self.goal_ee_quat = torch.as_tensor(goal_ee_quat, device=self.device)
             self.goal_ee_rot = quaternion_to_matrix(self.goal_ee_quat)
             self.goal_state = None
         if joint_goal is not None:
-            self.goal_state = torch.as_tensor(joint_goal, device=self.device)#.unsqueeze(0) , dtype=self.dtype
-            self.goal_ee_pos, self.goal_ee_rot = self.dynamics_model.robot_model.compute_forward_kinematics(self.goal_state[:,0:self.n_dofs], self.goal_state[:,self.n_dofs:2*self.n_dofs], link_name=self.cfg['model']['ee_link_name'])
+            self.goal_state = torch.as_tensor(joint_goal, device=self.device)
+            self.goal_ee_pos, self.goal_ee_rot = self.robot_model.compute_forward_kinematics(
+                self.goal_state[:,0:self.n_dofs], link_name=self.cfg.model.ee_link_name)
             self.goal_ee_quat = matrix_to_quaternion(self.goal_ee_rot)
         
         return True

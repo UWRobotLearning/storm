@@ -22,7 +22,7 @@ from sensor_msgs.msg import JointState
 import rospkg
 
 #STORM imports
-from storm_kit.mpc.rollout import ArmReacher
+from storm_kit.tasks import ArmReacher
 from storm_kit.learning.policies import MPCPolicy, JointControlWrapper
 from storm_kit.learning.learning_utils import dict_to_device
 from storm_kit.util_file import get_root_path
@@ -54,8 +54,8 @@ class MPCReacherNode():
         
         initialize(config_path="../../../content/configs/gym", job_name="mpc")
         self.config = compose(config_name="config", overrides=["task=FrankaReacherRealRobot"])
-        self.control_dt = self.config.task.rollout.control_dt
-        self.n_dofs = self.config.task.rollout.n_dofs
+        self.control_dt = self.config.task.joint_control.control_dt
+        self.n_dofs = self.config.task.n_dofs
         self.device = self.config.rl_device
 
         #STORM Initialization
@@ -63,9 +63,9 @@ class MPCReacherNode():
         act_dim = 1
         self.policy = MPCPolicy(
             obs_dim=obs_dim, act_dim=act_dim, 
-            config=self.config.task.mpc, rollout_cls=ArmReacher, 
+            config=self.config.mpc, task_cls=ArmReacher, 
             device=self.device)
-        self.policy = JointControlWrapper(config=self.config.task.mpc, policy=self.policy, device=self.device)
+        self.policy = JointControlWrapper(config=self.config.task.joint_control, policy=self.policy, device=self.device)
 
         if self.save_data:
             date_time = datetime.now().strftime("%m_%d_%Y_%H_%M")
@@ -187,7 +187,7 @@ class MPCReacherNode():
 
 
                 #get mpc command
-                command_tensor, policy_info = self.policy.get_action(self.policy_input)
+                command_tensor, policy_info = self.policy.get_action(self.policy_input, deterministic=True)
 
                 #publish mpc command
                 self.mpc_command.header = self.command_header
