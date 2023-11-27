@@ -23,17 +23,18 @@ task:
   randomize: False  
   robot_urdf: ${task.robot_urdf}
   #links to be used for collision checking
-  robot_link_names: ['panda_link1', 'panda_link2','panda_link3','panda_link4','panda_link5', 'panda_link6','panda_hand']
+  robot_link_names: ['panda_link1', 'panda_link2','panda_link3','panda_link4','panda_link5', 'panda_link6', 'panda_link7', 'panda_hand']
   ee_link_name: ${task.ee_link_name}
   control_space: 'acc'
   max_acc: 100.0
+  max_jerk: 500.0
 
   robot_collision_params:
     urdf_path: ${task.robot_urdf}
     sample_points: 100
     link_names: ${task.task.robot_link_names}
     threshold: 0.35
-    collision_spheres: 'robot/franka.yml'
+    collision_spheres: 'robot/franka_real_robot.yml'
     self_collision_weights: 'robot_self/franka_panda_self_collision_weights_2.pt'
     n_dofs: ${task.rollout.n_dofs}
 

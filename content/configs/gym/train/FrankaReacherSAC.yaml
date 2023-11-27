@@ -51,17 +51,13 @@ agent:
   reward_scale: 1.0
   policy_optimizer:
     __target__: torch.optim.Adam
-    lr: 3e-4 #0.0003
+    lr: 3e-4
   critic_optimizer:
     __target__: torch.optim.Adam
-    lr: 3e-4 #0.0003
+    lr: 3e-4
   alpha_optimizer:
     __target__: torch.optim.Adam
-    lr: 3e-4 #0.0003
+    lr: 3e-4
   polyak_tau: 5e-3
   target_update_interval: 1
   backup_entropy: true
-
-eval:
-  checkpoint: './tmp_results/${task_name}/${train.agent.name}/models/agent_checkpoint_0.pt'
-  num_eval_episodes: 10

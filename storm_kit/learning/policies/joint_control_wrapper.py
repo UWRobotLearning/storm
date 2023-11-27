@@ -41,7 +41,7 @@ class JointControlWrapper(nn.Module):
         planning_states = self.state_filter.filter_joint_state(state_dict)
         new_input_dict = {'states': planning_states}
         if 'obs' in input_dict:
-            new_input_dict['obs']: input_dict['obs']
+            new_input_dict['obs'] = input_dict['obs']
 
         action = self.policy.get_action(new_input_dict, deterministic, num_samples)
 

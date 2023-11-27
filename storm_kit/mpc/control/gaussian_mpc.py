@@ -61,8 +61,7 @@ class GaussianMPC(Controller):
                  cov_type='sigma_I',
                  seed=0,
                  sample_params={'type': 'halton', 'fixed_samples': True, 'seed':0, 'filter_coeffs':None},
-                 tensor_args={'device':torch.device('cpu'), 'dtype':torch.float32},
-                 fixed_actions=False):
+                 tensor_args={'device':torch.device('cpu'), 'dtype':torch.float32}):
         """
         Parameters
         __________
@@ -163,6 +162,7 @@ class GaussianMPC(Controller):
     #     act_seq = scale_ctrl(act_seq, self.action_lows, self.action_highs, squash_fn=self.squash_fn)
 
     #     return act_seq
+
     def sample(self, state, calc_val:bool=False, shift_steps:int=1, n_iters=None, deterministic:bool=False, num_samples:int=1):
         distrib_info, value, aux_info =  self.optimize(state, calc_val, shift_steps, n_iters)
         
@@ -171,8 +171,6 @@ class GaussianMPC(Controller):
         
         samples = self.generate_noise(distrib_info, num_samples)
         return samples, value, aux_info
-
-
 
     def generate_noise(self, distrib_info, num_samples):
         """
@@ -206,7 +204,7 @@ class GaussianMPC(Controller):
         # debug_act = delta[:,:,:,0].cpu().numpy()
 
         act_seq = self.mean_action.unsqueeze(1) + scaled_delta
-        act_seq = scale_ctrl(act_seq, self.action_lows, self.action_highs, squash_fn=self.squash_fn)
+        # act_seq = scale_ctrl(act_seq, self.action_lows, self.action_highs, squash_fn=self.squash_fn)
         append_acts = self.best_traj.unsqueeze(1)
 
         #append zero actions (for stopping)

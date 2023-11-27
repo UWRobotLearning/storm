@@ -45,6 +45,7 @@ class URDFKinematicModel(nn.Module):
         dt_traj_params: Optional[torch.Tensor] = None, 
         # vel_scale: float = 0.5, 
         # max_acc: float = 10.0,
+        # max_jerk: float = 0.0, 
         control_space: str ='acc',
         robot_keys: List[str] = ['q_pos', 'q_vel', 'q_acc'],
         device: torch.device = torch.device('cpu')):
@@ -66,12 +67,14 @@ class URDFKinematicModel(nn.Module):
         self.link_names = link_names
 
         # self.robot_model = torch.jit.script(DifferentiableRobotModel(urdf_path, None, device=self.device)) #, dtype=self.dtype)
-        self.robot_model = DifferentiableRobotModel(urdf_path, None, device=self.device) #, dtype=self.dtype)
+        self.robot_model = DifferentiableRobotModel(urdf_path, device=self.device) #, dtype=self.dtype)
         #self.robot_model.half()
         self.n_dofs = self.robot_model._n_dofs
         
         self.d_state = 3 * self.n_dofs + 1
         self.d_action = self.n_dofs
+        # self.max_acc = max_acc
+        # self.max_jerk = max_jerk
 
         #Variables for enforcing joint limits
         # self.joint_names = self.urdfpy_robot.actuated_joint_names
@@ -105,6 +108,7 @@ class URDFKinematicModel(nn.Module):
             self.step_fn = tensor_step_pos
 
         self._fd_matrix = build_fd_matrix(self.num_traj_points, device=self.device, order=1)
+        self._fd_matrix_jerk = build_fd_matrix(self.num_traj_points+1, device=self.device, order=1)
 
         self.dt_traj_params = dt_traj_params
 
@@ -183,7 +187,10 @@ class URDFKinematicModel(nn.Module):
         act = act.to(self.device, dtype=self.dtype)
         # nth_act_seq = self.integrate_action(act)
         # state_seq = self.step_fn(state, nth_act_seq, state_seq, self.traj_dt, self._integrate_matrix, self._fd_matrix, self.n_dofs, self.num_instances, batch_size, horizon) #, self._fd_matrix)
-        state_seq = self.step_fn(state, act, state_seq, self.traj_dt, self._integrate_matrix, self._fd_matrix, self.n_dofs, self.num_instances, batch_size, horizon) #, self._fd_matrix)
+        state_seq = self.step_fn(
+            state, act, state_seq, self.traj_dt, self._integrate_matrix, 
+            self._fd_matrix, self.n_dofs, self.num_instances, 
+            batch_size, horizon) #, self._fd_matrix)
        
         #state_seq = self.enforce_bounds(state_seq)
         state_seq[:, :,:, -1] = self._traj_tstep # timestep array
@@ -239,7 +246,14 @@ class URDFKinematicModel(nn.Module):
         q_vel_seq = state_seq[:,:,:, self.n_dofs:2*self.n_dofs]
         q_acc_seq = state_seq[:,:,:, 2*self.n_dofs:3*self.n_dofs]
         tstep_seq = state_seq[:,:,:, -1]
-        
+
+        #Compute jerk sequence
+        prev_acc = self.prev_state_buffer[:,-1, 2*self.n_dofs:3*self.n_dofs].unsqueeze(1).unsqueeze(1)
+        prev_acc = prev_acc.expand(self.num_instances, self.batch_size, 1, -1)
+        q_jerk_seq = torch.cat((prev_acc, q_acc_seq), dim=-2)
+        q_jerk_seq = torch.einsum('bijk, lj->bilk', q_jerk_seq, self._fd_matrix_jerk)
+        q_jerk_seq = torch.div(q_jerk_seq, self.traj_dt[:, None])
+
         shape_tup = (self.num_instances * curr_batch_size * num_traj_points, self.n_dofs)
         with record_function("fk + jacobian"):
             ee_pos_seq, ee_rot_seq, lin_jac_seq, ang_jac_seq = self.robot_model.compute_fk_and_jacobian(
@@ -268,6 +282,7 @@ class URDFKinematicModel(nn.Module):
                       'q_pos_seq': q_pos_seq.to(inp_device),
                       'q_vel_seq': q_vel_seq.to(inp_device),
                       'q_acc_seq': q_acc_seq.to(inp_device),
+                      'q_jerk_seq': q_jerk_seq.to(inp_device),
                       'ee_pos_seq': ee_pos_seq.to(inp_device),
                       'ee_rot_seq': ee_rot_seq.to(inp_device),
                       'ee_jacobian_seq': ee_jacobian_seq.to(inp_device),
@@ -279,11 +294,6 @@ class URDFKinematicModel(nn.Module):
                       'tstep_seq': tstep_seq.to(inp_device)}
 
         return state_dict
-
-
-    #   'lin_jac_seq': lin_jac_seq.to(inp_device),
-    #   'ang_jac_seq': ang_jac_seq.to(inp_device),
-
 
     def enforce_bounds(self, state_batch: torch.Tensor)->torch.Tensor:
         """

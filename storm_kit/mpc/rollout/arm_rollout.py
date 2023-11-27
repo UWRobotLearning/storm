@@ -8,17 +8,19 @@ from storm_kit.differentiable_robot_model.spatial_vector_algebra import quaterni
 from storm_kit.mpc.model import URDFKinematicModel
 
 class ArmRollout(nn.Module):
-    def __init__(self, cfg, task, value_function=None, viz_rollouts:bool = False, device=torch.device('cpu')):
+    def __init__(self, cfg, task, value_function=None, sampling_policy=None, viz_rollouts:bool = False, device=torch.device('cpu')):
         super().__init__()
         self.cfg = cfg
         self.task = task
         self.value_function = value_function
+        self.sampling_policy = sampling_policy
         self.viz_rollouts = viz_rollouts
-        self.num_instances = cfg['num_instances']
+        self.num_instances = cfg.num_instances
+        self.obs_dim = task.obs_dim
+        self.act_dim = task.act_dim
         self.device = device
-
         assets_path = get_assets_path()
-        # initialize dynamics model:
+
         self.dynamics_model = URDFKinematicModel(
             join_path(assets_path, cfg['model']['urdf_path']),
             batch_size=cfg['batch_size'],
@@ -33,7 +35,7 @@ class ArmRollout(nn.Module):
     def forward(self, start_state: torch.Tensor, act_seq:torch.Tensor)->Dict[str, torch.Tensor]:
         return self.rollout_fn(start_state, act_seq)
 
-    def compute_value_predictions(self, state_dict: torch.Tensor, act_seq):
+    def compute_value_predictions(self, state_dict: torch.Tensor, act_seq:torch.Tensor):
         value_preds = None
         if self.value_function is not None:
             obs = self.task.compute_observations(state_dict)
@@ -43,9 +45,13 @@ class ArmRollout(nn.Module):
             }
             value_preds = self.value_function.forward(input_dict, act_seq) 
 
-        return value_preds #, state_dict
+        return value_preds
 
-    def rollout_fn(self, start_state, act_seq):
+    def rollout_policy(self, start_state:torch.Tensor, num_rollouts:int):
+        state_dict = {}
+
+
+    def rollout_fn(self, start_state:torch.Tensor, act_seq:torch.Tensor):
         """
         Return sequence of costs and states encountered
         by simulating a batch of action sequences
@@ -62,16 +68,13 @@ class ArmRollout(nn.Module):
 
         with record_function("compute_termination"):
             state_dict['prev_action'] = start_state['prev_action']
-            term_seq, term_cost = self.task.compute_termination(state_dict, act_seq)
-
-        # print(cost.shape, term_cost.shape)
+            term_seq, term_cost, term_info = self.task.compute_termination(state_dict, act_seq)
 
         if term_cost is not None:
             cost_seq += term_cost
 
         with record_function("value_fn_inference"):
             value_preds = self.compute_value_predictions(state_dict, act_seq)
-
 
         sim_trajs = dict(
             actions=act_seq,

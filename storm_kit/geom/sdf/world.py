@@ -38,9 +38,7 @@ from ...geom.geom_types import tensor_capsule, tensor_sphere, tensor_cube
 from ...geom.sdf.primitives import get_pt_primitive_distance, get_sphere_primitive_distance
 
 class WorldCollision:
-    # def __init__(self, batch_size=1, tensor_args={'device':"cpu", 'dtype':torch.float32}):
     def __init__(self, batch_size:int=1, device:torch.device=torch.device('cpu')):
-        # read capsules
         self.batch_size = batch_size
         # self.tensor_args = tensor_args
         self.device = device
@@ -54,14 +52,12 @@ class WorldGridCollision(WorldCollision):
     """    
     def __init__(self, 
                 batch_size: int = 1, 
-                # tensor_args: dict ={'device':"cpu", 'dtype':torch.float32},
                 bounds:torch.Tensor = torch.zeros(2,2), 
                 grid_resolution:float = 0.05,
                 device:torch.device = torch.device('cpu') ):
         
         # super().__init__(batch_size, tensor_args)
         super().__init__(batch_size, device)
-        # self.bounds = torch.as_tensor(bounds, **tensor_args)
         self.bounds = torch.tensor(bounds, device=self.device)
         self.grid_resolution = grid_resolution
         self.pitch = self.grid_resolution
@@ -114,7 +110,6 @@ class WorldGridCollision(WorldCollision):
         self.pt_to_idx_trans = -1.0 * origin * (1.0 / pitch)
         # self.proj_pt_idx = CoordinateTransform(trans=-1.0 * trans * (1.0 / pitch), rot=rot, tensor_args=self.tensor_args)
         
-        
         # build idx to pt
         # self.idx_to_pt_rot = torch.eye(3, **self.tensor_args) * pitch
         self.idx_to_pt_rot = torch.eye(3, device=self.device) * pitch
@@ -124,7 +119,6 @@ class WorldGridCollision(WorldCollision):
 
     def _compute_sdfgrid(self):
         # voxel grid has different bounds
-
         # create a sdf grid for scene bounds and pitch:
         sdf_grid_dims = torch.Size(((self.bounds[1] - self.bounds[0]) / self.grid_resolution).int())
         self.build_transform_matrices(self.bounds, self.grid_resolution)
@@ -186,7 +180,6 @@ class WorldGridCollision(WorldCollision):
         return sdf
 
     def voxel_inds(self, pt: torch.Tensor):
-
         # pt = self.proj_pt_idx.transform_point(pt)
         with record_function('sdf_voxel_inds:transform_point'):
             pt = transform_point(pt, self.pt_to_idx_rot, self.pt_to_idx_trans)

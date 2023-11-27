@@ -92,7 +92,7 @@ class DifferentiableRobotModel(torch.nn.Module):
     TODO
     """
 
-    def __init__(self, urdf_path: str, name="", device:torch.device=torch.device('cpu')):
+    def __init__(self, urdf_path: str, name:str="", device:torch.device=torch.device('cpu')):
 
         super().__init__()
 
@@ -157,7 +157,7 @@ class DifferentiableRobotModel(torch.nn.Module):
 
     # @tensor_check
     @torch.jit.export
-    def update_kinematic_state(self, q: torch.Tensor, qd: torch.Tensor) -> None:
+    def update_kinematic_state(self, q: torch.Tensor, qd: torch.Tensor):
         r"""
 
         Updates the kinematic state of the robot
@@ -228,12 +228,12 @@ class DifferentiableRobotModel(torch.nn.Module):
             # + the velocity created by this body's joint
             body.vel = body.joint_vel.add_motion_vec(new_vel)
 
-        return
 
     # @tensor_check
+    @torch.jit.export
     def compute_forward_kinematics_all_links(
         self, q: torch.Tensor
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
+    ) -> Dict[str, torch.Tensor]:
         r"""
 
         Args:
@@ -285,7 +285,7 @@ class DifferentiableRobotModel(torch.nn.Module):
             return pos, rot
 
     @torch.jit.export
-    def get_link_pose(self, link_name: str):
+    def get_link_pose(self, link_name: str)->Tuple[torch.Tensor, torch.Tensor]:
         pose = self._bodies[self._name_to_idx_map[link_name]].pose
         pos = pose.translation() #.to(inp_device)
         rot = pose.rotation() #.to(inp_device)#get_quaternion()
@@ -716,10 +716,10 @@ class DifferentiableRobotModel(torch.nn.Module):
     @torch.jit.export
     def compute_fk_and_jacobian(
             self, q: torch.Tensor, link_name: str
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
+    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
 
-        assert len(q.shape) == 2
-        batch_size = q.shape[0]
+        # assert len(q.shape) == 2
+        # batch_size = q.shape[0]
         
         with record_function("robot_model/fk"):
             ee_pos, ee_rot = self.compute_forward_kinematics(q, link_name)

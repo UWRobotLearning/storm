@@ -19,7 +19,9 @@ class NormCost(nn.Module):
         self.hinge_val = hinge_val
         self.log_two = torch.log(torch.tensor([2.0], device=self.device))
 
+    @torch.jit.export
     def forward(self, x:torch.Tensor, hinge_x:Optional[torch.Tensor]=None, keepdim:bool=False) -> torch.Tensor:
+        
         if self.norm_type == 'l2':
             dist = torch.norm(x, p=2, dim=-1, keepdim=keepdim)
         elif self.norm_type == 'squared_l2':
@@ -35,6 +37,7 @@ class NormCost(nn.Module):
             l1_dist = torch.norm(x, p=1, dim=-1)
             dist = None
             raise NotImplementedError
+        else: raise NotImplementedError
 
         if hinge_x is not None:
             #if dist is above hinge val we set it to zero

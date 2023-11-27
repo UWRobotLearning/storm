@@ -36,12 +36,14 @@ class ManipulabilityCost(nn.Module):
             device = torch.device('cpu'), 
             float_dtype = torch.float32, 
             thresh:float = 0.1):
+        
         super(ManipulabilityCost, self).__init__() 
         self.device = device
         self.float_dtype = float_dtype
         self.weight = torch.as_tensor(weight, device=device, dtype=float_dtype)
         # self.ndofs = ndofs
         self.thresh = thresh
+        self.info = {}
         # self.i_mat = torch.ones((6,1), device=self.device, dtype=self.float_dtype)
     
     def forward(self, jac_batch:torch.Tensor) -> torch.Tensor:
@@ -57,12 +59,12 @@ class ManipulabilityCost(nn.Module):
             #     chol_diag = torch.diagonal(chol, dim1=-2, dim2=-1)
             # with record_function('manip_cost:prod'):
             #     score = torch.prod(chol_diag, dim=-1)
-        # if score.shape[0] == 1000:
-        #     print(torch.max(score), torch.min(score))
+
         score[score != score] = 0.0
-        score[score > self.thresh] = self.thresh #1.0
+        self.info['manip_score'] = score
+        score[score > self.thresh] = self.thresh
         score = (self.thresh - score) / self.thresh
         cost = self.weight * score 
         
-        return cost.to(inp_device)
+        return cost.to(inp_device), self.info
     

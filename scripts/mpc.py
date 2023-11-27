@@ -57,16 +57,17 @@ def main(cfg: DictConfig):
     policy = MPCPolicy(obs_dim=obs_dim, act_dim=act_dim, config=cfg.mpc, task_cls=task_cls, device=cfg.rl_device)
     policy = JointControlWrapper(config=cfg.task.joint_control, policy=policy, device=cfg.rl_device)
     #Initialize Agent
-    agent = MPCAgent(cfg.task.train.agent, envs=envs, task=task, obs_dim=obs_dim, action_dim=act_dim, 
+    agent = MPCAgent(cfg.eval, envs=envs, task=task, obs_dim=obs_dim, action_dim=act_dim, 
                      buffer=buffer, policy=policy, runner_fn=episode_runner, device=cfg.rl_device)
     st=time.time()
-    metrics = agent.collect_experience(num_episodes=cfg.task.train.agent.num_episodes, update_buffer=True, deterministic=True, debug=False)
+    num_episodes = cfg.eval.num_episodes
+    deterministic_eval = cfg.eval.deterministic_eval
+    print('Collecting {} episodes. Deterministic = {}'.format(num_episodes, deterministic_eval))
+    metrics = agent.collect_experience(num_episodes=num_episodes, update_buffer=True, deterministic=deterministic_eval, debug=False)
     print(metrics)
     
     print('Time taken = {}'.format(time.time() - st))
-    print(cfg.train.agent.save_buffer)
-    input('...')
-    data_dir = data_dir if cfg.train.agent.save_buffer else None
+    data_dir = data_dir if cfg.eval.save_buffer else None
     if model_dir is not None:
         print('Saving agent to {}'.format(model_dir))
     if data_dir is not None:

@@ -112,7 +112,7 @@ class RobotWorldCollisionPrimitive(RobotWorldCollision):
 
         with record_function('robot_world:get_batch_robot_link_spheres'):
             w_link_spheres = self.robot_coll.get_batch_robot_link_spheres()
-        
+
         #compute self collisions
         self_coll_dist = self.robot_coll.compute_link_distances(w_link_spheres)
         
@@ -145,7 +145,7 @@ class RobotWorldCollisionPrimitive(RobotWorldCollision):
         """        
         batch_size = link_trans.shape[0]
         # update link pose:
-        if(self.robot_batch_size != batch_size):
+        if self.robot_batch_size != batch_size:
             self.robot_batch_size = batch_size
             self.build_batch_features(self.robot_batch_size, clone_pose=True, clone_points=True)
 
@@ -157,7 +157,7 @@ class RobotWorldCollisionPrimitive(RobotWorldCollision):
         
         n_links = len(w_link_spheres)
 
-        if(self.dist is None or self.dist.shape[0] != n_links):
+        if (self.dist is None) or (self.dist.shape[0] != n_links):
             self.dist = torch.empty((batch_size, n_links), **self.tensor_args)
         dist = self.dist
 

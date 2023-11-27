@@ -38,10 +38,11 @@ task:
   randomize: False  
   robot_urdf: ${task.robot_urdf}
   #links to be used for collision checking
-  robot_link_names: ['panda_link1', 'panda_link2','panda_link3','panda_link4','panda_link5', 'panda_link6','panda_hand']
+  robot_link_names: ['panda_link1', 'panda_link2','panda_link3','panda_link4','panda_link5', 'panda_link6', 'panda_link7', 'panda_hand']
   ee_link_name: ${task.ee_link_name}
   control_space: 'acc'
   max_acc: 100.0
+  max_jerk: 500.0
 
   robot_collision_params:
     urdf_path: ${task.robot_urdf}
@@ -59,7 +60,7 @@ task:
 
   task_specs:
     default_ee_target: [0.4, 0.0, 0.5, 0.0, 0.707, 0.707, 0.0]
-    target_position_noise: 0.0 #meters
+    target_position_noise: 0.05 #meters
     target_rotation_noise: 0.0 #radians
 
   cost:
@@ -126,17 +127,6 @@ task:
 
 defaults:
   - world: FrankaReacherWorld
-
-train:
-  agent:
-    name: 'MPC'
-    num_episodes: 20
-    save_buffer: false
-    log_freq: 50
-    eval_freq: 100
-    checkpoint_freq: 10000
-
-  policy: null
 
 
 sim:

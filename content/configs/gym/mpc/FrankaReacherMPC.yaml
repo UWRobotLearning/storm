@@ -3,6 +3,7 @@ rollout:
   num_instances: ${task.env.num_envs}
   control_space: ${task.task.control_space}
   max_acc: ${task.task.max_acc} #100.0 
+  max_jerk: ${task.task.max_jerk}
   n_dofs: ${task.n_dofs}
 
   model:
@@ -18,7 +19,6 @@ rollout:
     ee_link_name: ${task.ee_link_name}
     init_state: [0.8, 0.3, 0.0, -1.57, 0.0, 1.86, 0.] #check
     link_names: ${task.task.robot_link_names}
-    collision_spheres: '../robot/franka.yml'
   
   robot_collision_params: ${task.task.robot_collision_params}
   world_collision_params: ${task.task.world_collision_params}
@@ -47,7 +47,7 @@ rollout:
       convergence_val: [0.0, 0.0] # orientation, position
 
     ee_vel_twist:
-      weight: 0.003 #1.0
+      weight: 8e-3 #1.0
       norm_type: 'l1'
       # hinge_val: 0.01
       # vec_weight: [1.0, 1.0, 1.0] 
@@ -58,17 +58,17 @@ rollout:
       # vec_weight: [1.0, 1.0, 1.0] 
 
     zero_q_vel:
-      weight: 0.008
+      weight: 1e-2
       norm_type: 'l1'
       # hinge_val: 0.2 #0.2
 
     zero_q_acc:
-      weight: 0.00 #0.01
+      weight: 0.0 #0.01
       norm_type: 'l1'
       # hinge_val: -1.0
 
     zero_q_jerk:
-      weight: 0.0 #0.01
+      weight: 1e-5 
       norm_type: 'l1'
       # hinge_val: -1.0
       

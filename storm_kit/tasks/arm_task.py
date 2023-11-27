@@ -56,13 +56,16 @@ class ArmTask(nn.Module):
         self.horizon = cfg.get('horizon', 1)
         self.num_instances = cfg.get('num_instances', 1)
         self.dt_traj_params = cfg.get('dt_traj_params', None)
+        self.max_acc = cfg['max_acc']
+        self.max_jerk = cfg['max_jerk']
 
         robot_urdf = cfg.get('robot_urdf', None)
+        
         if robot_urdf is None:
-            robot_urdf = cfg['model'].get('urdf_path', None)
+            robot_urdf = cfg['model']['urdf_path']
 
         urdf_path = join_path(get_assets_path(), robot_urdf)
-        self.robot_model = DifferentiableRobotModel(urdf_path, None, device=self.device) #, dtype=self.dtype)
+        self.robot_model = DifferentiableRobotModel(urdf_path, device=self.device) #, dtype=self.dtype)
         self.n_dofs = self.robot_model._n_dofs
         self.link_names = cfg.get('robot_link_names')
         if self.link_names is None:
@@ -79,8 +82,12 @@ class ArmTask(nn.Module):
         self.manipulability_cost = ManipulabilityCost(device=self.device,
                                                       **cfg['cost']['manipulability'])
         
-        self.zero_q_vel_cost = NormCost(**self.cfg['cost']['zero_q_vel'], device=self.device)
-        self.zero_q_acc_cost = NormCost(**self.cfg['cost']['zero_q_acc'], device=self.device)
+        self.zero_q_vel_cost = torch.jit.script(NormCost(**self.cfg['cost']['zero_q_vel'], device=self.device))
+        self.zero_q_acc_cost = torch.jit.script(NormCost(**self.cfg['cost']['zero_q_acc'], device=self.device))
+        self.zero_q_jerk_cost = torch.jit.script(NormCost(**self.cfg['cost']['zero_q_jerk'], device=self.device))
+        self.ee_vel_twist_cost = torch.jit.script(NormCost(**self.cfg['cost']['ee_vel_twist'], device=self.device))
+        self.ee_acc_twist_cost = torch.jit.script(NormCost(**self.cfg['cost']['ee_acc_twist'], device=self.device))
+
         
         if self.dt_traj_params is not None:
             if self.cfg['cost']['stop_cost']['weight'] > 0:
@@ -95,9 +102,6 @@ class ArmTask(nn.Module):
                                             device=self.device,
                                             dt_traj_params=self.dt_traj_params)
 
-
-        self.ee_vel_twist_cost = NormCost(**self.cfg['cost']['ee_vel_twist'], device=self.device)
-        self.ee_acc_twist_cost = NormCost(**self.cfg['cost']['ee_acc_twist'], device=self.device)
         self.retract_state = torch.tensor([self.cfg['cost']['retract_state']], device=device)
 
 
@@ -107,6 +111,7 @@ class ArmTask(nn.Module):
                 **self.cfg['cost']['smooth_cost'], 
                 horizon = self.horizon + 1,
                 device=self.device)
+
 
         self.primitive_collision_cost = PrimitiveCollisionCost(
             world_params=world_params, robot_collision_params=cfg.robot_collision_params,
@@ -121,21 +126,22 @@ class ArmTask(nn.Module):
 
         #Initialize bound cost
         self.joint_lim_dicts = self.robot_model.get_joint_limits()
-        self.state_upper_bounds = torch.zeros(2*self.n_dofs, device=self.device)
-        self.state_lower_bounds = torch.zeros(2*self.n_dofs, device=self.device)
+        self.state_upper_bounds = torch.zeros(3*self.n_dofs, device=self.device)
+        self.state_lower_bounds = torch.zeros(3*self.n_dofs, device=self.device)
         for i in range(self.n_dofs):
             self.state_upper_bounds[i] = self.joint_lim_dicts[i]['upper']
             self.state_lower_bounds[i] = self.joint_lim_dicts[i]['lower']
             self.state_upper_bounds[i+self.n_dofs] = self.joint_lim_dicts[i]['velocity'] #* vel_scale
             self.state_lower_bounds[i+self.n_dofs] = -1.0 * self.joint_lim_dicts[i]['velocity'] #* vel_scale
+            self.state_upper_bounds[i+2*self.n_dofs] = self.max_acc
+            self.state_lower_bounds[i+2*self.n_dofs] = -1.0 * self.max_acc
 
-
-        bounds = torch.cat([self.state_lower_bounds[:2*self.n_dofs].unsqueeze(0), 
-                            self.state_upper_bounds[:2*self.n_dofs].unsqueeze(0)], dim=0).T
+        bounds = torch.cat([self.state_lower_bounds[:3*self.n_dofs].unsqueeze(0), 
+                            self.state_upper_bounds[:3*self.n_dofs].unsqueeze(0)], dim=0).T
         
         self.bound_cost = BoundCost(**cfg['cost']['state_bound'],
-                                    device=self.device,
-                                    bounds=bounds)
+                                    bounds=bounds,
+                                    device=self.device)
 
         # self.link_pos_seq = torch.zeros((self.num_instances, self.num_links, 3), device=self.device)
         # self.link_rot_seq = torch.zeros((self.num_instances, self.num_links, 3, 3), device=self.device)
@@ -145,22 +151,21 @@ class ArmTask(nn.Module):
     
     def forward(self, state_dict: Dict[str, torch.Tensor], act_batch:Optional[torch.Tensor]=None):
         state_dict = self._compute_full_state(state_dict)
-        obs = self.compute_observations(state_dict)
-        termination, termination_cost = self.compute_termination(state_dict, act_batch)
+        termination, termination_cost, term_info = self.compute_termination(state_dict, act_batch)
         cost, cost_terms = self.compute_cost(state_dict, act_batch)
+        obs = self.compute_observations(state_dict)
+
         if termination_cost is not None:
             cost += termination_cost
             cost_terms['termination'] = termination_cost
 
         return obs, cost, termination, cost_terms, termination_cost
+    
         
-
     def compute_cost(
             self, 
             state_dict: Dict[str, torch.Tensor], 
-            action_batch: Optional[torch.Tensor]=None,
-            # termination_cost: Optional[Dict[str, torch.Tensor]]=None, 
-            horizon_cost:bool=True):
+            action_batch: Optional[torch.Tensor]=None):
 
         cost_terms = {}
         # state_dict = self.compute_full_state(state_dict)
@@ -169,13 +174,9 @@ class ArmTask(nn.Module):
         orig_size = q_pos_batch.size()[0:-1]
         new_size = reduce(mul, list(orig_size))  
 
-        # q_pos_batch = state_dict['q_pos_seq'].view(self.num_instances * self.batch_size, self.horizon, -1)
-        # q_vel_batch = state_dict['q_vel_seq'].view(self.num_instances * self.batch_size, self.horizon, -1)
-        # q_acc_batch = state_dict['q_acc_seq'].view(self.num_instances * self.batch_size, self.horizon, -1)
         q_pos_batch = state_dict['q_pos_seq'].view(new_size, -1)
         q_vel_batch = state_dict['q_vel_seq'].view(new_size, -1)
         q_acc_batch = state_dict['q_acc_seq'].view(new_size, -1)
-
 
         # action_batch = action_batch.view(self.num_instances * self.batch_size, self.horizon, -1)
         # ee_jacobian = state_dict['ee_jacobian_seq'].view(self.num_instances*self.batch_size, self.horizon, 6, -1)
@@ -213,7 +214,8 @@ class ArmTask(nn.Module):
         
         # if self.cfg['cost']['manipulability']['weight'] > 0.0:
         with record_function('manipulability_cost'):
-            cost = self.manipulability_cost.forward(ee_jacobian)
+            cost, manip_cost_info = self.manipulability_cost.forward(ee_jacobian)
+            cost_terms['manip_score'] = manip_cost_info['manip_score']
         
         if self.cfg['cost']['zero_q_vel']['weight'] > 0:
             with record_function('zero_q_vel_cost'):
@@ -221,7 +223,12 @@ class ArmTask(nn.Module):
 
         if self.cfg['cost']['zero_q_acc']['weight'] > 0:
             with record_function('zero_q_acc_cost'):
-                cost += self.zero_q_vel_cost.forward(q_acc_batch)#.view(self.num_instances * self.batch_size, self.horizon)
+                cost += self.zero_q_acc_cost.forward(q_acc_batch)#.view(self.num_instances * self.batch_size, self.horizon)
+
+        if self.cfg['cost']['zero_q_jerk']['weight'] > 0:
+            with record_function('zero_q_jerk_cost'):
+                q_jerk_batch = state_dict['q_jerk_seq'].reshape(new_size, -1)
+                cost += self.zero_q_jerk_cost.forward(q_jerk_batch)
 
         if self.cfg['cost']['ee_vel_twist']['weight'] > 0:
             with record_function('ee_vel_twist_cost'):
@@ -263,24 +270,9 @@ class ArmTask(nn.Module):
         #     bound_cost = self.bound_cost.forward(state_batch[:,:,:2*self.n_dofs])
         #     cost += bound_cost
 
-        # if termination is not None:
-        #     termination = termination.view(self.num_instances*self.batch_size, self.horizon)            
-        #     termination_cost = 100.0 * termination 
-        #     cost += termination_cost
-        #     cost_terms['termination'] = termination_cost
+        cost = cost.view(orig_size)
 
-        # # if not no_coll:
-        # if self.cfg['cost']['robot_self_collision']['weight'] > 0:
-        #     with record_function('self_collision_cost'):
-        #         st = time.time()
-        #         coll_cost = self.robot_self_collision_cost.forward(
-        #             state_batch[:,:,:self.n_dofs], 
-        #             link_pos_seq=link_pos_batch, link_rot_seq=link_rot_batch)
-        #         cost += coll_cost
-        #         print('self', time.time()-st)
-        cost = cost.view(orig_size) #.view(self.num_instances, self.batch_size, self.horizon)
-
-        return cost, cost_terms #, state_dict
+        return cost, cost_terms
 
     def compute_observations(self, 
                              state_dict: Dict[str,torch.Tensor]):
@@ -308,7 +300,9 @@ class ArmTask(nn.Module):
         return obs #, state_dict
 
 
-    def compute_termination(self, state_dict: Dict[str,torch.Tensor], act_batch: Optional[torch.Tensor]=None):
+    def compute_termination(self, 
+                            state_dict: Dict[str,torch.Tensor], 
+                            act_batch: Optional[torch.Tensor]=None):
 
         # state_dict = self.compute_full_state(state_dict)
 
@@ -324,14 +318,20 @@ class ArmTask(nn.Module):
         link_rot_batch = link_rot_batch.view(new_size, self.num_links, 3, 3)
 
         with record_function('primitive_collision'):
-            coll_cost = self.primitive_collision_cost.forward(link_pos_batch, link_rot_batch)
-            termination = coll_cost > 0
-            termination_cost = coll_cost
+            coll_cost, coll_cost_info = self.primitive_collision_cost.forward(link_pos_batch, link_rot_batch)
+            collision_violation = torch.logical_or(coll_cost_info['in_coll_world'], coll_cost_info['in_coll_self'])
+            collision_violation = collision_violation.sum(-1)
+            # termination = coll_cost > 0
 
         with record_function('bound_cost'):
-            bound_cost = self.bound_cost.forward(state_batch[..., :2*self.n_dofs])
-            termination += bound_cost > 0
-            termination_cost += bound_cost
+            bound_cost, bound_cost_info = self.bound_cost.forward(state_batch[..., :3*self.n_dofs])
+            # termination += bound_cost > 0
+            bounds_violation = ~bound_cost_info['in_bounds']
+            bounds_violation = bounds_violation.sum(-1)
+        
+
+        termination = torch.logical_or(collision_violation, bounds_violation)
+        termination_cost = coll_cost +  bound_cost
 
         # if self.cfg['cost']['robot_self_collision']['weight'] > 0:
         #     #coll_cost = self.robot_self_collision_cost.forward(link_pos_batch, link_rot_batch)
@@ -341,7 +341,7 @@ class ArmTask(nn.Module):
         #         self_coll_cost = self_coll_cost.view(self.num_instances, self.batch_size, self.horizon)
         #         termination += self_coll_cost > 0.
 
-        termination = (termination > 0).float()
+        # termination = (termination > 0).float()
 
         # num_term_states_per_traj = torch.count_nonzero(termination, dim=-1)
 
@@ -352,8 +352,11 @@ class ArmTask(nn.Module):
         #     # termination[non_zero[:,0], non_zero[:,1]:] = 1.0
         #     print(torch.count_nonzero(termination, dim=-1))
         termination_cost = termination_cost.view(orig_size)
+        info = {}
+        info['world_coll_dist'] = coll_cost_info['world_coll_dist']
+        info['self_coll_dist'] = coll_cost_info['self_coll_dist']
         
-        return termination, termination_cost
+        return termination.float(), termination_cost, info
     
     # def update_state(self, state_dict: Dict[str, torch.Tensor]):
     #     self.full_state_dict = self.compute_full_state(state_dict)

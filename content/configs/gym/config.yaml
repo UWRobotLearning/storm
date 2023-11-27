@@ -58,6 +58,13 @@ defaults:
   - train: ${task}SAC
   - hydra/job_logging: disabled
 
+eval: 
+  num_episodes: 20
+  save_buffer: false
+  deterministic_eval: true
+  log_freq: 50
+  checkpoint_freq: 10000
+
 # set the directory where the output files get saved
 hydra:
   output_subdir: null

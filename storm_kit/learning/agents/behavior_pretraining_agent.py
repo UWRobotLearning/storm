@@ -43,6 +43,7 @@ class BPAgent(Agent):
         if self.policy_loss_type not in ["mse", "nll"]:
             raise ValueError('Unidentified policy loss type {}.'.format(self.policy_loss_type))
         self.num_eval_episodes = self.cfg.get('num_eval_episodes', 1)
+        self.eval_first_policy = self.cfg.get('eval_first_policy', False)
         # self.best_policy = copy.deepcopy(self.policy)
 
     
@@ -56,7 +57,7 @@ class BPAgent(Agent):
 
         for i in pbar:
             #Evaluate policy at some frequency
-            if (i % self.eval_freq == 0) or (i == num_train_steps -1):
+            if ((i + (1-self.eval_first_policy)) % self.eval_freq == 0) or (i == num_train_steps -1):
                 eval_metrics = self.evaluate_policy(
                     self.policy, 
                     num_eval_episodes=self.num_eval_episodes, 

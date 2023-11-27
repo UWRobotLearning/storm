@@ -320,7 +320,6 @@ class RobotSphereCollision:
         for i in range(len(self._link_spheres)):
             self._batch_link_spheres.append(self._link_spheres[i].unsqueeze(0).repeat(self.batch_size, 1, 1).clone())
         self.w_batch_link_spheres = copy.deepcopy(self._batch_link_spheres)
-
         self.num_links = len(self.w_batch_link_spheres)
 
         self.dist_buff = torch.zeros((self.batch_size, self.num_links, self.num_links), device=self.device)
@@ -420,7 +419,6 @@ class RobotSphereCollision:
         links_pos: nx3
         links_rot: nx3x3
         '''
-        
         # transform link points:
         for i in range(len(self._link_spheres)):
             self._w_link_spheres[i][:,:3] = transform_point(self._link_spheres[:,:3], links_rot[i,:,:], links_pos[i,:,:])
@@ -434,9 +432,7 @@ class RobotSphereCollision:
         links_rot: bxnx3x3
         '''
         
-        b, n, _ = links_pos.shape
-        for i in range(n):
-            # link_pts = self._batch_link_spheres[i][:,:,:3]
+        for i in range(len(self.w_batch_link_spheres)):
             self.w_batch_link_spheres[i][:,:,:3] = transform_point(
                 self._batch_link_spheres[i][:,:,:3], links_rot[:,i,:,:], links_pos[:,i,:].unsqueeze(-2))
 
@@ -499,31 +495,23 @@ class RobotSphereCollision:
 
 
 @torch.jit.script
-def compute_spheres_distance(spheres_1, spheres_2):
+def compute_spheres_distance(spheres_1:torch.Tensor, spheres_2:torch.Tensor)->torch.Tensor:
     
     b, n, _ = spheres_1.shape
     b_l, n_l, _ = spheres_2.shape
     
     #dist = torch.zeros((b, n), device=spheres_1.device,
     #                   dtype=spheres_2.dtype)
-    
-    
-
 
     j = 0
     link_sphere_pts = spheres_1[:,j,:]
     link_sphere_pts = link_sphere_pts.unsqueeze(1)
     # find closest distance to other link spheres:
-    
-    
-    
-    #print(l_spheres.shape, link_sphere_pts.shape)
     s_dist = torch.norm(spheres_2[:,:,:3] - link_sphere_pts[:,:,:3], dim=-1)
     s_dist = spheres_2[:,:,3] + link_sphere_pts[:,:,3] - s_dist
     max_dist = torch.max(s_dist, dim=-1)[0]
     
-    
-    for j in range(1,n):
+    for j in range(1, n):
         link_sphere_pts = spheres_1[:,j,:]
         link_sphere_pts = link_sphere_pts.unsqueeze(1)
         # find closest distance to other link spheres:
@@ -536,8 +524,7 @@ def compute_spheres_distance(spheres_1, spheres_2):
     return dist
 
 @torch.jit.script
-def find_closest_distance(link_idx, links_sphere_list):
-    # type: (int, List[Tensor]) -> Tensor
+def find_closest_distance(link_idx:int , links_sphere_list: List[torch.Tensor]) -> torch.Tensor:
     """closet distance computed via iteration between sphere sets.
 
     Args:
@@ -562,7 +549,7 @@ def find_closest_distance(link_idx, links_sphere_list):
         # find closest distance to other link spheres:
         
         for i in range(len(links_sphere_list)):
-            if(i == link_idx or i==link_idx-1 or i==link_idx+1):
+            if (i == link_idx) or (i==link_idx-1) or (i==link_idx+1):
                 dist[:,i,j] = -100.0
                 continue
             # transform link_idx spheres to current link frame:
@@ -571,18 +558,17 @@ def find_closest_distance(link_idx, links_sphere_list):
         
             b_l, n_l, _ = l_spheres.shape
             
-            #print(l_spheres.shape, link_sphere_pts.shape)
             s_dist = torch.norm(l_spheres[:,:,:3] - link_sphere_pts[:,:,:3], dim=-1)
             s_dist = l_spheres[:,:,3] + link_sphere_pts[:,:,3] - s_dist 
 
             # dist: b, n_l -> b
             dist[:,i,j] = torch.max(s_dist, dim=-1)[0]
-    link_dist = torch.max(dist,dim=-1)[0]
+    
+    link_dist = torch.max(dist, dim=-1)[0]
     return link_dist
 
 @torch.jit.script
 def find_link_distance(links_sphere_list: List[torch.Tensor], dist: torch.Tensor)->torch.Tensor:
-    # type: (List[Tensor], Tensor) -> Tensor
     futures : List[torch.jit.Future[torch.Tensor]] = []
 
     b, n, _ = links_sphere_list[0].shape
@@ -598,7 +584,6 @@ def find_link_distance(links_sphere_list: List[torch.Tensor], dist: torch.Tensor
         current_spheres = links_sphere_list[i]
         for j in range(i + 2, n_links):
             compute_spheres = links_sphere_list[j]
-
             # find the distance between the two links:
             d = torch.jit.fork(compute_spheres_distance, current_spheres, compute_spheres)
             futures.append(d)

@@ -53,6 +53,7 @@ class SACAgent(Agent):
         self.backup_entropy = self.cfg['backup_entropy']
         self.min_buffer_size = int(self.cfg['min_buffer_size'])
         self.reward_scale = self.cfg['reward_scale']
+        
 
         if self.automatic_entropy_tuning:
             self.log_alpha = nn.Parameter(torch.tensor(self.cfg['init_log_alpha']))

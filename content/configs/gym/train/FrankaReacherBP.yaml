@@ -38,7 +38,8 @@ agent:
   log_freq: 100
   checkpoint_freq: 1000
   eval_freq: 1000
-  num_eval_episodes: 1
+  eval_first_policy: true
+  num_eval_episodes: 2
   # learn_deterministic_policy: false
   policy_loss_type: nll
   num_action_samples: 32 #only used when learning std with mse loss

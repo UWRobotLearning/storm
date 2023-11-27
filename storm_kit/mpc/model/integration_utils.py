@@ -118,6 +118,7 @@ def tensor_step_acc(
     num_instances:int, 
     batch_size:int, 
     horizon:int) -> torch.Tensor:
+    
     # This is batch,n_dof
     q = state[:, :, :n_dofs]
     qd = state[:, :, n_dofs:2*n_dofs]
@@ -134,13 +135,20 @@ def tensor_step_acc(
     q_new = q_new.view(num_instances, batch_size, horizon, -1)
     q_new += q.unsqueeze(1)
 
+    # qddd_new = torch.matmul(diag_dt, torch.matmul(fd_matrix, qdd_new))
+    # qddd_new = qddd_new.view(num_instances, batch_size, horizon, -1)
+    # qddd_new = qddd_new.view(num_instances, batch_size, horizon, -1)
+
     qdd_new = qdd_new.view(num_instances, batch_size, horizon, -1)
+
+    
     # qd_new = euler_integrate(qd, qdd_new, diag_dt, integrate_matrix)
     # q_new = euler_integrate(q, qd_new, diag_dt, integrate_matrix)
 
-    state_seq[:,:, :, :n_dofs] = q_new
-    state_seq[:,:, :, n_dofs: n_dofs * 2] = qd_new
-    state_seq[:,:, :, n_dofs * 2: n_dofs * 3] = qdd_new
+    state_seq[:, :, :, :n_dofs] = q_new
+    state_seq[:, :, :, n_dofs:2*n_dofs] = qd_new
+    state_seq[:, :, :, 2*n_dofs:3*n_dofs] = qdd_new
+    # state_seq[:, :, :, 3*n_dofs:4*n_dofs] = qddd_new
     
     return state_seq
 

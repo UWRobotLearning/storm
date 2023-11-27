@@ -35,9 +35,9 @@ class Agent(nn.Module):
         self.obs_dict = None
         self.state_dict = None
         self.targets = None
-        self.log_freq = self.cfg['log_freq']
-        self.eval_freq = self.cfg['eval_freq']  
-        self.checkpoint_freq = self.cfg['checkpoint_freq']
+        self.log_freq = self.cfg.get('log_freq', -1)
+        self.eval_freq = self.cfg.get('eval_freq', -1)  
+        self.checkpoint_freq = self.cfg.get('checkpoint_freq', -1)
         self.relabel_data = self.cfg.get('relabel_data', False)
         self.init_buffers()
 
@@ -50,11 +50,10 @@ class Agent(nn.Module):
         self.total_episodes_done = 0
         self.avg_episode_reward = 0.0
 
-
     def update(self):
         return {}
 
-    def train(self, model_dir=None):
+    def train(self, model_dir:Optional[str]=None):
         pass
 
     def save(self, model_dir:Optional[str]=None, data_dir:Optional[str]=None, iter:int=0):

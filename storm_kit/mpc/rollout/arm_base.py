@@ -125,7 +125,7 @@ class ArmBase(RolloutBase):
 
         self.primitive_collision_cost = PrimitiveCollisionCost(
             world_params=world_params, robot_params=robot_params, 
-            batch_size=self.num_instances * self.batch_size * self.horizon,
+            batch_size=self.num_instances*self.batch_size*self.horizon,
             device=self.device, **self.cfg['cost']['primitive_collision'])
 
         # if cfg['cost']['robot_self_collision']['weight'] > 0.0:

@@ -27,7 +27,6 @@ class ArmReacher(ArmTask):
         
         self.dist_cost = NormCost(**self.cfg['cost']['joint_l2'], device=self.device)
         self.goal_cost = PoseCost(**self.cfg['cost']['goal_pose'], device=self.device)
-
         self.task_specs = cfg.get('task_specs', None)
         if self.task_specs is not None:
             self.default_ee_goal = torch.tensor(self.task_specs['default_ee_target'], device=self.device)
@@ -65,16 +64,12 @@ class ArmReacher(ArmTask):
     def compute_cost(
             self, 
             state_dict: Dict[str, torch.Tensor], 
-            action_batch: Optional[torch.Tensor]=None,
-            horizon_cost: bool=True, return_dist:bool=False):
+            action_batch: Optional[torch.Tensor]=None):
 
         cost, cost_terms = super(ArmReacher, self).compute_cost(
             state_dict = state_dict,
-            action_batch = action_batch,
-            horizon_cost = horizon_cost)
+            action_batch = action_batch)
 
-        # num_instances, curr_batch_size, num_traj_points, _ = state_dict['state_seq'].shape
-        # cost = cost.view(num_instances, curr_batch_size, num_traj_points)
         q_pos_batch = state_dict['q_pos_seq']
         orig_size = q_pos_batch.size()[0:-1]
         new_size = reduce(mul, list(orig_size))  
@@ -91,17 +86,13 @@ class ArmReacher(ArmTask):
         goal_ee_rot = self.goal_ee_rot
         goal_state = self.goal_state
 
-
-        # with record_function("pose_cost"):
-        #     goal_cost, rot_err_norm, goal_dist = self.goal_cost.forward(ee_pos_batch, ee_rot_batch,
-        #                                                                 goal_ee_pos, goal_ee_rot)
         if goal_ee_pos is not None and goal_ee_rot is not None:
             with record_function("pose_cost"):
                 goal_ee_pos = goal_ee_pos.repeat(ee_pos_batch.shape[0] // self.num_instances, 1)
                 goal_ee_rot = goal_ee_rot.repeat(ee_rot_batch.shape[0] // self.num_instances, 1,1)
 
-                goal_cost, rot_err_norm, goal_dist = self.goal_cost.forward(ee_pos_batch, ee_rot_batch,
-                                                                            goal_ee_pos, goal_ee_rot) #jac_batch=J_full
+                goal_cost, goal_cost_info = self.goal_cost.forward(ee_pos_batch, ee_rot_batch,
+                                                                   goal_ee_pos, goal_ee_rot)
             # goal_cost[:,:,0:-1] = 0.
         cost += goal_cost.view(orig_size)
         
@@ -109,10 +100,7 @@ class ArmReacher(ArmTask):
         if self.cfg['cost']['joint_l2']['weight'] > 0.0 and goal_state is not None:
             disp_vec = state_batch[..., 0:self.n_dofs] - goal_state[...,0:self.n_dofs]
             dist_cost = self.dist_cost.forward(disp_vec)
-            cost += dist_cost.view(orig_size) #self.dist_cost.forward(disp_vec)
-
-        if return_dist:
-            return cost, state_dict, rot_err_norm, goal_dist
+            cost += dist_cost.view(orig_size)
         
         return cost, cost_terms #, state_dict
 
@@ -130,10 +118,12 @@ class ArmReacher(ArmTask):
         ee_pos_batch, ee_rot_batch, lin_jac_batch, ang_jac_batch = self.robot_model.compute_fk_and_jacobian(
             q_pos, self.cfg['ee_link_name'])
 
-        goal_cost, rot_err, dist_err = self.goal_cost.forward(
+        goal_cost, goal_cost_info = self.goal_cost.forward(
             ee_pos_batch, ee_rot_batch,
             ee_goal_pos, ee_goal_rot) #jac_batch=J_full
         
+        rot_err = goal_cost_info['rotation_err']
+        dist_err = goal_cost_info['translation_err']
         #Last Step Error{'num_instances': 1, 'control_space': '${task.task.control_space}', 'max_acc': '${task.task.max_acc}', 'n_dofs': '${task.n_dofs}', 'model': {'urdf_path': '${task.robot_urdf}', 'learnable_rigid_body_config': {'learnable_links': []}, 'name': 'franka_panda', 'dt_traj_params': {'base_dt': 0.02, 'base_ratio': 1.0, 'max_dt': 0.2}, 'ee_link_name': '${task.ee_link_name}', 'init_state': [0.8, 0.3, 0.0, -1.57, 0.0, 1.86, 0.0], 'link_names': '${task.task.robot_link_names}', 'collision_spheres': '../robot/franka.yml'}, 'robot_collision_params': '${task.task.robot_collision_params}', 'world_collision_params': '${task.task.world_collision_params}', 'cost': {'goal_pose': {'vec_weight': [1.0, 1.0, 1.0, 1.0, 1.0, 1.0], 'weight': [0.0, 0.0], 'cost_type': 'se3_twist', 'norm_type': 'l1', 'hinge_val': -1, 'convergence_val': [0.0, 0.0]}, 'ee_vel_twist': {'weight': 0.003, 'norm_type': 'l1'}, 'ee_acc_twist': {'weight': 0.0, 'norm_type': 'l1'}, 'zero_q_vel': {'weight': 0.01, 'norm_type': 'l1'}, 'zero_q_acc': {'weight': 0.0, 'norm_type': 'l1'}, 'zero_q_jerk': {'weight': 0.0, 'norm_type': 'l1'}, 'manipulability': {'weight': 0.5, 'thresh': 0.1}, 'joint_l2': {'weight': 10.0, 'norm_type': 'l1'}, 'stop_cost': {'weight': 1.5, 'max_nlimit': 5.0}, 'stop_cost_acc': {'weight': 0.0, 'max_limit': 0.1}, 'smooth_cost': {'weight': 0.0, 'order': 1}, 'primitive_collision': {'weight': 100.0, 'distance_threshold': 0.03}, 'state_bound': {'weight': 100.0, 'bound_thresh': 0.03}, 'retract_state': [0.0, 0.0, 0.0, -1.5, 0.0, 2.0, 0.0], 'retract_weight': [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]}, 'horizon': 20, 'batch_size': 500, 'dt_traj_params': {'base_dt': 0.02, 'base_ratio': 1.0, 'max_dt': 0.2}}
         final_goal_dist_err = dist_err[-1].item()
         final_goal_rot_err = rot_err[-1].item()

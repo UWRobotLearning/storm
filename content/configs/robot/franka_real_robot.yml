@@ -110,8 +110,8 @@ collision_spheres:
     panda_hand:
         # removing this since it is excessive
         # and always collides with panda_link7
-        - "center": [0.0, 0.065, -0.02]
-          "radius": 0.05
+        # - "center": [0.0, 0.065, -0.02]
+        #   "radius": 0.05
         - "center": [0.0, -0.08, 0.01]
           "radius": 0.03
         - "center": [0.0, -0.045, 0.01]

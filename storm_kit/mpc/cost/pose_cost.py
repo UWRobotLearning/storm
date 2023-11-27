@@ -20,11 +20,12 @@
 # LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
 # FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 # DEALINGS IN THE SOFTWARE.#
-from typing import Optional, Tuple
+
+from typing import List, Tuple, Dict
 import torch
 from storm_kit.mpc.cost import NormCost
 from storm_kit.differentiable_robot_model.spatial_vector_algebra import CoordinateTransform, matrix_to_quaternion
-from storm_kit.differentiable_robot_model.se3_so3_util import logMapSE3, convertQuaternionToAxisAngle
+from storm_kit.differentiable_robot_model.se3_so3_util import logMapSE3
 
 class PoseCost(NormCost):
     """ Rotation cost 
@@ -37,8 +38,8 @@ class PoseCost(NormCost):
     
     """
     def __init__(
-            self, weight, vec_weight=[], cost_type:str = 'se3_transform', 
-            norm_type:str='squared_l2', device:torch.device=torch.device("cpu"), hinge_val=100.0,
+            self, weight:List, vec_weight:List, cost_type:str = 'se3_transform', 
+            norm_type:str='squared_l2', device:torch.device=torch.device("cpu"), hinge_val:float=100.0,
             convergence_val=[0.0,0.0]):
         
         super(PoseCost, self).__init__(weight=1.0, norm_type=norm_type, device=device)
@@ -49,6 +50,7 @@ class PoseCost(NormCost):
         self.trans_err_weight = weight[1]
         self.vec_weight = torch.as_tensor(vec_weight, device=self.device)
         self.trans_vec_weight = self.vec_weight[3:6]
+
         if self.cost_type in ['se3_transform', 'se3_twist']:
             self.rot_vec_weight = self.vec_weight[0:3]
             self.I = torch.eye(3,3,device=self.device)
@@ -59,15 +61,12 @@ class PoseCost(NormCost):
 
     def forward(
             self, ee_pos_batch:torch.Tensor, ee_rot_batch:torch.Tensor, 
-            ee_goal_pos:torch.Tensor, ee_goal_rot:torch.Tensor,
-            jac_batch:Optional[torch.Tensor] = None) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+            ee_goal_pos:torch.Tensor, ee_goal_rot:torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
 
         ee_pos_batch = ee_pos_batch.to(device=self.device)
         ee_rot_batch = ee_rot_batch.to(device=self.device)
         ee_goal_pos = ee_goal_pos.to(device=self.device)
         ee_goal_rot = ee_goal_rot.to(device=self.device)
-        if jac_batch is not None:
-            jac_batch = jac_batch.to(device=self.device)
         # if ee_pos_batch.ndim > 2:
         #     num_instances, batch_size, horizon, _ = ee_pos_batch.shape
         # else:
@@ -88,7 +87,6 @@ class PoseCost(NormCost):
         # if jac_batch is not None:
         #     jac_batch = jac_batch.view(num_instances*batch_size*horizon, 6, -1)
         
-
         #compute error transform
         if self.cost_type in ['se3_transform', 'se3_twist']:
             ee_to_world_transform = CoordinateTransform(rot = ee_rot_batch, trans = ee_pos_batch, device=self.device)
@@ -98,12 +96,12 @@ class PoseCost(NormCost):
         
         if self.cost_type == 'se3_transform':
             # return self.forward_se3_transform(ee_pos_batch, ee_rot_batch, ee_goal_pos, ee_goal_rot)
-            cost, rot_err, pos_err = self.forward_se3_transform(goal_to_ee_transform)
+            cost, info = self.forward_se3_transform(goal_to_ee_transform)
         elif self.cost_type == 'se3_twist':
             # return self.forward_se3_twist(ee_pos_batch, ee_rot_batch, ee_goal_pos, ee_goal_rot)
-            cost, rot_err, pos_err = self.forward_se3_twist(goal_to_ee_transform, jac_batch)
+            cost, info = self.forward_se3_twist(goal_to_ee_transform)
         elif self.cost_type == 'quaternion':
-            cost, rot_err, pos_err = self.forward_quaternion(ee_pos_batch, ee_rot_batch, ee_goal_pos, ee_goal_rot)
+            cost, info = self.forward_quaternion(ee_pos_batch, ee_rot_batch, ee_goal_pos, ee_goal_rot)
         
         # cost = cost.view(num_instances, batch_size, horizon)
         # rot_err = rot_err.view(num_instances, batch_size, horizon)
@@ -111,15 +109,11 @@ class PoseCost(NormCost):
         # rot_err_norm = rot_err_norm.view(num_instances, batch_size, horizon)
         # goal_dist = goal_dist.view(num_instances, batch_size, horizon)
 
-        return cost, rot_err, pos_err
+        return cost, info # rot_err, pos_err
         
 
-
-    # def forward_se3_transform(
-    #         self, ee_pos_batch, ee_rot_batch, ee_goal_pos, ee_goal_rot):
-
     def forward_se3_transform(
-            self, goal_to_ee_transform:CoordinateTransform)->Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+            self, goal_to_ee_transform:CoordinateTransform)->Tuple[torch.Tensor, Dict[str, torch.Tensor]]:
         
         # ee_pos_batch = ee_pos_batch.to(device=self.device)
         # ee_rot_batch = ee_rot_batch.to(device=self.device)
@@ -141,7 +135,7 @@ class PoseCost(NormCost):
         goal_rot_ee = goal_to_ee_transform.rotation()
 
         #compute translation error
-        position_err = super().forward(self.trans_vec_weight * goal_trans_ee, keepdim=False)
+        position_err = super(PoseCost).forward(self.trans_vec_weight * goal_trans_ee, keepdim=False)
         # goal_dist = torch.norm(self.pos_weight * d_g_ee, p=2, dim=-1, keepdim=True)
         
         # position_err = (torch.sum(torch.square(self.pos_weight * d_g_ee),dim=-1))
@@ -165,12 +159,17 @@ class PoseCost(NormCost):
         # cost = self.rot_err_weight * torch.sqrt(rotation_err) + self.trans_err_weight * torch.sqrt(position_err)
         cost = self.rot_err_weight * rotation_err + self.trans_err_weight * position_err
         
-        # dimension should be bacth * traj_length
-        return cost, rotation_err, position_err
+        info = dict(
+            rotation_err=rotation_err,
+            translation_err=position_err,
+            translation_residual=goal_trans_ee,
+        )
+
+        return cost, info
 
 
     def forward_se3_twist(
-            self, goal_to_ee_transform:CoordinateTransform, jac_batch:Optional[torch.Tensor]=None)->Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+            self, goal_to_ee_transform:CoordinateTransform)->Tuple[torch.Tensor, Dict[str, torch.Tensor]]:
         
         _, omega, v = logMapSE3(goal_to_ee_transform.rotation(), goal_to_ee_transform.translation())
 
@@ -179,22 +178,29 @@ class PoseCost(NormCost):
         rotation_err[rotation_err < self.convergence_val[0]] = 0.0
         position_err[position_err < self.convergence_val[1]] = 0.0
 
-        if jac_batch is not None:
-            #Compute jacobian transpose projection
-            jac_T = jac_batch.transpose(-2,-1)
-            ee_twist = torch.cat([v, omega], dim=-1)[:, :, None]
-            q_vel_des = (jac_T @ ee_twist).squeeze(-1)
-            cost = 500.0 * super().forward(q_vel_des, keepdim=False)
+        # if jac_batch is not None:
+        #     #Compute jacobian transpose projection
+        #     jac_T = jac_batch.transpose(-2,-1)
+        #     ee_twist = torch.cat([v, omega], dim=-1)[:, :, None]
+        #     q_vel_des = (jac_T @ ee_twist).squeeze(-1)
+        #     cost = 500.0 * super().forward(q_vel_des, keepdim=False)
 
-        else:
-            cost = self.rot_err_weight * rotation_err + self.trans_err_weight * position_err
+        # else:
+        cost = self.rot_err_weight * rotation_err + self.trans_err_weight * position_err
         
-        return cost, rotation_err, position_err
+        info = dict(
+            rotation_err=rotation_err,
+            translation_err=position_err,
+            translation_residual=v,
+            rotation_residual=omega,
+        )
+        
+        return cost, info
 
 
     def forward_quaternion(
             self, ee_pos_batch: torch.Tensor, ee_rot_batch: torch.Tensor, 
-            ee_goal_pos: torch.Tensor, ee_goal_rot: torch.Tensor):
+            ee_goal_pos: torch.Tensor, ee_goal_rot: torch.Tensor)->Tuple[torch.Tensor, Dict[str, torch.Tensor]]:
 
         inp_device = ee_pos_batch.device
         ee_pos_batch = ee_pos_batch.to(device=self.device)
@@ -236,9 +242,16 @@ class PoseCost(NormCost):
         # cost = self.weight[0] * self.orientation_gaussian(rot_err) + self.weight[1] * self.position_gaussian(torch.sqrt(position_err))
         cost = self.rot_err_weight * rotation_err + self.trans_err_weight * torch.sqrt(position_err)
 
-        return cost.to(inp_device), rotation_err, position_err
+        info = dict(
+            rotation_err=rotation_err,
+            translation_err=position_err,
+            translation_residual=goal_disp,
+            rotation_residual=quat_res,  
+        )
 
+        return cost.to(inp_device), info
 
+@torch.jit.script
 def quat_multiply(q1:torch.Tensor, q2:torch.Tensor) -> torch.Tensor:
     a_w = q1[..., 0]
     a_x = q1[..., 1]
@@ -256,22 +269,3 @@ def quat_multiply(q1:torch.Tensor, q2:torch.Tensor) -> torch.Tensor:
     q_res_z = (a_w * b_z + b_w * a_z + a_x * b_y - b_x * a_y).unsqueeze(-1)
 
     return torch.cat([q_res_w, q_res_x, q_res_y, q_res_z], dim=-1)
-
-
-
-    # def compute_error_transform(
-    #         self, ee_pos_world: torch.Tensor, ee_rot_world: torch.Tensor,
-    #         goal_pos_world: torch.Tensor, goal_rot_world: torch.Tensor):
-        
-    #     # Given T_e^W (end effector in world) and T_g^W (goal in world)
-    #     # compute T_g^e (goal in end effector frame) using
-    #     # T_g^e = (T_e^W)^-1 * T_g^W . .  
-    #     #Inverse of ee transform
-    #     ee_rot_world_T = ee_rot_world.transpose(-2,-1) # w_R_g -> g_R_w
-    #     #Rotation part
-    #     goal_rot_ee = ee_rot_world_T @ goal_rot_world # g_R_w * w_R_ee -> g_R_ee
-    #     #Translation part
-    #     pos_diff = goal_pos_world - ee_pos_world
-    #     goal_pos_ee = (ee_rot_world_T @ pos_diff.unsqueeze(-1)).squeeze(-1)#.transpose(-2,-1)
-
-    #     return goal_pos_ee, goal_rot_ee
