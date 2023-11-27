@@ -93,8 +93,12 @@ class ArmReacher(ArmTask):
 
                 goal_cost, goal_cost_info = self.goal_cost.forward(ee_pos_batch, ee_rot_batch,
                                                                    goal_ee_pos, goal_ee_rot)
-            # goal_cost[:,:,0:-1] = 0.
-        cost += goal_cost.view(orig_size)
+                goal_cost = goal_cost.view(orig_size)
+                cost_terms['goal_pose_cost'] = goal_cost
+                cost_terms['rotation_err'] = goal_cost_info['rotation_err'].view(orig_size)
+                cost_terms['translation_err'] = goal_cost_info['translation_err'].view(orig_size)
+                # goal_cost[:,:,0:-1] = 0.
+                cost += goal_cost
         
         # joint l2 cost
         if self.cfg['cost']['joint_l2']['weight'] > 0.0 and goal_state is not None:

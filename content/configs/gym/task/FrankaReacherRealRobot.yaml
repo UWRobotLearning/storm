@@ -23,7 +23,7 @@ task:
   randomize: False  
   robot_urdf: ${task.robot_urdf}
   #links to be used for collision checking
-  robot_link_names: ['panda_link1', 'panda_link2','panda_link3','panda_link4','panda_link5', 'panda_link6', 'panda_link7', 'panda_hand']
+  robot_link_names: ['panda_link1', 'panda_link2','panda_link3','panda_link4','panda_link5', 'panda_link7', 'panda_hand']
   ee_link_name: ${task.ee_link_name}
   control_space: 'acc'
   max_acc: 100.0
@@ -96,7 +96,7 @@ task:
       order: 1
 
     primitive_collision:
-      weight: 100.0 #5000.0
+      weight: 500.0 #5000.0
       distance_threshold: 0.03
 
     # robot_self_collision:

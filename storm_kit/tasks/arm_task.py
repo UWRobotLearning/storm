@@ -155,11 +155,12 @@ class ArmTask(nn.Module):
         cost, cost_terms = self.compute_cost(state_dict, act_batch)
         obs = self.compute_observations(state_dict)
 
+
         if termination_cost is not None:
             cost += termination_cost
             cost_terms['termination'] = termination_cost
 
-        return obs, cost, termination, cost_terms, termination_cost
+        return obs, cost, termination, cost_terms, termination_cost, term_info
     
         
     def compute_cost(
@@ -326,7 +327,7 @@ class ArmTask(nn.Module):
         with record_function('bound_cost'):
             bound_cost, bound_cost_info = self.bound_cost.forward(state_batch[..., :3*self.n_dofs])
             # termination += bound_cost > 0
-            bounds_violation = ~bound_cost_info['in_bounds']
+            bounds_violation = torch.logical_not(bound_cost_info['in_bounds'])
             bounds_violation = bounds_violation.sum(-1)
         
 
@@ -352,11 +353,22 @@ class ArmTask(nn.Module):
         #     # termination[non_zero[:,0], non_zero[:,1]:] = 1.0
         #     print(torch.count_nonzero(termination, dim=-1))
         termination_cost = termination_cost.view(orig_size)
+        termination = termination.float().view(orig_size)
         info = {}
-        info['world_coll_dist'] = coll_cost_info['world_coll_dist']
-        info['self_coll_dist'] = coll_cost_info['self_coll_dist']
-        
-        return termination.float(), termination_cost, info
+        info['world_coll_cost'] = coll_cost_info['world_coll_cost'].view(*orig_size, -1)
+        info['self_coll_cost'] = coll_cost_info['self_coll_cost'].view(*orig_size, -1)
+        info['world_coll_dist'] = coll_cost_info['world_coll_dist'].view(*orig_size,-1)
+        info['self_coll_dist'] = coll_cost_info['self_coll_dist'].view(*orig_size, -1)
+        info['in_coll_world'] = coll_cost_info['in_coll_world'].view(*orig_size, -1)
+        info['in_coll_self'] = coll_cost_info['in_coll_self'].view(*orig_size, -1)
+
+        # in_coll_self = info['in_coll_self']#[0,0,0]
+        # in_coll_self_idxs = torch.nonzero(in_coll_self)
+        # print(in_coll_self)
+        # print(in_coll_self_idxs)
+        # input('...')
+
+        return termination, termination_cost, info
     
     # def update_state(self, state_dict: Dict[str, torch.Tensor]):
     #     self.full_state_dict = self.compute_full_state(state_dict)

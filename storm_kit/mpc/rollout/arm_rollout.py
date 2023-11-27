@@ -16,8 +16,8 @@ class ArmRollout(nn.Module):
         self.sampling_policy = sampling_policy
         self.viz_rollouts = viz_rollouts
         self.num_instances = cfg.num_instances
-        self.obs_dim = task.obs_dim
-        self.act_dim = task.act_dim
+        # self.obs_dim = task.obs_dim
+        # self.act_dim = task.act_dim
         self.device = device
         assets_path = get_assets_path()
 
@@ -64,11 +64,25 @@ class ArmRollout(nn.Module):
             state_dict = self.dynamics_model.rollout_open_loop(start_state, act_seq)
         
         with record_function("compute_cost"):
-            cost_seq, _= self.task.compute_cost(state_dict, act_seq)
+            cost_seq, cost_terms = self.task.compute_cost(state_dict, act_seq)
 
         with record_function("compute_termination"):
             state_dict['prev_action'] = start_state['prev_action']
             term_seq, term_cost, term_info = self.task.compute_termination(state_dict, act_seq)
+        
+        # print(term_info['in_coll_self'])
+        # print(term_info['self_coll_dist'])
+        # input('...')
+        # print(
+        #     'term horizon max', torch.max(term_cost[0,:]), 
+        #     'term horizon min', torch.min(term_cost[0,:]),            
+        #     'term curr max', torch.max(term_cost[0,:,0]), 
+        #     'term curr min', torch.min(term_cost[0,:,0]),            
+        #     torch.max(term_info['self_coll_dist'][0,:,0]), 
+        #     torch.min(term_info['self_coll_dist'][0,:,0]),
+        #     torch.max(term_info['in_coll_self'][0,:,0]),
+        #     torch.min(term_info['in_coll_self'][0,:,0]))
+
 
         if term_cost is not None:
             cost_seq += term_cost

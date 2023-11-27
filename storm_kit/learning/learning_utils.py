@@ -473,9 +473,6 @@ def episode_runner(
         return buffer, metrics
 
 
-
-
-
 def minimal_episode_runner(
     envs,
     num_episodes: int, 
@@ -526,7 +523,7 @@ def minimal_episode_runner(
 
             next_state_dict, done_env = envs.step(command)
             
-            next_obs, cost, done_task, cost_terms, done_cost = task.forward(next_state_dict, actions)
+            next_obs, cost, done_task, cost_terms, done_cost, term_info = task.forward(next_state_dict, actions)
             done_task = done_task.view(envs.num_envs,)
             cost = cost.view(envs.num_envs,)
             done_cost = done_cost.view(envs.num_envs,)

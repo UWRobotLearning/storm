@@ -28,7 +28,9 @@ from ...geom.sdf.robot_world import RobotWorldCollisionPrimitive
 
 class PrimitiveCollisionCost(nn.Module):
     def __init__(self, weight:torch.Tensor, world_params=None, robot_collision_params=None, world_collision_params=None, batch_size:int=1,
-                 distance_threshold:float=0.1, device:torch.device=torch.device('cpu')):
+                 distance_threshold_world:float=0.1, 
+                 distance_threshold_self:float=0.1,
+                 device:torch.device=torch.device('cpu')):
 
         super(PrimitiveCollisionCost, self).__init__()
         
@@ -47,7 +49,8 @@ class PrimitiveCollisionCost(nn.Module):
         
         self.n_world_objs = self.robot_world_coll.world_coll.n_objs
         self.t_mat = None
-        self.distance_threshold = distance_threshold
+        self.distance_threshold_world = distance_threshold_world
+        self.distance_threshold_self = distance_threshold_self
 
     
     def forward(self, link_pos_batch:torch.Tensor, link_rot_batch:torch.Tensor)->Tuple[torch.Tensor, Dict[str, torch.Tensor]]:
@@ -64,8 +67,7 @@ class PrimitiveCollisionCost(nn.Module):
             world_coll_dist, self_coll_dist = self.robot_world_coll.check_robot_sphere_collisions(link_pos_batch, link_rot_batch)
 
         #world collision cost
-        in_coll_world = world_coll_dist >= 0.0
-        world_coll_dist_inflated = world_coll_dist + self.distance_threshold
+        world_coll_dist_inflated = world_coll_dist + self.distance_threshold_world
         world_coll_dist_inflated[world_coll_dist_inflated <= 0.0] = 0.0
         # world_coll_dist[world_coll_dist > 0.2] = 0.2
         # world_coll_dist = world_coll_dist / 0.25
@@ -74,19 +76,23 @@ class PrimitiveCollisionCost(nn.Module):
         
         #self collision cost
         # self_coll_dist += self.distance_threshold
-        in_coll_self = self_coll_dist >= 0.0
 
-        self_coll_dist_hinge = self_coll_dist
+        self_coll_dist_hinge = self_coll_dist.clone() + self.distance_threshold_self
         self_coll_dist_hinge[self_coll_dist_hinge <= 0.0] = 0.0
-        # self_coll_dist[self_coll_dist > 0.2] = 0.2
+        # self_coll_dist_hinge[self_coll_dist_hinge > 0.2] = 0.2
         # self_coll_dist = self_coll_dist / 0.25
         
         self_cost = torch.sum(self_coll_dist_hinge, dim=-1)
-        
+
+        in_coll_world = world_coll_dist_inflated > 0.0
+        in_coll_self = self_coll_dist_hinge > 0.0
+
         cost = world_cost + self_cost
         cost = self.weight * cost 
 
         info = {
+            'world_coll_cost': world_cost,
+            'self_coll_cost': self_cost,
             'world_coll_dist': world_coll_dist,
             'self_coll_dist': self_coll_dist,
             'in_coll_world': in_coll_world,
