@@ -51,6 +51,19 @@ task:
     threshold: 0.35
     collision_spheres: 'robot/franka.yml'
     self_collision_weights: 'robot_self/franka_panda_self_collision_weights_2.pt'
+    self_collision_ignore:
+      panda_link0: ["panda_link1", "panda_link2"]
+      panda_link1: ["panda_link2", "panda_link3", "panda_link4"]
+      panda_link2: ["panda_link3", "panda_link4"]
+      panda_link3: ["panda_link4", "panda_link6"]
+      panda_link4: ["panda_link5", "panda_link6", "panda_link7"] #"panda_link8"
+      panda_link5: ["panda_link6", "panda_link7", "panda_hand"] # "panda_leftfinger", "panda_rightfinger"],
+      panda_link6: ["panda_link7", "panda_hand"]  #, "attached_object", "panda_leftfinger", "panda_rightfinger"],
+      panda_link7: ["panda_hand"]  # "attached_object", "panda_leftfinger", "panda_rightfinger"],
+      panda_hand: []              
+      #["panda_leftfinger", "panda_rightfinger","attached_object"],
+      # panda_leftfinger: ["panda_rightfinger", "attached_object"],
+      # panda_rightfinger: ["attached_object"],
     n_dofs: ${task.rollout.n_dofs}
 
   world_collision_params:
@@ -59,14 +72,14 @@ task:
     grid_resolution: 0.05
 
   task_specs:
-    default_ee_target: [0.4, 0.0, 0.5, 0.0, 0.707, 0.707, 0.0]
-    target_position_noise: 0.05 #meters
+    default_ee_target: [0.0, 0.0, 0.0, 0.0, 0.707, 0.707, 0.0]
+    target_position_noise: 0.0 #meters
     target_rotation_noise: 0.0 #radians
 
   cost:
     goal_pose:
       vec_weight: [1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
-      weight: [5.0, 10.0] #[10.0, 50.0] #[50.0, 100.0]
+      weight: [10.0, 0.0] #[10.0, 50.0] #[50.0, 100.0]
       cost_type: 'se3_twist'
       norm_type: 'l1'
       hinge_val: -1
@@ -111,15 +124,16 @@ task:
       order: 1
 
     primitive_collision:
-      weight: 100.0 #5000.0
-      distance_threshold: 0.03
+      weight: 200.0 #5000.0
+      distance_threshold_world: 0.03
+      distance_threshold_self: 0.03
 
     # robot_self_collision:
     #   weight: 5000.0 #5000.0
     #   distance_threshold: 0.05
 
     state_bound:
-      weight: 100.0 #5000.0 
+      weight: 200.0 #5000.0 
       bound_thresh: 0.03
 
     retract_state : [0.00, 0.0, 0.00, -1.5, 0.00, 2.0, 0.0] #check
@@ -127,6 +141,17 @@ task:
 
 defaults:
   - world: FrankaReacherWorld
+
+train:
+  agent:
+    name: 'MPC'
+    num_episodes: 20
+    save_buffer: false
+    log_freq: 50
+    eval_freq: 100
+    checkpoint_freq: 10000
+
+  policy: null
 
 
 sim:

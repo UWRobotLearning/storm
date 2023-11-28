@@ -81,11 +81,9 @@ class RobotWorldCollisionPrimitive(RobotWorldCollision):
         super().__init__(robot_collision, world_collision)
         self.robot_batch_size = robot_batch_size
         self.initialize()
-        # self.dist = None
     
     def initialize(self):
         self.dist_buff = torch.zeros((self.robot_batch_size, self.robot_coll.num_links), device=self.device)
-
 
     # def build_batch_features(self, batch_size, clone_pose=True, clone_points=True):
     #     self.batch_size = batch_size
@@ -116,22 +114,32 @@ class RobotWorldCollisionPrimitive(RobotWorldCollision):
         #compute self collisions
         self_coll_dist = self.robot_coll.compute_link_distances(w_link_spheres)
         
-        n_links = len(w_link_spheres)
+        n_links = len(w_link_spheres.keys())
         # if self.dist is None or self.dist.shape[0] != n_links:
             # self.dist = torch.zeros((batch_size, n_links), device=self.device)
         dist = self.dist_buff
-        for i in range(n_links):
-            spheres = w_link_spheres[i]
+        for link_idx, link_name in enumerate(w_link_spheres.keys()):
+            spheres = w_link_spheres[link_name]
             b, n, _ = spheres.shape
             spheres = spheres.view(b * n, 4)
-
             # compute distance between world objs and link spheres
             with record_function('robot_world:check_pts_sdf'):
                 sdf = self.world_coll.check_pts_sdf(spheres[:,:3]) + spheres[:,3]
-            sdf = sdf.view(b,n)
-            dist[:,i] = torch.max(sdf, dim=-1)[0]
+            sdf = sdf.view(b, n)
+            dist[:,link_idx] = torch.max(sdf, dim=-1)[0]
+
+        # for i in range(n_links):
+        #     spheres = w_link_spheres[i]
+        #     b, n, _ = spheres.shape
+        #     spheres = spheres.view(b * n, 4)
+
+        #     # compute distance between world objs and link spheres
+        #     with record_function('robot_world:check_pts_sdf'):
+        #         sdf = self.world_coll.check_pts_sdf(spheres[:,:3]) + spheres[:,3]
+        #     sdf = sdf.view(b,n)
+        #     dist[:,i] = torch.max(sdf, dim=-1)[0]
          
-        return dist, self_coll_dist
+        return dist, self_coll_dist, w_link_spheres
 
     def get_robot_env_sdf(self, link_trans, link_rot):
         """Compute signed distance via analytic functino

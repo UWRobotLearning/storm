@@ -64,28 +64,32 @@ class PrimitiveCollisionCost(nn.Module):
         # link_rot_batch = link_rot_batch.view(batch_size * horizon, n_links, 3, 3)
         
         with record_function("primitive_collision_cost:check_sphere_collision"):
-            world_coll_dist, self_coll_dist = self.robot_world_coll.check_robot_sphere_collisions(link_pos_batch, link_rot_batch)
+            world_coll_dist, self_coll_dist, w_link_spheres = self.robot_world_coll.check_robot_sphere_collisions(link_pos_batch, link_rot_batch)
 
         #world collision cost
-        world_coll_dist_inflated = world_coll_dist + self.distance_threshold_world
-        world_coll_dist_inflated[world_coll_dist_inflated <= 0.0] = 0.0
-        # world_coll_dist[world_coll_dist > 0.2] = 0.2
-        # world_coll_dist = world_coll_dist / 0.25
+        # world_coll_dist_inflated = world_coll_dist + self.distance_threshold_world
+        # world_coll_dist_inflated[world_coll_dist_inflated <= 0.0] = 0.0
+        world_coll_dist += self.distance_threshold_world
+        world_coll_dist[world_coll_dist <= 0.0] = 0.0
+        world_coll_dist[world_coll_dist > 0.2] = 0.2
+        world_coll_dist = world_coll_dist / 0.25
         
-        world_cost = torch.sum(world_coll_dist_inflated, dim=-1)
+        world_cost = torch.sum(world_coll_dist, dim=-1)
         
         #self collision cost
         # self_coll_dist += self.distance_threshold
-
-        self_coll_dist_hinge = self_coll_dist.clone() + self.distance_threshold_self
-        self_coll_dist_hinge[self_coll_dist_hinge <= 0.0] = 0.0
+        self_coll_dist += self.distance_threshold_self
+        self_coll_dist[self_coll_dist <= 0.0] = 0.0
+        self_coll_dist[self_coll_dist > 0.2] = 0.2
+        # self_coll_dist_hinge = self_coll_dist.clone() + self.distance_threshold_self
+        # self_coll_dist_hinge[self_coll_dist_hinge <= 0.0] = 0.0
         # self_coll_dist_hinge[self_coll_dist_hinge > 0.2] = 0.2
         # self_coll_dist = self_coll_dist / 0.25
         
-        self_cost = torch.sum(self_coll_dist_hinge, dim=-1)
+        self_cost = torch.sum(self_coll_dist, dim=-1)
 
-        in_coll_world = world_coll_dist_inflated > 0.0
-        in_coll_self = self_coll_dist_hinge > 0.0
+        in_coll_world = world_coll_dist > 0.0
+        in_coll_self = self_coll_dist > 0.0
 
         cost = world_cost + self_cost
         cost = self.weight * cost 
@@ -97,6 +101,7 @@ class PrimitiveCollisionCost(nn.Module):
             'self_coll_dist': self_coll_dist,
             'in_coll_world': in_coll_world,
             'in_coll_self': in_coll_self,
+            'w_link_spheres': w_link_spheres,
         }
 
         return cost.to(inp_device), info

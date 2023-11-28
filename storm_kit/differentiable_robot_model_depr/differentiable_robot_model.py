@@ -190,7 +190,7 @@ class DifferentiableRobotModel(torch.nn.Module):
             self._base_lin_vel = torch.zeros((self._batch_size, 3), device=self.device) #, dtype=self.dtype)
             self._base_ang_vel = torch.zeros((self._batch_size, 3), device=self.device) #, dtype=self.dtype)
             self._base_pose_trans = torch.zeros((self._batch_size, 3), device=self.device) #, dtype=self.dtype)
-            self._base_pose_rot = torch.eye(3, device=self.device) #, dtype=self.dtype).expand(self._batch_size,3,3)
+            self._base_pose_rot = torch.eye(3, device=self.device).unsqueeze(0).expand(self._batch_size, 3, 3) #, dtype=self.dtype).expand(self._batch_size,3,3)
             
 
         # we assume a non-moving base

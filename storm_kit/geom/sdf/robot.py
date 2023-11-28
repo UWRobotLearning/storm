@@ -23,7 +23,7 @@
 
 import copy
 import yaml
-from typing import List
+from typing import Dict, List
 
 import torch
 import trimesh
@@ -274,32 +274,28 @@ class RobotSphereCollision:
             batch_size (int, optional): Batch size of parallel sdf computation. Defaults to 1.
             tensor_args (dict, optional): compute device and data type. Defaults to {'device':"cpu", 'dtype':torch.float32}.
         """        
-        # read capsules
-        self.batch_size = batch_size
-        # self.tensor_args = tensor_args
-        self.device = device
 
+        self.batch_size = batch_size
+        self.device = device
+        self.robot_collision_params = robot_collision_params
         
-        # keep track of their pose in world frame
-        
-        #self.link_points = None
         self._link_spheres = None
         self._batch_link_spheres = None
+        self._w_link_spheres = None
+        self._w_batch_link_spheres = None
 
-        self._link_collision_trans = None
-        self._link_collision_rot = None
-        self._batch_link_collision_trans = None
-        self._batch_link_collision_rot = None
+        # self._link_collision_trans = None
+        # self._link_collision_rot = None
+        # self._batch_link_collision_trans = None
+        # self._batch_link_collision_rot = None
 
         self._robot_collision_trans = None
         self._robot_collision_rot = None
 
-        self._batch_robot_collision_trans = None
-        self._batch_robot_collision_rot = None
+        # self._batch_robot_collision_trans = None
+        # self._batch_robot_collision_rot = None
 
-        self._w_batch_link_spheres = None
         
-        self.robot_collision_params = robot_collision_params
         # self.load_robot_collision_model()
         self.initialize()
         
@@ -316,14 +312,18 @@ class RobotSphereCollision:
         self.load_robot_collision_model()
 
         #initialize buffers to be used for batched computation
-        self._batch_link_spheres = []
-        for i in range(len(self._link_spheres)):
-            self._batch_link_spheres.append(self._link_spheres[i].unsqueeze(0).repeat(self.batch_size, 1, 1).clone())
-        self.w_batch_link_spheres = copy.deepcopy(self._batch_link_spheres)
-        self.num_links = len(self.w_batch_link_spheres)
+        # self._batch_link_spheres = []
+        # for i in range(len(self._link_spheres)):
+        #     self._batch_link_spheres.append(self._link_spheres[i].unsqueeze(0).repeat(self.batch_size, 1, 1).clone())
+        self._batch_link_spheres = {}
+        for k in self._link_spheres.keys():
+            self._batch_link_spheres[k] = self._link_spheres[k].unsqueeze(0).repeat(self.batch_size, 1, 1).clone()
+
+        self._w_batch_link_spheres = copy.deepcopy(self._batch_link_spheres)
+        # self.num_links = len(self.w_batch_link_spheres)
+        self.num_links = len(self._w_batch_link_spheres.keys())
 
         self.dist_buff = torch.zeros((self.batch_size, self.num_links, self.num_links), device=self.device)
-
 
     def load_robot_collision_model(self):
         """Load robot collision model, called from constructor
@@ -331,7 +331,9 @@ class RobotSphereCollision:
         Args:
             robot_collision_params (Dict): loaded from yml file
         """        
+
         robot_links = self.robot_collision_params['link_names']
+        ignore_dict = self.robot_collision_params['self_collision_ignore']
 
         # load collision file:
         coll_yml = join_path(get_configs_path(), self.robot_collision_params['collision_spheres'])
@@ -341,26 +343,61 @@ class RobotSphereCollision:
 
         collision_spheres = coll_params['collision_spheres']
         
-        self._link_spheres = []
-        # we store as [n_link, 7]
-        self._link_collision_trans = torch.empty((len(robot_links), 3), device=self.device)
-        self._link_collision_rot = torch.empty((len(robot_links), 3, 3), device=self.device)
+        # self._link_collision_trans = torch.empty((len(robot_links), 3), device=self.device)
+        # self._link_collision_rot = torch.empty((len(robot_links), 3, 3), device=self.device)
 
         # We collect all the spheres for different links specified in the robot_collision_params
         # Links that are not specified there will be ignored from collision checking 
-        for j in robot_links:
+        # We also construct a dictionary for ignoring certain links from being
+        # collision checked against each other.
+
+        self._link_spheres = {}
+        self._collision_ignore_dict = ignore_dict
+        self._link_to_idx = {}
+        self._idx_to_link = {}
+        # self._collision_include_dict = {}
+
+        for link_idx, link in enumerate(robot_links):
             #Get number of spheres per link
-            n_spheres = len(collision_spheres[j])
+            n_spheres = len(collision_spheres[link])
             # link_spheres = torch.zeros((n_spheres, 4), **self.tensor_args)
             link_spheres = torch.zeros((n_spheres, 4), device=self.device)
 
             for i in range(n_spheres):
                 link_spheres[i,:] = tensor_sphere(
-                    collision_spheres[j][i]['center'], collision_spheres[j][i]['radius'], 
+                    collision_spheres[link][i]['center'], collision_spheres[link][i]['radius'], 
                     device=self.device, tensor=link_spheres[i,:])
-            self._link_spheres.append(link_spheres)
-        
+            # self._link_spheres.append(link_spheres)
+            self._link_spheres[link] = link_spheres
+            self._link_to_idx[link] = link_idx
+            self._idx_to_link[link_idx] = link
+
+            # if link not in self._collision_include_dict:
+            #     self._collision_include_dict[link] = []
+            
+            # for link2 in robot_links:
+            #     if link2 not in self._collision_include_dict:
+            #         self._collision_include_dict[link2] = []
+            #     # if link2 in self._collision_ignore_dict.keys():
+            #     if (link2 != link) and \
+            #        (link2 not in self._collision_include_dict[link]): #if not already added
+            #         #check if they are not in each other's mutual ignore lists
+            #         #and add to include lists
+            #         if (link2 not in self._collision_ignore_dict[link]) and \
+            #            (link not in self._collision_ignore_dict[link2]):
+            #             self._collision_include_dict[link].append(link2)
+            #             self._collision_include_dict[link2].append(link)
+
+        # for link in robot_links:
+        #     print(link)
+        #     print('Ignore List')
+        #     print(self._collision_ignore_dict[link])
+        #     print('Include List')
+        #     print(self._collision_include_dict[link])
+        # exit()
+       
         self._w_link_spheres = self._link_spheres
+
         
     # def build_batch_features(self, clone_objs=False, clone_pose=True, batch_size=None):
     #     """clones poses/object instances for computing across batch. Use this once per batch size change to avoid re-initialization over repeated calls.
@@ -431,10 +468,17 @@ class RobotSphereCollision:
         links_pos: bxnx3
         links_rot: bxnx3x3
         '''
-        
-        for i in range(len(self.w_batch_link_spheres)):
-            self.w_batch_link_spheres[i][:,:,:3] = transform_point(
-                self._batch_link_spheres[i][:,:,:3], links_rot[:,i,:,:], links_pos[:,i,:].unsqueeze(-2))
+
+        # for i in range(len(self.w_batch_link_spheres)):
+        for i,link in enumerate(self._w_batch_link_spheres.keys()):
+            self._w_batch_link_spheres[link][...,:3] = transform_point(
+                self._batch_link_spheres[link][...,:3], links_rot[:,i,:,:], links_pos[:,i,:].unsqueeze(-2))
+
+
+
+        # for i in range(len(self.w_batch_link_spheres)):
+        #     self.w_batch_link_spheres[i][:,:,:3] = transform_point(
+        #         self._batch_link_spheres[i][:,:,:3], links_rot[:,i,:,:], links_pos[:,i,:].unsqueeze(-2))
 
     # def check_self_collisions_nn(self, q):
     #     """compute signed distance using NN, uses an instance of :class:`.nn_model.robot_self_collision.RobotSelfCollisionNet`
@@ -463,11 +507,11 @@ class RobotSphereCollision:
         #compute sphere poses in world frame
         self.update_batch_robot_collision_objs(link_trans, link_rot)
         #find distance between spheres
-        dist = find_link_distance(self.w_batch_link_spheres, self.dist_buff)
+        dist = find_link_distance(self.w_batch_link_spheres, self._collision_ignore_dict, self._link_to_idx, self._idx_to_link, self.dist_buff)
         return dist
     
     def compute_link_distances(self, w_batch_link_spheres):
-        dist = find_link_distance(w_batch_link_spheres, self.dist_buff)
+        dist = find_link_distance(w_batch_link_spheres, self._collision_ignore_dict, self._idx_to_link, self.dist_buff)
         return dist
 
 
@@ -491,7 +535,7 @@ class RobotSphereCollision:
     #     return dist
     
     def get_batch_robot_link_spheres(self):
-        return self.w_batch_link_spheres
+        return self._w_batch_link_spheres
 
 
 @torch.jit.script
@@ -567,36 +611,83 @@ def find_closest_distance(link_idx:int , links_sphere_list: List[torch.Tensor]) 
     link_dist = torch.max(dist, dim=-1)[0]
     return link_dist
 
-@torch.jit.script
-def find_link_distance(links_sphere_list: List[torch.Tensor], dist: torch.Tensor)->torch.Tensor:
+# @torch.jit.script
+# def find_link_distance(links_sphere_list: List[torch.Tensor], dist: torch.Tensor)->torch.Tensor:
+def find_link_distance(links_sphere_dict: Dict[str, torch.Tensor], collision_ignore_dict:Dict[str, List[str]], idx2link:Dict[int, str], dist: torch.Tensor)->torch.Tensor:
     futures : List[torch.jit.Future[torch.Tensor]] = []
 
-    b, n, _ = links_sphere_list[0].shape
-    spheres = links_sphere_list[0]
-    n_links = len(links_sphere_list)
+    link_names = links_sphere_dict.keys()
+
+    # b, n, _ = links_sphere_dict[link_names[0]].shape
+    # spheres = links_sphere_list[0]
+    n_links = len(link_names)
     dist *= 0.0
     dist -= 100.0
     #dist = torch.zeros((b,n_links,n_links), device=spheres.device,
     #                   dtype=spheres.dtype) - 100.0
 
-    for i in range(n_links):
+
+    for link1_idx in range(n_links):
         # for every link, compute the distance to the other links:
-        current_spheres = links_sphere_list[i]
-        for j in range(i + 2, n_links):
-            compute_spheres = links_sphere_list[j]
-            # find the distance between the two links:
-            d = torch.jit.fork(compute_spheres_distance, current_spheres, compute_spheres)
-            futures.append(d)
+        link1_name = idx2link[link1_idx]
+        current_spheres = links_sphere_dict[link1_name]
 
+        # print(link1_name, collision_ignore_dict[link1_name])
 
+        for link2_idx in range(link1_idx + 1, n_links):
+            link2_name = idx2link[link2_idx]
+            if link2_name not in collision_ignore_dict[link1_name]:
+                compute_spheres = links_sphere_dict[link2_name]
+                # find the distance between the two links:
+                d = torch.jit.fork(compute_spheres_distance, current_spheres, compute_spheres)
+                futures.append(d)
+            # input('....')
+
+    #Gather results
     k = 0
-    for i in range(n_links):
-        # for every link, compute the distance to the other links:
-        for j in range(i + 2, n_links):
-            d = torch.jit.wait(futures[k])
-            dist[:,i,j] = d
-            dist[:,j,i] = d
-            k += 1
+    for link1_idx in range(n_links):
+        link1_name = idx2link[link1_idx]
+        for link2_idx in range(link1_idx + 1, n_links):
+            link2_name = idx2link[link2_idx]
+            if link2_name not in collision_ignore_dict[link1_name]:
+                d = torch.jit.wait(futures[k])
+                dist[:,link1_idx,link2_idx] = d
+                dist[:,link2_idx,link1_idx] = d
+                k += 1
+    
+
+    # for i, link in enumerate(links_sphere_dict):
+    #     # for every link, compute the distance to the other links:
+    #     current_spheres = links_sphere_dict[link]
+    #     for j, link2 in enumerate(links_sphere_dict):
+
+    #         compute_spheres = links_sphere_dict[link2]
+    #         print(link, link2)
+    #         exit()
+    #         # find the distance between the two links:
+    #         d = torch.jit.fork(compute_spheres_distance, current_spheres, compute_spheres)
+    #         futures.append(d)
+
+
+    # for i in range(n_links):
+    #     # for every link, compute the distance to the other links:
+    #     current_spheres = links_sphere_list[i]
+    #     for j in range(i + 2, n_links):
+    #         compute_spheres = links_sphere_list[j]
+    #         # find the distance between the two links:
+    #         d = torch.jit.fork(compute_spheres_distance, current_spheres, compute_spheres)
+    #         futures.append(d)
+
+
+    # k = 0
+    # for i in range(n_links):
+    #     # for every link, compute the distance to the other links:
+    #     for j in range(i + 2, n_links):
+    #         d = torch.jit.wait(futures[k])
+    #         dist[:,i,j] = d
+    #         dist[:,j,i] = d
+    #         k += 1
 
     link_dist = torch.max(dist,dim=-1)[0]
+    
     return link_dist

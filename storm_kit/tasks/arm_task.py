@@ -361,6 +361,7 @@ class ArmTask(nn.Module):
         info['self_coll_dist'] = coll_cost_info['self_coll_dist'].view(*orig_size, -1)
         info['in_coll_world'] = coll_cost_info['in_coll_world'].view(*orig_size, -1)
         info['in_coll_self'] = coll_cost_info['in_coll_self'].view(*orig_size, -1)
+        info['in_bounds'] = bound_cost_info['in_bounds'].view(*orig_size, -1)
 
         # in_coll_self = info['in_coll_self']#[0,0,0]
         # in_coll_self_idxs = torch.nonzero(in_coll_self)
