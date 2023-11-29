@@ -71,7 +71,7 @@ def main(cfg: DictConfig):
     print(metrics)
     
     print('Time taken = {}'.format(time.time() - st))
-    data_dir = data_dir if cfg.task.train.agent.save_buffer else None
+    data_dir = data_dir if cfg.eval.save_buffer else None
     if model_dir is not None:
         print('Saving agent to {}'.format(model_dir))
     if data_dir is not None:

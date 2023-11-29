@@ -97,11 +97,13 @@ class PrimitiveCollisionCost(nn.Module):
         info = {
             'world_coll_cost': world_cost,
             'self_coll_cost': self_cost,
+            'self_cost_w': self.weight * self_cost,
+            'world_cost_w': self.weight * world_cost,
             'world_coll_dist': world_coll_dist,
             'self_coll_dist': self_coll_dist,
             'in_coll_world': in_coll_world,
             'in_coll_self': in_coll_self,
-            'w_link_spheres': w_link_spheres,
+            # 'w_link_spheres': w_link_spheres,
         }
 
         return cost.to(inp_device), info

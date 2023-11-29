@@ -292,7 +292,7 @@ class FrankaRealRobotEnv():
         mpc_config.rollout.cost.zero_q_vel.weight = 0.1
         mpc_config.rollout.cost.stop_cost.weight = 2.0
 
-        mpc_config.mppi.horizon = 10
+        # mpc_config.mppi.horizon = 10
         mpc_config.mppi.update_cov = False
 
 

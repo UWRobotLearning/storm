@@ -354,7 +354,6 @@ def episode_runner(
                 next_state_dict, done_env = envs.step(command)
                 
                 next_obs, cost, done_task, cost_terms, done_cost, done_info = task.forward(next_state_dict, actions)
-                print(done_info)
                 done_task = done_task.view(envs.num_envs,)
                 cost = cost.view(envs.num_envs,)
                 done_cost = done_cost.view(envs.num_envs,)

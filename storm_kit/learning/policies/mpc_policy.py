@@ -53,7 +53,7 @@ class MPCPolicy(Policy):
         return dist
 
     def get_action(self, obs_dict, deterministic=False, num_samples=1):
-        st=time.time()
+        # st=time.time()
         state_dict = obs_dict['states']
         state_dict['prev_action'] = self.prev_action
         # for k in state_dict:
@@ -97,7 +97,7 @@ class MPCPolicy(Policy):
         # }
 
         self.prev_action = action.clone()
-        print(time.time()-st)
+        # print(time.time()-st)
         return action
 
     def compute_value_estimate(self, obs_dict):

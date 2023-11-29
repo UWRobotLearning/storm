@@ -174,13 +174,12 @@ class MPCReacherNode():
                     self.policy.update_rollout_params(param_dict)
                     self.new_ee_goal = False
 
-                # for k in self.robot_state.keys():
-                #     self.policy_input['states'][k] = self.robot_state[k].clone().to(self.device)
-                                
+                for k in self.robot_state.keys():
+                    self.policy_input['states'][k] = self.robot_state[k].clone().to(self.device)
                 self.tstep_tensor[0,0] = self.tstep
                 self.policy_input['states']['tstep'] = self.tstep_tensor
                 self.policy_input['obs'] = self.robot_state_tensor.to(self.device)
-
+                # print(self.policy_input['states'])
                 # for k in self.policy_input['states'].keys():
                 #     print('in node', k, self.policy_input['states'][k].device)
 

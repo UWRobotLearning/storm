@@ -61,7 +61,7 @@ class ManipulabilityCost(nn.Module):
             #     score = torch.prod(chol_diag, dim=-1)
 
         score[score != score] = 0.0
-        self.info['manip_score'] = score
+        self.info['manip_score'] = score.clone()
         score[score > self.thresh] = self.thresh
         score = (self.thresh - score) / self.thresh
         cost = self.weight * score 

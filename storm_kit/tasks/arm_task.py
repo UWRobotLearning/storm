@@ -215,9 +215,11 @@ class ArmTask(nn.Module):
         
         # if self.cfg['cost']['manipulability']['weight'] > 0.0:
         with record_function('manipulability_cost'):
-            cost, manip_cost_info = self.manipulability_cost.forward(ee_jacobian)
+            manip_cost, manip_cost_info = self.manipulability_cost.forward(ee_jacobian)
             cost_terms['manip_score'] = manip_cost_info['manip_score']
-        
+            cost_terms['manip_cost'] = manip_cost
+            cost = manip_cost
+
         if self.cfg['cost']['zero_q_vel']['weight'] > 0:
             with record_function('zero_q_vel_cost'):
                 cost += self.zero_q_vel_cost.forward(q_vel_batch) #.view(self.num_instances * self.batch_size, self.horizon)
@@ -354,13 +356,13 @@ class ArmTask(nn.Module):
         #     print(torch.count_nonzero(termination, dim=-1))
         termination_cost = termination_cost.view(orig_size)
         termination = termination.float().view(orig_size)
-        info = {}
-        info['world_coll_cost'] = coll_cost_info['world_coll_cost'].view(*orig_size, -1)
-        info['self_coll_cost'] = coll_cost_info['self_coll_cost'].view(*orig_size, -1)
-        info['world_coll_dist'] = coll_cost_info['world_coll_dist'].view(*orig_size,-1)
-        info['self_coll_dist'] = coll_cost_info['self_coll_dist'].view(*orig_size, -1)
-        info['in_coll_world'] = coll_cost_info['in_coll_world'].view(*orig_size, -1)
-        info['in_coll_self'] = coll_cost_info['in_coll_self'].view(*orig_size, -1)
+        info = coll_cost_info
+        # info['world_coll_cost'] = coll_cost_info['world_coll_cost'].view(*orig_size, -1)
+        # info['self_coll_cost'] = coll_cost_info['self_coll_cost'].view(*orig_size, -1)
+        # info['world_coll_dist'] = coll_cost_info['world_coll_dist'].view(*orig_size,-1)
+        # info['self_coll_dist'] = coll_cost_info['self_coll_dist'].view(*orig_size, -1)
+        # info['in_coll_world'] = coll_cost_info['in_coll_world'].view(*orig_size, -1)
+        # info['in_coll_self'] = coll_cost_info['in_coll_self'].view(*orig_size, -1)
         info['in_bounds'] = bound_cost_info['in_bounds'].view(*orig_size, -1)
 
         # in_coll_self = info['in_coll_self']#[0,0,0]

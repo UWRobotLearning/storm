@@ -1,5 +1,5 @@
 # used to create the object
-name: FrankaReacher
+name: FrankaReacherRealRobot
 physics_engine: ${..physics_engine}
 robot_urdf: "urdf/franka_description/franka_panda_no_gripper_sim.urdf"
 ee_link_name: "ee_link"
@@ -72,7 +72,7 @@ task:
     grid_resolution: 0.05
 
   task_specs:
-    default_ee_target: [0.0, 0.0, 0.0, 0.0, 0.707, 0.707, 0.0]
+    default_ee_target: [0.4, 0.0, 0.5, 0.0, 0.707, 0.707, 0.0]
     target_position_noise: 0.0 #meters
     target_rotation_noise: 0.0 #radians
 

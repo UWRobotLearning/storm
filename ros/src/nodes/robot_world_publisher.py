@@ -16,6 +16,7 @@ from storm_kit.util_file import get_configs_path, get_gym_configs_path, join_pat
 from storm_kit.differentiable_robot_model import DifferentiableRobotModel
 from storm_kit.differentiable_robot_model.spatial_vector_algebra import quaternion_to_matrix, CoordinateTransform
 from storm_kit.geom.sdf.robot import RobotSphereCollision
+from storm_kit.tasks.arm_reacher import ArmTask
 
 class RobotWorldPublisher():
     def __init__(self) -> None:
@@ -37,9 +38,16 @@ class RobotWorldPublisher():
         self.urdf_path = join_path(get_assets_path(), self.robot_collision_config['urdf_path'])
         self.link_names = self.robot_collision_config['link_names']
         self.world_params = self.config.task.world['world_model']
+        self.task = ArmTask(
+            cfg=self.config.task.task, device=self.device, viz_rollouts=False, world_params=self.config.task.world
+        )
+
+        self.tstep = 0
+        self.tstep_tensor = torch.as_tensor([self.tstep], device=self.device).unsqueeze(0)
+        self.start_t = None
+        self.first_iter = True
 
         self.robot_state = {}
-        self.robot_state_tensor = None
         
         self.robot_sphere_marker_array = MarkerArray()
 
@@ -70,24 +78,24 @@ class RobotWorldPublisher():
         # self.robot_state.position = msg.position[2:]
         # self.robot_state.velocity = msg.velocity[2:]
         # self.robot_state.effort = msg.effort[2:]
-        self.robot_state['position'] = torch.tensor(msg.position)
-        self.robot_state['velocity'] = torch.tensor(msg.velocity)
-        self.robot_state['acceleration'] = torch.zeros_like(self.robot_state['velocity'])
-        self.robot_state_tensor = torch.cat((
-            self.robot_state['position'],
-            self.robot_state['velocity'],
-            self.robot_state['acceleration']
-        )).unsqueeze(0)
-
+        self.robot_state['q_pos'] = torch.tensor(msg.position).unsqueeze(0)
+        self.robot_state['q_vel'] = torch.tensor(msg.velocity).unsqueeze(0)
+        self.robot_state['q_acc'] = torch.zeros_like(self.robot_state['q_vel'])
 
     def pub_loop(self):
         while not rospy.is_shutdown():
             if self.state_sub_on:
+                self.tstep_tensor[0,0] = self.tstep
+                self.robot_state['tstep'] = self.tstep_tensor
+
                 #publish robot spheres
                 robot_spheres = self.get_robot_collision_spheres(self.robot_state)
                 marker_list = self.get_sphere_marker_list(robot_spheres)
                 self.robot_sphere_marker_array.markers = marker_list
-                
+
+                _, cost, done_task, cost_terms, done_cost, done_info = self.task.forward(self.robot_state, None)
+                print(cost_terms['manip_cost'], cost_terms['manip_score'])
+                # print(done_info['self_coll_dist'], done_info['self_cost_w'])
                 #publish world
                 self.marker_pub.publish(self.robot_sphere_marker_array)
                 world_marker_list = self.get_world_marker_list()
@@ -97,7 +105,7 @@ class RobotWorldPublisher():
 
     def get_robot_collision_spheres(self, robot_state):
         _,_,_,_ = self.robot_model.compute_fk_and_jacobian(
-            robot_state['position'].unsqueeze(0), link_name=self.ee_link_name)
+            robot_state['q_pos'], link_name=self.ee_link_name)
         link_pos_seq, link_rot_seq = [], []
 
         for _,k in enumerate(self.link_names):
@@ -109,12 +117,15 @@ class RobotWorldPublisher():
         link_rot_seq = torch.cat(link_rot_seq, axis=1)
         self.collision_model.update_batch_robot_collision_objs(link_pos_seq, link_rot_seq)
         spheres = self.collision_model.get_batch_robot_link_spheres()
-        spheres = [s.numpy() for s in spheres]
+        spheres_list = []
+        for k in spheres:
+            spheres_list.append(spheres[k].numpy())
+
 
         # self.collision_model.update_batch_robot_collision_objs(link_pos_seq, link_rot_seq)
         # res = self.collision_model.check_self_collisions(link_pos_seq, link_rot_seq)
         # res = torch.max(res, dim=-1)[0]
-        return spheres
+        return spheres_list
 
     def get_sphere_marker_list(self, sphere_list):
         markers_list = []
