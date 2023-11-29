@@ -275,8 +275,8 @@ class RobotSphereCollision:
             tensor_args (dict, optional): compute device and data type. Defaults to {'device':"cpu", 'dtype':torch.float32}.
         """        
 
-        self.batch_size = batch_size
-        self.device = device
+        self.batch_size:int = batch_size
+        self.device:torch.device = device
         self.robot_collision_params = robot_collision_params
         
         self._link_spheres = None
@@ -544,9 +544,6 @@ def compute_spheres_distance(spheres_1:torch.Tensor, spheres_2:torch.Tensor)->to
     b, n, _ = spheres_1.shape
     b_l, n_l, _ = spheres_2.shape
     
-    #dist = torch.zeros((b, n), device=spheres_1.device,
-    #                   dtype=spheres_2.dtype)
-
     j = 0
     link_sphere_pts = spheres_1[:,j,:]
     link_sphere_pts = link_sphere_pts.unsqueeze(1)
@@ -633,8 +630,6 @@ def find_link_distance(links_sphere_dict: Dict[str, torch.Tensor], collision_ign
         link1_name = idx2link[link1_idx]
         current_spheres = links_sphere_dict[link1_name]
 
-        # print(link1_name, collision_ignore_dict[link1_name])
-
         for link2_idx in range(link1_idx + 1, n_links):
             link2_name = idx2link[link2_idx]
             if link2_name not in collision_ignore_dict[link1_name]:
@@ -642,7 +637,6 @@ def find_link_distance(links_sphere_dict: Dict[str, torch.Tensor], collision_ign
                 # find the distance between the two links:
                 d = torch.jit.fork(compute_spheres_distance, current_spheres, compute_spheres)
                 futures.append(d)
-            # input('....')
 
     #Gather results
     k = 0
@@ -689,6 +683,6 @@ def find_link_distance(links_sphere_dict: Dict[str, torch.Tensor], collision_ign
     #         dist[:,j,i] = d
     #         k += 1
 
-    link_dist = torch.max(dist,dim=-1)[0]
+    link_dist = torch.max(dist, dim=-1)[0]
     
     return link_dist
