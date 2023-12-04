@@ -48,38 +48,38 @@ rollout:
       convergence_val: [0.0, 0.0] # orientation, position
 
     ee_vel_twist:
-      weight: 1e-4 #0.0 #3e-3 #1.0
+      weight: 5e-4 #0.0 #3e-3 #1.0
       norm_type: 'l2'
       # hinge_val: 0.01
       # vec_weight: [1.0, 1.0, 1.0] 
 
     ee_acc_twist:
-      weight: 1e-4
+      weight: 0.0 #1e-4
       norm_type: 'l2'
       # vec_weight: [1.0, 1.0, 1.0] 
 
     zero_q_vel:
-      weight: 1e-2 #1e-2
+      weight: 2e-2 #1e-2
       norm_type: 'l2'
       # hinge_val: 0.2 #0.2
 
     zero_q_acc:
-      weight: 1e-4 #1e-1 #0.01
+      weight: 0.0 # 1e-4 #1e-1 #0.01
       norm_type: 'l2'
       # hinge_val: -1.0
 
     zero_q_jerk:
       weight: 0.0 #1e-1 #0.01
-      norm_type: 'l1'
+      norm_type: 'l2'
       # hinge_val: -1.0
       
     manipulability:
       weight: 1.0 #0.5 #30.0 #10.0 #100.0 #0.05 #0.5 #1.0
-      thresh: 0.1 #0.1 #0.05 #0.03
+      thresh: 0.08 #0.1 #0.05 #0.03
 
     joint_l2:
       weight: 0.0
-      norm_type: 'l1'
+      norm_type: 'l2'
 
     stop_cost:
       weight: 2.0 #50.0 #50.0 #10.0 #10.0 
@@ -124,9 +124,9 @@ mppi:
   beta              : 0.1 #0.05
   alpha             : 1
   num_particles     : 500 #1000 #10000
-  update_cov        : False
+  update_cov        : True
   cov_type          : 'full_AxA' # 
-  kappa             : 0.01
+  kappa             : 0.005
   null_act_frac     : 0.01
   base_action       : 'repeat'
   squash_fn         : 'clamp'

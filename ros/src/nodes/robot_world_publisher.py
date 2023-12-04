@@ -94,7 +94,7 @@ class RobotWorldPublisher():
                 self.robot_sphere_marker_array.markers = marker_list
 
                 _, cost, done_task, cost_terms, done_cost, done_info = self.task.forward(self.robot_state, None)
-                print(cost_terms['manip_cost'], cost_terms['manip_score'])
+                # print(cost_terms['manip_cost'], cost_terms['manip_score'])
                 # print(done_info['self_coll_dist'], done_info['self_cost_w'])
                 #publish world
                 self.marker_pub.publish(self.robot_sphere_marker_array)
@@ -148,9 +148,9 @@ class RobotWorldPublisher():
                 sphere_marker.pose.orientation.y = 0.0
                 sphere_marker.pose.orientation.z = 0.0
                 sphere_marker.pose.orientation.w = 1.0
-                sphere_marker.scale.x = r
-                sphere_marker.scale.y = r
-                sphere_marker.scale.z = r
+                sphere_marker.scale.x = 2.0*r
+                sphere_marker.scale.y = 2.0*r
+                sphere_marker.scale.z = 2.0*r
                 sphere_marker.color.a = 0.5
                 sphere_marker.color.r = 1.0
                 sphere_marker.color.g = 0.0
