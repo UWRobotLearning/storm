@@ -33,9 +33,11 @@ class BoundCost(nn.Module):
             device:torch.device=torch.device('cpu')):
         
         super(BoundCost, self).__init__()
+        
         self.device = device
         self.weight = torch.as_tensor(weight, device=self.device)
         self.bounds = torch.as_tensor(bounds, device=self.device)
+        self.n_dofs = self.bounds.shape[0]
         self.scaled_bounds = torch.as_tensor(bounds, device=self.device)
         self.bnd_range = (self.bounds[:,1] - self.bounds[:,0]) / 2.0
         self.bound_thresh = bound_thresh * self.bnd_range
@@ -54,8 +56,7 @@ class BoundCost(nn.Module):
         
         cost[bound_mask] = 0.0
         cost = torch.sum(cost, dim=-1)
-        # cost = self.weight * self.proj_gaussian(torch.sqrt(cost))
-        cost = self. weight* torch.sqrt(cost)
+        cost = self. weight * torch.sqrt(cost)
         info = {}
         info['in_bounds'] = bound_mask
         return cost.to(inp_device), info

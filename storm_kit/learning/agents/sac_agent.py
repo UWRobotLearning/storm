@@ -3,6 +3,7 @@ import numpy as np
 import torch
 import torch.optim as optim
 import torch.nn.functional as F
+from torch.profiler import record_function
 import torch.nn as nn
 from tqdm import tqdm
 from storm_kit.learning.agents import Agent
@@ -53,7 +54,9 @@ class SACAgent(Agent):
         self.backup_entropy = self.cfg['backup_entropy']
         self.min_buffer_size = int(self.cfg['min_buffer_size'])
         self.reward_scale = self.cfg['reward_scale']
-        
+        self.num_eval_episodes = self.cfg.get('num_eval_episodes', 1)
+        self.eval_first_policy = self.cfg.get('eval_first_policy', False)
+
 
         if self.automatic_entropy_tuning:
             self.log_alpha = nn.Parameter(torch.tensor(self.cfg['init_log_alpha']))
@@ -74,15 +77,34 @@ class SACAgent(Agent):
         
         pbar = tqdm(range(int(num_epochs)), desc='train')
         for i in pbar:
+
+            #Evaluate policy at some frequency
+            if ((i + (1-self.eval_first_policy)) % self.eval_freq == 0) or (i == num_epochs -1):
+                print('Evaluating policy')
+                self.policy.eval()
+                eval_metrics = self.evaluate_policy(
+                    self.policy, 
+                    num_eval_episodes=self.num_eval_episodes, 
+                    deterministic=True, 
+                    debug=False)
+                
+                print(eval_metrics)
+                if self.logger is not None:
+                    self.logger.row(eval_metrics, nostdout=True)
+                if self.tb_writer is not None:
+                    for k, v in eval_metrics.items():
+                        self.tb_writer.add_scalar('Eval/' + k, v, i)
+
             #collect new experience
             play_metrics = self.collect_experience(debug=debug)
             print(play_metrics)
             num_steps_collected = play_metrics['num_steps_collected'] 
             total_env_steps += num_steps_collected
 
-            #update agent
-            if len(self.buffer) >= self.min_buffer_size:
-                
+            #update
+            self.policy.train()
+            self.critic.train()
+            if len(self.buffer) >= self.min_buffer_size:                
                 if self.num_updates_per_epoch is not None:
                     num_update_steps = int(self.num_updates_per_epoch)
                 elif self.update_to_data_ratio is not None:
@@ -93,8 +115,17 @@ class SACAgent(Agent):
                 print('Running {} updates'.format(num_update_steps))
 
                 for k in range(num_update_steps):
-                    batch = self.buffer.sample(self.cfg['train_batch_size'])
-                    train_metrics = self.update(batch, k, num_update_steps)
+                    with record_function('sample_batch'):
+                        batch = self.buffer.sample(self.cfg['train_batch_size'])
+                        batch = dict_to_device(batch, self.device)
+                    
+                    if self.relabel_data:
+                        with record_function('relabel_data'):
+                            batch = self.relabel_batch(batch)
+
+                    # batch = self.buffer.sample(self.cfg['train_batch_size'])
+                    with record_function('update'):
+                        train_metrics = self.update(batch, k, num_update_steps)
                     pbar.set_postfix(train_metrics)
 
                 if (i % self.log_freq == 0) or (i == num_epochs -1):

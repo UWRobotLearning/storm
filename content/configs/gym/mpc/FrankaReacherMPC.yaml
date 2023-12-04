@@ -42,13 +42,13 @@ rollout:
       vec_weight: [1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
       weight: [5.0, 10.0] #[10.0, 50.0] #[50.0, 100.0]
       cost_type: 'se3_twist'
-      norm_type: 'l1'
+      norm_type: 'l2'
       hinge_val: -1
       convergence_val: [0.0, 0.0] # orientation, position
 
     ee_vel_twist:
       weight: 8e-3 #1.0
-      norm_type: 'l1'
+      norm_type: 'l2'
       # hinge_val: 0.01
       # vec_weight: [1.0, 1.0, 1.0] 
 
@@ -59,17 +59,17 @@ rollout:
 
     zero_q_vel:
       weight: 1e-2
-      norm_type: 'l1'
+      norm_type: 'l2'
       # hinge_val: 0.2 #0.2
 
     zero_q_acc:
       weight: 0.0 #0.01
-      norm_type: 'l1'
+      norm_type: 'l2'
       # hinge_val: -1.0
 
     zero_q_jerk:
       weight: 1e-5 
-      norm_type: 'l1'
+      norm_type: 'l2'
       # hinge_val: -1.0
       
     manipulability:
@@ -78,7 +78,7 @@ rollout:
 
     joint_l2:
       weight: 0.0
-      norm_type: 'l1'
+      norm_type: 'l2'
 
     stop_cost:
       weight: 1.5 #1.0 #30.0 #50.0 #50.0 #10.0 #10.0 

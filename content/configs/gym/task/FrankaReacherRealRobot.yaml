@@ -13,6 +13,20 @@ env:
   robot_default_dof_pos: [0.0, -0.7853, 0.0, -2.3561, 0.0, 1.5707, 0.7853]
   asset:
     assetFileNameRobot: ${task.robot_urdf}
+  #The following are used only when running in sim
+  envSpacing: 1.5
+  enableDebugVis: False
+  controlFrequencyInv: 1
+  # clipObservations: 5.0
+  # # clipActions: 1.0
+  aggregateMode: 3
+  # actionScale: 1.0 #7.5
+  # dofVelocityScale: 0.1
+  joint_control_mode: 'inverse_dynamics'
+  robot_p_gains: [100.0, 100.0, 100.0, 100.0, 40.0, 30.0, 20.0]
+  robot_d_gains: [10.0, 10.0, 10.0, 10.0, 7.5, 5.0, 1.0]
+  robot_z_offset: 0.0
+
 
 joint_control:
   n_dofs: ${task.n_dofs}
@@ -64,30 +78,30 @@ task:
   cost:
     goal_pose:
       vec_weight: [1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
-      weight: [10.0, 0.0] #[10.0, 50.0] #[50.0, 100.0]
+      weight: [5.0, 20.0] #[10.0, 50.0] #[50.0, 100.0]
       cost_type: 'se3_twist'
-      norm_type: 'l1'
+      norm_type: 'l2'
       hinge_val: -1
       convergence_val: [0.0, 0.0] # orientation, position
 
     ee_vel_twist:
-      weight: 0.003
+      weight: 1e-4
       norm_type: 'l1'
       # hinge_val: 0.01
       # vec_weight: [1.0, 1.0, 1.0] 
 
     ee_acc_twist:
-      weight: 0.0
+      weight: 1e-4
       norm_type: 'l1'
       # vec_weight: [1.0, 1.0, 1.0] 
 
     zero_q_vel:
-      weight: 0.005
+      weight: 1e-2
       norm_type: 'l1'
       # hinge_val: 0.2 #0.2
 
     zero_q_acc:
-      weight: 0.0 #0.01
+      weight: 1e-4 #0.01
       norm_type: 'l1'
       # hinge_val: -1.0
 
@@ -97,7 +111,7 @@ task:
       # hinge_val: -1.0
       
     manipulability:
-      weight: 0.5 #30.0 #30.0 #10.0 #100.0 #0.05 #0.5 #1.0
+      weight: 1.0 #30.0 #30.0 #10.0 #100.0 #0.05 #0.5 #1.0
       thresh: 0.1 #0.1 #0.05 #0.03
 
     joint_l2:
@@ -128,15 +142,28 @@ task:
 defaults:
   - world: FrankaReacherWorldReal
 
-train:
-  agent:
-    name: 'MPC'
-    num_episodes: 20
-    save_buffer: false
-    log_freq: 50
-    eval_freq: 100
-    checkpoint_freq: 10000
-  policy: null
+
+#Used only when running in sim
+sim:
+  dt: 0.0166 # 1/60
+  substeps: 1
+  up_axis: "z"
+  use_gpu_pipeline: ${...use_gpu_pipeline}
+  gravity: [0.0, 0.0, -9.81]
+  physx:
+    num_threads: ${....num_threads}
+    solver_type: ${....solver_type}
+    use_gpu: ${contains:"cuda",${....sim_device}} # set to False to run on CPU
+    num_position_iterations: 12
+    num_velocity_iterations: 1
+    contact_offset: 0.005
+    rest_offset: 0.0
+    bounce_threshold_velocity: 0.2
+    max_depenetration_velocity: 1000.0
+    default_buffer_size_multiplier: 5.0
+    max_gpu_contact_pairs: 1048576 # 1024*1024
+    num_subscenes: ${....num_subscenes}
+    contact_collection: 0 # 0: CC_NEVER (don't collect contact info), 1: CC_LAST_SUBSTEP (collect only contacts on last substep), 2: CC_ALL_SUBSTEPS (broken - do not use!)
 
 
 # rollout:

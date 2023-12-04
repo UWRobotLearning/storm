@@ -328,8 +328,9 @@ class ArmTask(nn.Module):
 
         with record_function('bound_cost'):
             bound_cost, bound_cost_info = self.bound_cost.forward(state_batch[..., :3*self.n_dofs])
+            in_bounds = bound_cost_info['in_bounds'][..., 0:2*self.n_dofs] #only use qpos and qvel
             # termination += bound_cost > 0
-            bounds_violation = torch.logical_not(bound_cost_info['in_bounds'])
+            bounds_violation = torch.logical_not(in_bounds)
             bounds_violation = bounds_violation.sum(-1)
         
 
@@ -357,29 +358,11 @@ class ArmTask(nn.Module):
         termination_cost = termination_cost.view(orig_size)
         termination = termination.float().view(orig_size)
         info = coll_cost_info
-        # info['world_coll_cost'] = coll_cost_info['world_coll_cost'].view(*orig_size, -1)
-        # info['self_coll_cost'] = coll_cost_info['self_coll_cost'].view(*orig_size, -1)
-        # info['world_coll_dist'] = coll_cost_info['world_coll_dist'].view(*orig_size,-1)
-        # info['self_coll_dist'] = coll_cost_info['self_coll_dist'].view(*orig_size, -1)
-        # info['in_coll_world'] = coll_cost_info['in_coll_world'].view(*orig_size, -1)
-        # info['in_coll_self'] = coll_cost_info['in_coll_self'].view(*orig_size, -1)
         info['in_bounds'] = bound_cost_info['in_bounds'].view(*orig_size, -1)
 
-        # in_coll_self = info['in_coll_self']#[0,0,0]
-        # in_coll_self_idxs = torch.nonzero(in_coll_self)
-        # print(in_coll_self)
-        # print(in_coll_self_idxs)
-        # input('...')
-
         return termination, termination_cost, info
-    
-    # def update_state(self, state_dict: Dict[str, torch.Tensor]):
-    #     self.full_state_dict = self.compute_full_state(state_dict)
-
-
 
     def _compute_full_state(self, state_dict: Dict[str,torch.Tensor], debug=False):
-        # print('computing full state', debug)
         if 'state_seq' not in state_dict:
             q_pos = state_dict['q_pos'].to(device=self.device)
             q_vel = state_dict['q_vel'].to(device=self.device)
@@ -440,6 +423,7 @@ class ArmTask(nn.Module):
 
             for k in state_dict.keys():
                 new_state_dict[k] = state_dict[k].clone()
+            
             new_state_dict['state_seq'] = current_state_tensor
             new_state_dict['q_pos_seq'] = q_pos.clone()
             new_state_dict['q_vel_seq'] = q_vel.clone()

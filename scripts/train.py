@@ -71,20 +71,24 @@ def main(cfg: DictConfig):
     target_critic = copy.deepcopy(critic)
 
 
-
-    if cfg.train.agent.name == "BP":
+    num_pretrain_steps = cfg.train.agent.get('num_pretrain_steps', 0)
+    if num_pretrain_steps > 0:
+    # if cfg.train.agent.name == "BP" or cfg.train.agent.num_pretrain:
         try:
             base_dir = os.path.abspath('./tmp_results/{}'.format(cfg.task_name))
             data_path = os.path.join(base_dir, cfg.train.dataset_path)
-            buffer, num_datapoints = buffer_from_file(data_path)
+            init_buffer, num_datapoints = buffer_from_file(data_path)
         except Exception as e:
+            print('Could not load data')
             print(e)
-
-        agent = BPAgent(cfg.train.agent, envs=envs, task=task, obs_dim=obs_dim, action_dim=act_dim, 
-                        buffer=buffer, policy=policy, critic=critic, runner_fn=episode_runner, 
+        print('Pretraining')
+        pretrain_agent = BPAgent(cfg.train.agent, envs=envs, task=task, obs_dim=obs_dim, action_dim=act_dim, 
+                        buffer=init_buffer, policy=policy, critic=critic, runner_fn=episode_runner, 
                         logger=log, tb_writer=writer, device=cfg.rl_device)
+        pretrain_agent.train(model_dir=model_dir)
+        print('Pretraining done')
     
-    elif cfg.train.agent.name == 'SAC':
+    if cfg.train.agent.name == 'SAC':
         agent = SACAgent(cfg.train.agent, envs=envs, task=task, obs_dim=obs_dim, action_dim=act_dim, 
                          buffer=buffer, policy=policy, critic=critic, runner_fn=episode_runner, target_critic=target_critic, 
                          logger=log, tb_writer=writer, device=cfg.rl_device)
@@ -108,7 +112,8 @@ def main(cfg: DictConfig):
 
     else:
         raise NotImplementedError('Invalid agent type: {}'.format(cfg.train.agent.name))
-
+    
+    print('Training {} agent'.format(cfg.train.agent.name))
     agent.train(model_dir=model_dir)
 
 if __name__ == "__main__":

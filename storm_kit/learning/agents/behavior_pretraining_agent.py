@@ -44,11 +44,12 @@ class BPAgent(Agent):
             raise ValueError('Unidentified policy loss type {}.'.format(self.policy_loss_type))
         self.num_eval_episodes = self.cfg.get('num_eval_episodes', 1)
         self.eval_first_policy = self.cfg.get('eval_first_policy', False)
+        self.policy_use_tanh = self.cfg.get('policy_use_tanh', False)
         # self.best_policy = copy.deepcopy(self.policy)
 
     
     def train(self, model_dir=None, data_dir=None):
-        num_train_steps = self.cfg['num_train_steps']
+        num_train_steps = self.cfg['num_pretrain_steps']
         # self.best_policy = copy.deepcopy(self.policy)
         # best_policy_perf = -torch.inf
         # best_policy_step = 0
@@ -58,6 +59,8 @@ class BPAgent(Agent):
         for i in pbar:
             #Evaluate policy at some frequency
             if ((i + (1-self.eval_first_policy)) % self.eval_freq == 0) or (i == num_train_steps -1):
+                print('Evaluating policy')
+                self.policy.eval()
                 eval_metrics = self.evaluate_policy(
                     self.policy, 
                     num_eval_episodes=self.num_eval_episodes, 
@@ -124,6 +127,8 @@ class BPAgent(Agent):
         obs_batch = batch_dict['obs']
         state_batch =batch_dict['state_dict']
         act_batch = batch_dict['actions']
+        if self.policy_use_tanh:
+            act_batch = torch.tanh(act_batch)
 
         if self.policy_loss_type == 'mse':
             new_actions = self.policy.get_action({'obs':obs_batch}, deterministic=False, num_samples=self.num_action_samples)            
