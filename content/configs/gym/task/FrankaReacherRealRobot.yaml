@@ -17,7 +17,7 @@ env:
 joint_control:
   n_dofs: ${task.n_dofs}
   control_dt: 0.02
-  state_filter_coeff: {'q_pos': 0.2, 'q_vel': 0.1, 'q_acc': 0.0}
+  state_filter_coeff: {'q_pos': 0.3, 'q_vel': 0.0, 'q_acc': 0.0}
 
 task:
   randomize: False  

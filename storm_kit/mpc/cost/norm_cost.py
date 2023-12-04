@@ -33,6 +33,9 @@ class NormCost(nn.Module):
             # for numerical stability
             dist = torch.where(x > 0, F.softplus(-2.0 * x) + x - self.log_two, F.softplus(2.0 * x) - x - self.log_two)
             dist = torch.sum(dist, dim=-1, keepdim=keepdim)
+            #option 2
+            # x = torch.norm(x, p=2, dim=-1, keepdim=keepdim)
+            # dist = logcosh(x)
         elif self.norm_type == 'smooth_l1':
             l1_dist = torch.norm(x, p=1, dim=-1)
             dist = None
