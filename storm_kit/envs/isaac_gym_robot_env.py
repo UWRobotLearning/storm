@@ -584,7 +584,7 @@ class IsaacGymRobotEnv():
             state_dict['object_rot'] = self.object_state[:,3:7].to(self.rl_device)
             state_dict['object_vel'] = self.object_state[:,7:10].to(self.rl_device)
             state_dict['object_ang_vel'] = self.object_state[:,10:13].to(self.rl_device)
-        print(state_dict['object_pos'])
+
         return state_dict
     
     def reset_idx(self, env_ids, reset_data=None):

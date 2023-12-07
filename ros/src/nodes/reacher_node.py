@@ -51,6 +51,7 @@ class MPCReacherNode():
         self.ee_goal_topic = rospy.get_param('~ee_goal_topic', 'ee_goal')
         self.joint_names = rospy.get_param('~robot_joint_names', None)
         self.save_data = rospy.get_param('~save_data', False)
+        self.load_pretrained_policy = rospy.get_param('~load_pretrained', False)
         
         initialize(config_path="../../../content/configs/gym", job_name="mpc")
         self.config = compose(config_name="config", overrides=["task=FrankaReacherRealRobot"])

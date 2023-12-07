@@ -166,7 +166,7 @@ class FrankaRealRobotEnv():
         reset_data = {}
         reset_data['goal_dict'] = dict(joint_goal = self.robot_default_dof_pos)
         self.reset_policy.reset(reset_data)
-        max_steps = 1000
+        max_steps = 500
         goal_reached = False
         curr_q_pos = self.robot_state['q_pos']
         q_pos_goal = self.robot_default_dof_pos.cpu()
@@ -288,7 +288,7 @@ class FrankaRealRobotEnv():
 
         mpc_config = reset_cfg.mpc
         mpc_config.rollout.cost.goal_pose.weight = [0.0, 0.0]
-        mpc_config.rollout.cost.joint_l2.weight = 2.0
+        mpc_config.rollout.cost.joint_l2.weight = 5.0
         mpc_config.rollout.cost.ee_vel_twist.weight = 0.0
         mpc_config.rollout.cost.zero_q_vel.weight = 0.1
         mpc_config.rollout.cost.stop_cost.weight = 2.0

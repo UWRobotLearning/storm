@@ -67,7 +67,7 @@ class ArmRollout(nn.Module):
             cost_seq, cost_terms = self.task.compute_cost(state_dict, act_seq)
 
         with record_function("compute_termination"):
-            state_dict['prev_action'] = start_state['prev_action']
+            # state_dict['prev_action'] = start_state['prev_action']
             term_seq, term_cost, term_info = self.task.compute_termination(state_dict, act_seq)
         
         # print(term_info['in_coll_self'])

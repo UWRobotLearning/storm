@@ -1,0 +1,40 @@
+
+from pathlib import Path
+import isaacgym 
+from omegaconf import DictConfig, OmegaConf
+import numpy as np
+import os
+import hydra
+import torch
+from torch.profiler import profile, record_function, ProfilerActivity
+import time
+from storm_kit.learning.policies import MPCPolicy, GaussianPolicy, JointControlWrapper
+from storm_kit.learning.replay_buffers import RobotBuffer
+from storm_kit.learning.learning_utils import buffer_dict_from_folder
+from task_map import task_map
+
+
+
+@hydra.main(config_name="config", config_path="../content/configs/gym")
+def main(cfg: DictConfig):
+    torch.set_default_dtype(torch.float32)
+    torch.manual_seed(cfg.seed)
+
+    from storm_kit.envs import IsaacGymRobotEnv
+    task_details = task_map[cfg.task.name]
+    task_cls = task_details['task_cls']   
+    
+    base_dir = Path('./tmp_results/{}/{}'.format(cfg.task_name, 'policy_eval'))
+    model_dir = os.path.join(base_dir, 'models')
+    data_dir = os.path.join(base_dir, 'data')
+
+    data_dir = os.path.join(data_dir, 'mpc')
+
+    episode_data = buffer_dict_from_folder(data_dir)
+
+    print(episode_data)
+
+
+
+if __name__ == "__main__":
+    main()

@@ -23,7 +23,7 @@ task_map['FrankaTrayReacherRealRobot'] = {
 }
 
 
-@hydra.main(config_name="config", config_path="../content/configs/gym")
+@hydra.main(config_name="config", config_path="../../content/configs/gym")
 def main(cfg: DictConfig):
     torch.set_default_dtype(torch.float32)
     torch.manual_seed(cfg.seed)
@@ -36,7 +36,7 @@ def main(cfg: DictConfig):
     task_details = task_map[cfg.task.name]
     task_cls = task_details['task_cls']   
     
-    base_dir = Path('./tmp_results/{}/{}'.format(cfg.task_name, 'policy_eval'))
+    base_dir = Path('../tmp_results/{}/{}'.format(cfg.task_name, 'policy_eval'))
     model_dir = os.path.join(base_dir, 'models')
     data_dir = os.path.join(base_dir, 'data')
     eval_rng = torch.Generator(device=cfg.rl_device)
@@ -62,8 +62,6 @@ def main(cfg: DictConfig):
     obs_dim = task.obs_dim
     act_dim = task.action_dim
     act_lows, act_highs = task.action_lims
-
-    buffer = RobotBuffer(capacity=int(1e6), device=cfg.rl_device)  
     
     eval_pretrained = cfg.eval.eval_pretrained and (cfg.eval.pretrained_policy is not None)
 
@@ -73,7 +71,7 @@ def main(cfg: DictConfig):
             cfg=cfg.task.task, device=cfg.rl_device, viz_rollouts=False, world_params=cfg.task.world)
         #load pretrained policy weights
         policy = GaussianPolicy(obs_dim=obs_dim, act_dim=act_dim, config=cfg.train.policy, task=policy_task, act_lows=act_lows, act_highs=act_highs, device=cfg.rl_device)
-        checkpoint_path = Path('./tmp_results/{}/{}'.format(cfg.task_name, cfg.eval.pretrained_policy))
+        checkpoint_path = Path('../tmp_results/{}/{}'.format(cfg.task_name, cfg.eval.pretrained_policy))
         print('Loading policy from {}'.format(checkpoint_path))
         checkpoint = torch.load(checkpoint_path)
         policy_state_dict = checkpoint['policy_state_dict']
@@ -95,27 +93,37 @@ def main(cfg: DictConfig):
     num_episodes = cfg.eval.num_episodes
     deterministic_eval = cfg.eval.deterministic_eval
     print('Collecting {} episodes. Deterministic = {}'.format(num_episodes, deterministic_eval))
-    metrics = episode_runner(
-        envs,
-        num_episodes = num_episodes, 
-        policy = policy,
-        task = task,
-        buffer = buffer,
-        deterministic = deterministic_eval,
-        debug = False,
-        device = cfg.rl_device,
-        rng = eval_rng)
-    print(metrics)
-    
-    print('Time taken = {}'.format(time.time() - st))
+
+    episode_buffer_list = []
     data_dir = data_dir if cfg.eval.save_buffer else None
-    # if model_dir is not None:
-    #     print('Saving agent to {}'.format(model_dir))
-    if data_dir is not None:
-        if eval_pretrained: agent_tag = 'pretrained_policy'
-        else: agent_tag = 'mpc'
-        print('Saving buffer to {}'.format(data_dir))
-        buffer.save(os.path.join(data_dir, '{}_buffer_0.pt'.format(agent_tag)))
+
+    for ep_num in range(num_episodes):
+        episode_buffer = RobotBuffer(capacity=int(envs.max_episode_length), device=cfg.rl_device)  
+        metrics = minimal_episode_runner(
+            envs,
+            num_episodes = 1, 
+            policy = policy,
+            task = task,
+            buffer = episode_buffer,
+            deterministic = deterministic_eval,
+            debug = False,
+            device = cfg.rl_device,
+            rng = eval_rng)
+        
+        print('Collected episode {}'.format(ep_num))
+        # if model_dir is not None:
+        #     print('Saving agent to {}'.format(model_dir))
+        if data_dir is not None:
+            if eval_pretrained: agent_tag = 'pretrained_policy'
+            else: agent_tag = 'mpc'
+            #TODO: Here add option to not overwrite but save data incrementally
+            buffer_dir = os.path.join(data_dir, '{}'.format(agent_tag))
+            if not os.path.exists(buffer_dir): os.makedirs(buffer_dir)
+            buffer_file = os.path.abspath(os.path.join(buffer_dir, 'episode_{}.pt'.format(ep_num)))
+            print('Saving episode buffer to {}. Buffer len: {}'.format(buffer_file, len(episode_buffer)))
+            episode_buffer.save(buffer_file)
+    
+    print('Total time taken = {}'.format(time.time() - st))
 
 
 if __name__ == "__main__":

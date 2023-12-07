@@ -1,5 +1,6 @@
 
 dataset_path: 'policy_eval/data/mpc_buffer_0.pt'
+data_folder: 'policy_eval/data/mpc'
 
 policy:
   mlp_params:
