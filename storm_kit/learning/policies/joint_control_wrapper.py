@@ -1,4 +1,5 @@
 from typing import Dict
+import copy
 import torch
 import torch.nn as nn
 import time
@@ -21,6 +22,7 @@ class JointControlWrapper(nn.Module):
         self.device = device
         self.n_dofs = self.cfg.n_dofs
         self.dt = self.cfg.control_dt
+        # self.task = task
         # self.act_highs = act_highs
         # self.act_lows = act_lows
 
@@ -37,19 +39,26 @@ class JointControlWrapper(nn.Module):
         return self.policy.forward(input_dict)
 
     def get_action(self, input_dict, deterministic=False, num_samples:int = 1):
-        state_dict = dict_to_device(input_dict['states'], self.device)
-        planning_states = self.state_filter.filter_joint_state(state_dict)
-        new_input_dict = {'states': planning_states}
-        if 'obs' in input_dict:
-            new_input_dict['obs'] = input_dict['obs']
+        # state_dict = dict_to_device(input_dict['states'], self.device)
+        #filter states
+        input_dict['states'] = copy.deepcopy(self.state_filter.filter_joint_state(
+            dict_to_device(input_dict['states'], self.device)))
 
-        action = self.policy.get_action(new_input_dict, deterministic, num_samples)
+        # new_input_dict = {'states': planning_states}
+        # if 'obs' in input_dict:
+        #     new_input_dict['obs'] = input_dict['obs']
+        # if self.task is not None:
+        #     input_dict['obs'] = self.task.compute_observations(
+        #         input_dict['states'], compute_full_state=True)
 
-        #TODO: Thjis must go by making state_filter compatible with num actions
+        action = self.policy.get_action(input_dict, deterministic, num_samples)
+        # if num_samples == 1 and action.ndim > 2:
+        #     action = action[:, 0]
+
+        # #TODO: Thjis must go by making state_filter compatible with num actions
         if action.ndim > 2:
             action = action[0]
 
-        
         # scaled_action = action
         # if self.act_highs is not None:
         #     scaled_action = self.scale_action(action)
@@ -62,7 +71,7 @@ class JointControlWrapper(nn.Module):
         
         self.prev_qdd_des = action.clone()
         
-        return command_tensor, {'action': action} #, 'scaled_action': scaled_action}
+        return command_tensor, {'action': action, 'filtered_states': input_dict['states']} #, 'scaled_action': scaled_action}
 
     def log_prob(self, input_dict: Dict[str, torch.Tensor], actions:torch.Tensor):
         return self.policy.log_prob(input_dict, actions)
@@ -80,10 +89,12 @@ class JointControlWrapper(nn.Module):
         self.prev_qdd_des = None
         self.state_filter.reset()
         self.policy.reset(reset_data)
+        # if self.task is not None:
+        #     self.task.update_params(reset_data)                
+
+    # def scale_action(self, action:torch.Tensor):
+    #     act_half_range = (self.act_highs - self.act_lows) / 2.0
+    #     act_mid_range = (self.act_highs + self.act_lows) / 2.0
     
-    def scale_action(self, action:torch.Tensor):
-        act_half_range = (self.act_highs - self.act_lows) / 2.0
-        act_mid_range = (self.act_highs + self.act_lows) / 2.0
-    
-        return act_mid_range.unsqueeze(0) + action * act_half_range.unsqueeze(0)
+    #     return act_mid_range.unsqueeze(0) + action * act_half_range.unsqueeze(0)
 

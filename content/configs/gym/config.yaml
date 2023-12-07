@@ -64,6 +64,8 @@ eval:
   deterministic_eval: true
   log_freq: 50
   checkpoint_freq: 10000
+  eval_pretrained: false
+  pretrained_policy: 'BP/models/agent_checkpoint_0.pt'
 
 # set the directory where the output files get saved
 hydra:

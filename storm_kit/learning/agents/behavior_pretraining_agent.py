@@ -1,5 +1,4 @@
-import copy
-import os
+from typing import Optional
 import torch
 import torch.optim as optim
 import torch.nn.functional as F
@@ -25,13 +24,14 @@ class BPAgent(Agent):
         logger=None,
         tb_writer=None,
         device=torch.device('cpu'), 
+        eval_rng: Optional[torch.Generator]=None
     ):
         super().__init__(
             cfg, envs, task, obs_dim, action_dim, #obs_space, action_space,
             buffer=buffer, policy=policy,
             runner_fn=runner_fn,
             logger=logger, tb_writer=tb_writer,
-            device=device
+            device=device, eval_rng=eval_rng
         )
         self.critic = critic
         # optimizer_class = self.cfg['optimizer']
@@ -102,7 +102,7 @@ class BPAgent(Agent):
                         
             if (i % self.checkpoint_freq == 0) or (i == num_train_steps -1):
                 print(f'Iter {i}: Saving current policy')
-                self.save(model_dir, data_dir, iter=i)
+                self.save(model_dir, data_dir, iter=0)
             
             # step_time = time.time() - step_start_time
             # print(f'Iter {i}, update_time = {update_time}, step_time = {step_time}')
@@ -110,7 +110,7 @@ class BPAgent(Agent):
     def update(self, batch_dict, step_num):
 
         train_metrics = {}
-
+        # self.policy.reset(batch_dict)
         self.policy_optimizer.zero_grad()
         policy_loss, log_pi_new_actions = self.compute_policy_loss(batch_dict)
         policy_loss.backward()

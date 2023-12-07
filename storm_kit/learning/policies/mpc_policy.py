@@ -55,54 +55,20 @@ class MPCPolicy(Policy):
     def get_action(self, obs_dict, deterministic=False, num_samples=1):
         # st=time.time()
         state_dict = obs_dict['states']
-        state_dict['prev_action'] = self.prev_action
-        # for k in state_dict:
-        #     print(state_dict[k].shape)
-        # states = torch.cat(
-        #     (state_dict['q_pos'], 
-        #      state_dict['q_vel'], 
-        #      state_dict['q_acc'], 
-        #      state_dict['tstep']), dim=-1)
-        # states = states.to(self.device)
-        # self.state_filter.predict_internal_state(self.prev_qdd_des)
-        # if self.state_filter.cmd_joint_state is None:
-        #     state_dict['velocity'] *= 0.0
-
-        # planning_states = self.state_filter.filter_joint_state(state_dict)
-        # planning_state_dict = state_dict
-        # planning_state_dict['q_pos'] = planning_state[:, 0:self.n_dofs]
-        # planning_state_dict['q_vel'] = planning_state[:, 0:self.n_dofs]
-        # planning_state_dict['q_acc'] = planning_state[:, 0:self.n_dofs]
-
         ################
         # curr_action_seq, value, info = self.controller.forward(
         #     state_dict, calc_val=False, shift_steps=1, deterministic=deterministic)
         ####################
-        curr_action_seq, _, _ = self.controller.sample(state_dict, calc_val=False, shift_steps=1, deterministic=deterministic, num_samples=num_samples)
+        curr_action_seq, _, _ = self.controller.sample(
+            state_dict, calc_val=False, shift_steps=1, deterministic=deterministic, num_samples=num_samples)
         action = curr_action_seq[:, :, 0]
-        
-        
-        # command = self.state_filter.predict_internal_state(q_acc_des)
-
-
-        # q_vel_des = planning_states['q_vel'] + q_acc_des * self.dt
-        # q_pos_des = planning_states['q_pos'] + q_vel_des
-        # q_vel_des = planning_state[:, self.n_dofs:2*self.n_dofs] + q_acc_des * self.dt
-        # q_pos_des = planning_state[:, :self.n_dofs] + q_vel_des * self.dt
-
-        # command = {
-        #     'q_pos_des': command['q_pos'],
-        #     'q_vel_des': command['q_vel'],
-        #     'q_acc_des': command['q_acc'],
-        # }
-
         self.prev_action = action.clone()
         # print(time.time()-st)
         return action
 
     def compute_value_estimate(self, obs_dict):
         state_dict = obs_dict['states']
-        state_dict['prev_action'] = self.prev_action
+        # state_dict['prev_action'] = self.prev_action
         curr_action_seq, value, info = self.controller.forward(
             state_dict, calc_val=True, shift_steps=1)
         action = curr_action_seq[:, 0]

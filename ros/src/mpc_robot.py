@@ -22,8 +22,6 @@ task_map['FrankaTrayReacherRealRobot'] = {
     'task_cls': ArmReacher
 }
 
-
-
 @hydra.main(config_name="config", config_path="../../content/configs/gym")
 def main(cfg: DictConfig):
 

@@ -311,7 +311,8 @@ def episode_runner(
         buffer: Optional[RobotBuffer] = None,
         deterministic: bool = False,
         debug: bool = False,
-        device: torch.device = torch.device('cpu')):        
+        device: torch.device = torch.device('cpu'),
+        rng:Optional[torch.Generator] = None):  
         
         update_buffer = False
         if buffer is not None:
@@ -320,7 +321,7 @@ def episode_runner(
         obs_dim = task.obs_dim
         total_steps_collected = 0
 
-        reset_data = task.reset()
+        reset_data = task.reset(rng=rng)
         policy.reset(reset_data)
         curr_state_dict = copy.deepcopy(envs.reset(reset_data))
         curr_obs = task.forward(curr_state_dict)[0]
@@ -328,7 +329,6 @@ def episode_runner(
         curr_obs = curr_obs.view(envs.num_envs, obs_dim)
         curr_costs = torch.zeros(envs.num_envs, device=device)
         episode_lens = torch.zeros(envs.num_envs, device=device)
-        
         avg_episode_cost = 0.0
         episodes_terminated = 0
         episodes_done = 0
@@ -341,13 +341,14 @@ def episode_runner(
             with torch.no_grad():
 
                 policy_input = {
-                    'states': curr_state_dict,
-                    'obs': curr_obs}
+                    'states': curr_state_dict}
+                    # 'obs': curr_obs}
                                 
                 command, policy_info = policy.get_action(policy_input, deterministic=deterministic)
 
 
                 actions = policy_info['action']
+                curr_filtered_state = policy_info['filtered_states']
                 if actions.ndim == 3:
                     actions = actions.squeeze(0)
 
@@ -386,6 +387,7 @@ def episode_runner(
             transition_dict = {}
             transition_dict['state_dict'] = copy.deepcopy(curr_state_dict)
             transition_dict['next_state_dict'] = copy.deepcopy(next_state_dict)
+            transition_dict['filtered_state_dict'] = copy.deepcopy(curr_filtered_state)
             transition_dict['goal_dict'] = reset_data['goal_dict']
             transition_dict['actions'] = copy.deepcopy(actions)
             transition_dict['obs'] = curr_obs.clone()
@@ -427,7 +429,7 @@ def episode_runner(
                     episode_cost_buffer.append(curr_costs[idx].item())
                                     
                 #Reset everything
-                reset_data = task.reset_idx(done_indices)
+                reset_data = task.reset_idx(done_indices, rng=rng)
                 curr_state_dict = envs.reset_idx(done_indices, reset_data)
                 #TODO: policy should be reset only for the required instances
                 #especially this is true for MPC policies
@@ -481,7 +483,8 @@ def minimal_episode_runner(
     buffer: Optional[RobotBuffer] = None,
     deterministic: bool = False,
     debug: bool = False,
-    device: torch.device = torch.device('cpu')):        
+    device: torch.device = torch.device('cpu'),
+    rng: Optional[torch.Generator] = None):        
     
     update_buffer = False
     if buffer is not None:
@@ -490,7 +493,7 @@ def minimal_episode_runner(
     obs_dim = task.obs_dim
     total_steps_collected = 0
 
-    reset_data = task.reset()
+    reset_data = task.reset(rng=rng)
     policy.reset(reset_data)
     curr_state_dict = copy.deepcopy(envs.reset(reset_data))
     curr_obs = task.forward(curr_state_dict)[0]
@@ -579,14 +582,13 @@ def minimal_episode_runner(
             episode_cost_buffer.append(curr_costs[0].item())
                                 
             #Reset everything
-            reset_data = task.reset_idx(done_indices)
+            reset_data = task.reset_idx(done_indices, rng=rng)
             curr_state_dict = envs.reset(reset_data)
             policy.reset(reset_data)
             curr_obs = task.forward(curr_state_dict)[0]
             curr_obs = curr_obs.view(envs.num_envs, obs_dim)
             transition_dict_list = []
             
-
         #Reset costs and episode_lens for episodes that are done only
         not_done = 1.0 - done.float()
         curr_costs = curr_costs * not_done

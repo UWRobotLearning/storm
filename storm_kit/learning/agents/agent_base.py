@@ -19,6 +19,8 @@ class Agent(nn.Module):
         logger=None,
         tb_writer=None,
         device=torch.device('cpu'),
+        train_rng:Optional[torch.Generator]=None,
+        eval_rng:Optional[torch.Generator]=None
     ):
         super().__init__()
         self.obs_dim = obs_dim
@@ -32,9 +34,11 @@ class Agent(nn.Module):
         self.device = device
         self.logger = logger
         self.tb_writer = tb_writer
-        self.obs_dict = None
-        self.state_dict = None
-        self.targets = None
+        self.train_rng = train_rng
+        self.eval_rng = eval_rng
+        # self.obs_dict = None
+        # self.state_dict = None
+        # self.targets = None
         self.log_freq = self.cfg.get('log_freq', -1)
         self.eval_freq = self.cfg.get('eval_freq', -1)  
         self.checkpoint_freq = self.cfg.get('checkpoint_freq', -1)
@@ -77,6 +81,9 @@ class Agent(nn.Module):
 
     def collect_experience(self, num_episodes:int, update_buffer:bool=True, deterministic:bool=True, debug:bool=False):
         
+        # if self.train_rng is not None:
+        #     train_rng_state_before = self.train_rng.get_state()
+
         buff = None
         if update_buffer:
             buff = self.buffer
@@ -89,11 +96,20 @@ class Agent(nn.Module):
             buffer = buff,
             deterministic = deterministic,
             debug = debug,
-            device=self.device
+            device = self.device,
+            rng=self.train_rng
         )
+
+        # if self.eval_rng is not None:
+        #     self.eval_rng.set_state(eval_rng_state_before)
+
+
         return buff, metrics
 
     def evaluate_policy(self, policy, num_eval_episodes:int, deterministic:bool=True, debug:bool=False):
+
+        if self.eval_rng is not None:
+            eval_rng_state_before = self.eval_rng.get_state()
         
         _, play_metrics = self.runner_fn(
             envs=self.envs,
@@ -102,9 +118,13 @@ class Agent(nn.Module):
             task=self.task,
             buffer=None,
             deterministic=deterministic,
-            debug = debug,
-            device=self.device
+            debug=debug,
+            device=self.device,
+            rng=self.eval_rng
         )
+
+        if self.eval_rng is not None:
+            self.eval_rng.set_state(eval_rng_state_before)
         
         return play_metrics
 
@@ -117,29 +137,19 @@ class Agent(nn.Module):
         done_batch = batch_dict['done'].squeeze(-1).float()
         goal_dict = batch_dict['goal_dict']
 
-        # print('in relabel batch, before')
-        # obs_before = batch_dict['obs'].clone()
-        # print(obs_before)
-        # input('....')
+        if 'filtered_state_dict' in batch_dict:
+            state_batch = batch_dict['filtered_state_dict']
 
         #TODO: Call task.update_params here to make sure goal is updated
         self.task.update_params(dict(goal_dict=goal_dict))
         new_obs = self.task.compute_observations(state_batch, compute_full_state=True, debug=True)
         # new_obs, new_cost, new_termination, _, _ = self.task.forward(state_batch, act_batch)
         batch_dict['obs'] = new_obs.clone()
-        # print('after')
-        # print(batch_dict['obs'], batch_dict['obs'].shape)
-        # obs_after = batch_dict['obs']
-        # assert torch.allclose(obs_before, obs_after)
-        # input('....')
-        # batch_dict['cost'] = new_cost.clone()
-        # batch_dict['done'] = new_termination.clone()
 
         # new_next_obs = self.task.compute_observations(next_state_batch, compute_full_state=True)
 
         # batch_dict['next_obs'] = new_next_obs.clone()
 
-        # print('after', batch_dict['obs'].shape, batch_dict['next_obs'].shape)
 
 
         return batch_dict

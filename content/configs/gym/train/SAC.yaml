@@ -1,5 +1,6 @@
 
 dataset_path: 'MPC/data/agent_buffer_0.pt'
+pretrained_policy_path: 'BP/models/agent_checkpoint_0.pt'
 
 policy:
   mlp_params:
@@ -8,7 +9,7 @@ policy:
     output_activation: null
     dropout_prob: 0.0 
     layer_norm: false
-  init_std: 1.0
+  init_std: 0.01 #1.0
   min_std: 0.00001
   max_std: 10.0
   std_type: 'heteroscedastic'
@@ -34,11 +35,11 @@ agent:
   num_train_episodes_per_epoch: 1
   num_updates_per_epoch: 10
   update_to_data_ratio: 5
-  policy_update_delay: 5
+  policy_update_delay: 1
   discount: 0.99
   train_batch_size: 256
   max_buffer_size: 1e6
-  min_buffer_size: 0 #1e3
+  min_buffer_size: 1e3
   num_action_samples: 1
   log_freq: 1
   checkpoint_freq: 500
@@ -63,6 +64,7 @@ agent:
   target_update_interval: 1
   backup_entropy: true
   relabel_data: true
+  load_pretrained_policy: true
 
   #Pretraining related
   num_pretrain_steps: 500

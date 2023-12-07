@@ -91,8 +91,10 @@ class ArmReacher(ArmTask):
                 goal_ee_pos = goal_ee_pos.repeat(ee_pos_batch.shape[0] // self.num_instances, 1)
                 goal_ee_rot = goal_ee_rot.repeat(ee_rot_batch.shape[0] // self.num_instances, 1,1)
 
-                goal_cost, goal_cost_info = self.goal_cost.forward(ee_pos_batch, ee_rot_batch,
-                                                                   goal_ee_pos, goal_ee_rot)
+                goal_cost, goal_cost_info = self.goal_cost.forward(
+                    ee_pos_batch, ee_rot_batch,
+                    goal_ee_pos, goal_ee_rot)
+                
                 goal_cost = goal_cost.view(orig_size)
                 cost_terms['goal_pose_cost'] = goal_cost
                 cost_terms['rotation_err'] = goal_cost_info['rotation_err'].view(orig_size)
@@ -109,8 +111,13 @@ class ArmReacher(ArmTask):
         return cost, cost_terms #, state_dict
 
 
-    def compute_termination(self, state_dict: Dict[str,torch.Tensor], act_batch: torch.Tensor):
-        return super().compute_termination(state_dict, act_batch)
+    def compute_termination(self, 
+            state_dict: Dict[str,torch.Tensor], 
+            act_batch: torch.Tensor,
+            compute_full_state:bool = False):
+        
+        return super().compute_termination(
+            state_dict, act_batch, compute_full_state)
 
 
     def compute_metrics(self, episode_data: Dict[str, torch.Tensor]):
@@ -168,11 +175,11 @@ class ArmReacher(ArmTask):
             'avg_ee_vel': avg_ee_vel,
             'avg_ee_ang_vel': avg_ee_ang_vel}
 
-    def reset(self):
+    def reset(self, rng:Optional[torch.Generator]=None):
         env_ids = torch.arange(self.num_instances, device=self.device)
-        return self.reset_idx(env_ids)
+        return self.reset_idx(env_ids, rng=rng)
 
-    def reset_idx(self, env_ids):
+    def reset_idx(self, env_ids, rng:Optional[torch.Generator]=None):
         reset_data = {}
         if self.task_specs is not None:
             goal_position_noise = self.task_specs['target_position_noise']
@@ -182,17 +189,17 @@ class ArmReacher(ArmTask):
 
             if goal_position_noise > 0.:
                 #randomize goal position around the default
-                self.ee_goal_buff[env_ids, 0] = self.ee_goal_buff[env_ids, 0] +  2.0*goal_position_noise * (torch.rand_like(self.ee_goal_buff[env_ids, 0], device=self.device) - 0.5)
-                self.ee_goal_buff[env_ids, 1] = self.ee_goal_buff[env_ids, 1] +  2.0*goal_position_noise * (torch.rand_like(self.ee_goal_buff[env_ids, 1], device=self.device) - 0.5)
-                self.ee_goal_buff[env_ids, 2] = self.ee_goal_buff[env_ids, 2] +  2.0*goal_position_noise * (torch.rand_like(self.ee_goal_buff[env_ids, 2], device=self.device) - 0.5)
+                self.ee_goal_buff[env_ids, 0] = self.ee_goal_buff[env_ids, 0] +  2.0*goal_position_noise * (torch.rand(self.ee_goal_buff[env_ids, 0].size(), device=self.device, generator=rng) - 0.5)
+                self.ee_goal_buff[env_ids, 1] = self.ee_goal_buff[env_ids, 1] +  2.0*goal_position_noise * (torch.rand(self.ee_goal_buff[env_ids, 1].size(), device=self.device, generator=rng) - 0.5)
+                self.ee_goal_buff[env_ids, 2] = self.ee_goal_buff[env_ids, 2] +  2.0*goal_position_noise * (torch.rand(self.ee_goal_buff[env_ids, 2].size(), device=self.device, generator=rng) - 0.5)
             
             if goal_rotation_noise > 0.:
                 #randomize goal orientation around defualt
                 default_quat = self.default_ee_goal[3:7]
                 default_euler = matrix_to_euler_angles(quaternion_to_matrix(default_quat).unsqueeze(0), convention='XYZ')
-                roll = default_euler[:,0] + 2.0 * goal_rotation_noise * (torch.rand(env_ids.shape[0], 1, device=self.device) - 0.5)
-                pitch = default_euler[:,1] + 2.0 * goal_rotation_noise * (torch.rand(env_ids.shape[0], 1, device=self.device) - 0.5)
-                yaw = default_euler[:,2] + 2.0 * goal_rotation_noise * (torch.rand(env_ids.shape[0], 1, device=self.device) - 0.5)
+                roll = default_euler[:,0] + 2.0 * goal_rotation_noise * (torch.rand(env_ids.shape[0], 1, device=self.device, generator=rng) - 0.5)
+                pitch = default_euler[:,1] + 2.0 * goal_rotation_noise * (torch.rand(env_ids.shape[0], 1, device=self.device, generator=rng) - 0.5)
+                yaw = default_euler[:,2] + 2.0 * goal_rotation_noise * (torch.rand(env_ids.shape[0], 1, device=self.device, generator=rng) - 0.5)
                 quat = matrix_to_quaternion(euler_angles_to_matrix(torch.cat([roll, pitch, yaw], dim=-1), convention='XYZ'))
                 self.ee_goal_buff[env_ids, 3:7] = quat           
 
@@ -213,6 +220,8 @@ class ArmReacher(ArmTask):
             self.prev_state_buff[env_ids] = torch.zeros_like(self.prev_state_buff[env_ids])
             goal_dict = dict(ee_goal=self.ee_goal_buff)
             reset_data['goal_dict'] = goal_dict
+
+        print(goal_dict)
 
         return reset_data
 

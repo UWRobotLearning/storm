@@ -1,5 +1,5 @@
 
-dataset_path: 'MPC/data/agent_buffer_0.pt'
+dataset_path: 'policy_eval/data/mpc_buffer_0.pt'
 
 policy:
   mlp_params:
@@ -36,13 +36,14 @@ agent:
     __target__: torch.optim.Adam
     lr: 3e-4  
   log_freq: 100
-  checkpoint_freq: 1000
-  eval_freq: 1000
+  checkpoint_freq: 5000
+  eval_freq: 5000
   eval_first_policy: false
-  num_eval_episodes: 1
+  num_eval_episodes: 2
   policy_use_tanh: ${train.policy.use_tanh}
   # learn_deterministic_policy: false
   policy_loss_type: nll
   num_action_samples: 32 #only used when learning std with mse loss
   fixed_alpha: 0.2
   relabel_data: true
+  load_pretrained_policy: false

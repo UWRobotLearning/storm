@@ -13,6 +13,7 @@ class GaussianPolicy(Policy):
             obs_dim: int,
             act_dim: int,
             config,
+            task, 
             act_highs=None,
             act_lows=None,
             device: torch.device = torch.device('cpu'),
@@ -29,6 +30,7 @@ class GaussianPolicy(Policy):
         self.act_highs = act_highs
         self.act_lows = act_lows
         self.rescale_action = self.use_tanh
+        self.task = task
 
         self.mlp = GaussianMLP(
             in_dim = self.obs_dim,
@@ -43,7 +45,14 @@ class GaussianPolicy(Policy):
         )
 
     def forward(self, input_dict: Dict[str,torch.Tensor], skip_tanh: bool =False):
-        inp = input_dict['obs']
+        
+        if 'obs' in input_dict:
+            inp = input_dict['obs']
+        else:
+            if self.task is not None:
+                inp = self.task.compute_observations(
+                    input_dict['states'], compute_full_state=True)
+
         mean, std = self.mlp(inp)
         dist = Normal(mean, std)
         if self.use_tanh and not skip_tanh:
@@ -51,7 +60,13 @@ class GaussianPolicy(Policy):
         return dist
 
     def get_action(self, input_dict: Dict[str, torch.Tensor], deterministic: bool = False, num_samples:int = 1):
-        inp = input_dict['obs']
+        if 'obs' in input_dict:
+            inp = input_dict['obs']
+        else:
+            if self.task is not None:
+                inp = self.task.compute_observations(
+                    input_dict['states'], compute_full_state=True)
+
         act = self.mlp.sample(inp, deterministic=deterministic, num_samples=num_samples)
         if self.use_tanh:
             act = torch.tanh(act)
@@ -71,7 +86,9 @@ class GaussianPolicy(Policy):
         return actions, log_prob.mean(0)
 
     def reset(self, reset_data):
-        pass
+        if self.task is not None:
+            self.task.update_params(reset_data)                
+
     
     def extra_repr(self):
         repr_str = '(use_tanh): {}\n'.format(self.use_tanh)

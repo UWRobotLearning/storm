@@ -1,4 +1,4 @@
-import copy
+from typing import Optional
 import numpy as np
 import torch
 import torch.optim as optim
@@ -26,6 +26,8 @@ class SACAgent(Agent):
             logger=None,
             tb_writer=None,
             device=torch.device('cpu'),
+            train_rng:Optional[torch.Generator]=None,
+            eval_rng:Optional[torch.Generator]=None
     ):
 
 
@@ -34,7 +36,8 @@ class SACAgent(Agent):
             buffer=buffer, policy=policy,
             runner_fn=runner_fn,
             logger=logger, tb_writer=tb_writer, 
-            device=device        
+            device=device, train_rng=train_rng,
+            eval_rng=eval_rng        
         )
         self.critic = critic
         # self.target_critic = copy.deepcopy(self.critic)
@@ -96,8 +99,13 @@ class SACAgent(Agent):
                         self.tb_writer.add_scalar('Eval/' + k, v, i)
 
             #collect new experience
-            play_metrics = self.collect_experience(debug=debug)
-            print(play_metrics)
+            self.buffer, play_metrics = self.collect_experience(
+                num_episodes=self.num_train_episodes_per_epoch, 
+                update_buffer=True, 
+                deterministic=False,
+                debug=debug)
+            
+            print(play_metrics, 'Buffer len = {}'.format(len(self.buffer)))
             num_steps_collected = play_metrics['num_steps_collected'] 
             total_env_steps += num_steps_collected
 
@@ -106,8 +114,10 @@ class SACAgent(Agent):
             self.critic.train()
             if len(self.buffer) >= self.min_buffer_size:                
                 if self.num_updates_per_epoch is not None:
+                    #use fixed number of updates
                     num_update_steps = int(self.num_updates_per_epoch)
                 elif self.update_to_data_ratio is not None:
+                    #use number of updates based on amount of data collected
                     num_update_steps = int(self.update_to_data_ratio * num_steps_collected)
                 else:
                     raise ValueError('Either num_updates_per_epoch or update_to_data_ratio must be provided')
@@ -153,18 +163,18 @@ class SACAgent(Agent):
             #     self.policy.train()
             #     pbar.set_postfix(eval_metrics)
 
-    def collect_experience(self, debug:bool = False):
+    # def collect_experience(self, debug:bool = False):
 
-        self.buffer, play_metrics = self.runner_fn(
-            envs=self.envs,
-            num_episodes=self.num_train_episodes_per_epoch, 
-            policy=self.policy,
-            task=self.task,
-            buffer=self.buffer,
-            debug = debug,
-            device=self.device
-        )
-        return play_metrics
+    #     self.buffer, play_metrics = self.runner_fn(
+    #         envs=self.envs,
+    #         num_episodes=self.num_train_episodes_per_epoch, 
+    #         policy=self.policy,
+    #         task=self.task,
+    #         buffer=self.buffer,
+    #         debug = debug,
+    #         device=self.device
+    #     )
+    #     return play_metrics
 
     def update(self, batch_dict, step_num, num_update_steps):
         batch_dict = dict_to_device(batch_dict, self.device)

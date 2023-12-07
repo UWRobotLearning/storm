@@ -277,37 +277,41 @@ class ArmTask(nn.Module):
 
         return cost, cost_terms
 
-    def compute_observations(self, 
-                             state_dict: Dict[str,torch.Tensor]):
-        
+    def compute_observations(
+            self, 
+            state_dict: Dict[str,torch.Tensor]):
+                
         q_pos_batch = state_dict['q_pos_seq']
         q_vel_batch = state_dict['q_vel_seq']
+        ee_pos_batch = state_dict['ee_pos_seq']
         # orig_size = q_pos_batch.size()[0:-1]
         # new_size = reduce(mul, list(orig_size))  
 
         # ee_vel_twist = state_dict['ee_vel_twist_seq']
         # ee_pos_seq = state_dict['ee_pos_seq']
-        # ee_rot_seq = state_dict['ee_rot_seq']
-        # if 'ee_quat_seq' not in state_dict:
-        #     ee_quat_seq = matrix_to_quaternion(ee_rot_seq.view(self.num_instances*self.batch_size*self.horizon, 3, 3))
-        #     ee_quat_seq = ee_quat_seq.view(self.num_instances, self.batch_size, self.horizon, -1)
-        # else:
-        #     ee_quat_seq = state_dict['ee_quat_seq']
-        # obs = q_pos_batch
-        obs = torch.cat((q_pos_batch, q_vel_batch), dim=-1)
+        if 'ee_quat_seq' not in state_dict:
+            ee_rot_batch = state_dict['ee_rot_seq']
+            ee_quat_batch = matrix_to_quaternion(ee_rot_batch.view(self.num_instances*self.batch_size*self.horizon, 3, 3))
+            ee_quat_batch = ee_quat_batch.view(self.num_instances, self.batch_size, self.horizon, -1)
+        else:
+            ee_quat_batch = state_dict['ee_quat_seq']
+        obs = torch.cat(
+            (q_pos_batch, 
+             q_vel_batch,
+             ee_pos_batch,
+             ee_quat_batch), dim=-1)
         # obs = obs.view(*orig_size, -1)
 
-        # obs = q_pos_batch.view(*orig_size, -1)
-        # obs = torch.cat(
-        #     (state_dict['q_pos_seq']), dim=-1) #, ee_pos_seq, ee_quat_seq, ee_vel_twist), dim=-1)
         return obs #, state_dict
 
 
     def compute_termination(self, 
                             state_dict: Dict[str,torch.Tensor], 
-                            act_batch: Optional[torch.Tensor]=None):
+                            act_batch: Optional[torch.Tensor]=None,
+                            compute_full_state: bool = False):
 
-        # state_dict = self.compute_full_state(state_dict)
+        if compute_full_state:
+            state_dict = self.compute_full_state(state_dict)
 
         # num_instances, curr_batch_size, num_traj_points, _ = state_dict['state_seq'].shape
         # termination = torch.zeros(self.num_instances, self.batch_size, self.horizon, device=self.device)
@@ -440,8 +444,6 @@ class ArmTask(nn.Module):
             # self.prev_state_buff = self.prev_state_buff.roll(-1, dims=1)
             # self.prev_state_buff[:,-1,:] = new_state_dict['state_seq'].clone()
             # new_state_dict['prev_state_seq'] = self.prev_state_buff
-
-
             return new_state_dict
         
         return state_dict
@@ -449,10 +451,10 @@ class ArmTask(nn.Module):
     def compute_metrics(self):
         pass
 
-    def reset(self):
+    def reset(self, rng:Optional[torch.Generator]=None):
         pass
 
-    def reset_idx(self):
+    def reset_idx(self, rng:Optional[torch.Generator]=None):
         pass
 
     def update_params(self, retract_state):
@@ -520,14 +522,11 @@ class ArmTask(nn.Module):
 
     @property
     def obs_dim(self)->int:
-        return 2*self.n_dofs
+        return 2*self.n_dofs + 7
 
     @property
     def action_dim(self)->int:
         return self.n_dofs
-
-
-
 
     def __call__(self, start_state, act_seq):
         return self.rollout_fn(start_state, act_seq)
