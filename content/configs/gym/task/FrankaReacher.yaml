@@ -1,7 +1,7 @@
 # used to create the object
 name: FrankaReacher
 physics_engine: ${..physics_engine}
-robot_urdf: "urdf/franka_description/franka_panda_no_gripper_sim.urdf"
+robot_urdf: "urdf/franka_description/franka_panda_no_gripper.urdf"
 ee_link_name: "ee_link"
 n_dofs: 7
 

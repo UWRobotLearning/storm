@@ -31,7 +31,7 @@ env:
 joint_control:
   n_dofs: ${task.n_dofs}
   control_dt: 0.02
-  state_filter_coeff: {'q_pos': 0.2, 'q_vel': 0.1, 'q_acc': 0.0}
+  state_filter_coeff: {'q_pos': 0.1, 'q_vel': 0.1, 'q_acc': 0.0}
 
 task:
   randomize: False  
@@ -78,7 +78,7 @@ task:
   cost:
     goal_pose:
       vec_weight: [1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
-      weight: [5.0, 20.0] #[10.0, 50.0] #[50.0, 100.0]
+      weight: [6.0, 20.0] #[10.0, 50.0] #[50.0, 100.0]
       cost_type: 'se3_twist'
       norm_type: 'l2'
       hinge_val: -1
@@ -86,28 +86,28 @@ task:
 
     ee_vel_twist:
       weight: 1e-4
-      norm_type: 'l1'
+      norm_type: 'l2'
       # hinge_val: 0.01
       # vec_weight: [1.0, 1.0, 1.0] 
 
     ee_acc_twist:
-      weight: 1e-4
-      norm_type: 'l1'
+      weight: 0.0 #1e-4
+      norm_type: 'l2'
       # vec_weight: [1.0, 1.0, 1.0] 
 
     zero_q_vel:
       weight: 1e-2
-      norm_type: 'l1'
+      norm_type: 'l2'
       # hinge_val: 0.2 #0.2
 
     zero_q_acc:
-      weight: 1e-4 #0.01
-      norm_type: 'l1'
+      weight: 0.0 #1e-4 #0.01
+      norm_type: 'l2'
       # hinge_val: -1.0
 
     zero_q_jerk:
       weight: 0.0 #0.01
-      norm_type: 'l1'
+      norm_type: 'l2'
       # hinge_val: -1.0
       
     manipulability:
