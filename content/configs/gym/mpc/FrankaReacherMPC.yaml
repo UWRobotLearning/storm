@@ -113,7 +113,7 @@ viz_rollouts: False
 
 mppi:
   state_batch_size  : 1
-  horizon           : 12
+  horizon           : 20 #12
   init_cov          : 0.1 #0.005 #.5 #.5
   gamma             : 0.99 #0.98
   td_lam            : 1.0
@@ -122,7 +122,7 @@ mppi:
   step_size_cov     : 0.7
   beta              : 0.01
   alpha             : 1
-  num_particles     : 100
+  num_particles     : 400
   update_cov        : True
   cov_type          : 'full_AxA'
   kappa             : 0.01

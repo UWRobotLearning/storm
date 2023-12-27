@@ -34,12 +34,11 @@ class BPAgent(Agent):
             device=device, eval_rng=eval_rng
         )
         self.critic = critic
-        # optimizer_class = self.cfg['optimizer']
         self.policy_optimizer = optim.Adam(self.policy.parameters(), 
                                     lr=self.cfg['policy_optimizer']['lr'])
         self.policy_loss_type = self.cfg['policy_loss_type']
         self.num_action_samples = self.cfg['num_action_samples']
-        self.fixed_alpha = self.cfg['fixed_alpha']
+        # self.fixed_alpha = self.cfg['fixed_alpha']
         if self.policy_loss_type not in ["mse", "nll"]:
             raise ValueError('Unidentified policy loss type {}.'.format(self.policy_loss_type))
         self.num_eval_episodes = self.cfg.get('num_eval_episodes', 1)
@@ -59,7 +58,7 @@ class BPAgent(Agent):
         for i in pbar:
             #Evaluate policy at some frequency
             if ((i + (1-self.eval_first_policy)) % self.eval_freq == 0) or (i == num_train_steps -1):
-                print('Evaluating policy')
+                print('[BehaviorPretraining]: Evaluating policy')
                 self.policy.eval()
                 eval_metrics = self.evaluate_policy(
                     self.policy, 
@@ -72,7 +71,7 @@ class BPAgent(Agent):
                     self.logger.row(eval_metrics, nostdout=True)
                 if self.tb_writer is not None:
                     for k, v in eval_metrics.items():
-                        self.tb_writer.add_scalar('Eval/' + k, v, i)
+                        self.tb_writer.add_scalar('Pretraining/' + k, v, i)
 
                 # if eval_metrics['eval_episode_reward_avg'] >= best_policy_perf:
                 #     self.best_policy = copy.deepcopy(self.policy)
@@ -83,7 +82,7 @@ class BPAgent(Agent):
                 pbar.set_postfix(eval_metrics)
 
             with record_function('sample_batch'):
-                batch = self.buffer.sample(self.cfg['train_batch_size'])
+                batch = self.buffer.sample(self.cfg['train_batch_size'], sample_next_state=False)
                 batch = dict_to_device(batch, self.device)
             
             if self.relabel_data:
@@ -95,10 +94,10 @@ class BPAgent(Agent):
             
             pbar.set_postfix(train_metrics)
 
-            if (i % self.log_freq == 0) or (i == num_train_steps -1):
-                if self.tb_writer is not None:
-                    for k, v in train_metrics.items():
-                        self.tb_writer.add_scalar('Train/' + k, v, i)
+            # if (i % self.log_freq == 0) or (i == num_train_steps -1):
+            if self.tb_writer is not None:
+                for k, v in train_metrics.items():
+                    self.tb_writer.add_scalar('Train/' + k, v, i)
                         
             if (i % self.checkpoint_freq == 0) or (i == num_train_steps -1):
                 print(f'Iter {i}: Saving current policy')

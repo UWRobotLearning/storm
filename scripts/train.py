@@ -18,6 +18,25 @@ from storm_kit.util_file import get_data_path
 from storm_kit.learning.learning_utils import episode_runner
 from task_map import task_map
 
+def init_logging(task_name, agent_name, cfg):
+    base_dir = Path('./tmp_results/{}/{}'.format(task_name, agent_name))
+    log_dir = os.path.join(base_dir, 'logs')
+    model_dir = os.path.join(base_dir, 'models')
+    if not os.path.exists(model_dir):
+        os.makedirs(model_dir)
+    if not os.path.exists(log_dir):
+        os.makedirs(log_dir)
+    log = Log(log_dir, cfg)
+    log(f'Log dir: {log.dir}')
+    writer = SummaryWriter(log.dir)  
+
+    return {
+        'log_dir': log_dir,
+        'model_dir': model_dir,
+        'log': log,
+        'tb_writer': writer,
+    }
+
 
 @hydra.main(config_name="config", config_path="../content/configs/gym")
 def main(cfg: DictConfig):
@@ -27,21 +46,27 @@ def main(cfg: DictConfig):
     task_details = task_map[cfg.task.name]
     task_cls = task_details['task_cls']    
 
-    base_dir = Path('./tmp_results/{}/{}'.format(cfg.task_name, cfg.train.agent.name))
-    log_dir = os.path.join(base_dir, 'logs')
-    model_dir = os.path.join(base_dir, 'models')
+    logging_info = init_logging(cfg.task_name, cfg.train.agent.name, cfg)
+    # base_dir = logging_info.base_dir
+    model_dir = logging_info['model_dir']
+    log_dir = logging_info['log_dir']
+    log = logging_info['log']
+    writer = logging_info['tb_writer']
+    # base_dir = Path('./tmp_results/{}/{}'.format(cfg.task_name, cfg.train.agent.name))
+    # log_dir = os.path.join(base_dir, 'logs')
+    # model_dir = os.path.join(base_dir, 'models')
     eval_rng = torch.Generator(device=cfg.rl_device)
     eval_rng.manual_seed(cfg.seed)
     train_rng = torch.Generator(device=cfg.rl_device)
     train_rng.manual_seed(cfg.seed)
 
-    if not os.path.exists(model_dir):
-        os.makedirs(model_dir)
-    if not os.path.exists(log_dir):
-        os.makedirs(log_dir)
-    log = Log(log_dir, cfg)
-    log(f'Log dir: {log.dir}')
-    writer = SummaryWriter(log.dir)
+    # if not os.path.exists(model_dir):
+    #     os.makedirs(model_dir)
+    # if not os.path.exists(log_dir):
+    #     os.makedirs(log_dir)
+    # log = Log(log_dir, cfg)
+    # log(f'Log dir: {log.dir}')
+    # writer = SummaryWriter(log.dir)
 
     #Initialize environment
     envs = IsaacGymRobotEnv(
@@ -67,26 +92,42 @@ def main(cfg: DictConfig):
 
     buffer = RobotBuffer(capacity=int(cfg.train.agent.max_buffer_size), device=cfg.rl_device)
 
-    policy = GaussianPolicy(obs_dim=obs_dim, act_dim=act_dim, config=cfg.train.policy, task=policy_task, act_lows=act_lows, act_highs=act_highs, device=cfg.rl_device)
-    #Load pretrained policy if required
-    load_pretrained_policy = cfg.train.agent.load_pretrained_policy and (cfg.train.pretrained_policy_path is not None)
-    pretrained_policy_loaded = False
-    if load_pretrained_policy:
-        checkpoint_path = Path('./tmp_results/{}/{}'.format(cfg.task_name, cfg.eval.pretrained_policy))
-        print('Loading pre-trained policy from {}'.format(checkpoint_path))
+    train_from_scratch = cfg.train.agent.get('train_from_scratch', True)
+    #Load init data
+    load_init_data = cfg.train.agent.get('load_init_data', False) or train_from_scratch
+    init_data_loaded = False
+    if load_init_data:
         try:
+            base_dir = os.path.abspath('./tmp_results/{}'.format(cfg.task_name))
+            data_path = os.path.join(base_dir, cfg.train.dataset_path)
+            init_buffer, _ = buffer_from_file(data_path)
+            init_data_loaded = True
+            print('Loaded init dataset of length = {}'.format(len(init_buffer)))
+        except Exception as e:
+            print('Could not load data', e)
+ 
+    policy = GaussianPolicy(obs_dim=obs_dim, act_dim=act_dim, config=cfg.train.policy, task=policy_task, act_lows=act_lows, act_highs=act_highs, device=cfg.rl_device)
+    #Load pretrained 
+    # load_pretrained = cfg.train.agent.load_pretrained and (cfg.train.pretrained_path is not None)
+    load_pretrained = not train_from_scratch #cfg.train.agent.load_pretrained and (not train_from_scratch)
+    # pretrained_loaded = False
+    if load_pretrained:
+        try:
+            checkpoint_path = Path('./tmp_results/{}/{}'.format(cfg.task_name, cfg.train.pretrained_path))
+            print('Loading pre-trained policy from {}'.format(checkpoint_path))
             checkpoint = torch.load(checkpoint_path)
             policy_state_dict = checkpoint['policy_state_dict']
             remove_prefix = 'policy.'
             policy_state_dict = {k[len(remove_prefix):] if k.startswith(remove_prefix) else k: v for k, v in policy_state_dict.items()}
             policy.load_state_dict(policy_state_dict)
-            pretrained_policy_loaded = True
-            print('Pre-trained policy loaded')
+            # pretrained_loaded = True
+            print('Pre-trained loaded')
         except:
-            print('Policy loading failed')
-    
+            print('Pre-trained loading failed. Training from scratch...')
+            train_from_scratch = True
+
     policy = JointControlWrapper(config=cfg.task.joint_control, policy=policy, device=cfg.rl_device)
-    random_ensemble_q = cfg.train.agent.get('random_ensemble_q', False)
+    # random_ensemble_q = cfg.train.agent.get('random_ensemble_q', False)
     
     #Note: Later we will make this a single class
     if cfg.train.critic.ensemble_size == 1:
@@ -97,23 +138,21 @@ def main(cfg: DictConfig):
         critic = EnsembleQFunction(obs_dim=obs_dim, act_dim=act_dim, config=cfg.train.critic, device=cfg.rl_device) 
     target_critic = copy.deepcopy(critic)
 
-    num_pretrain_steps = cfg.train.agent.get('num_pretrain_steps', 0)
-    if num_pretrain_steps > 0 and (not pretrained_policy_loaded):
-        try:
-            base_dir = os.path.abspath('./tmp_results/{}'.format(cfg.task_name))
-            data_path = os.path.join(base_dir, cfg.train.dataset_path)
-            init_buffer, _ = buffer_from_file(data_path)
-        except Exception as e:
-            print('Could not load data', e)
-        print('Pretraining')
+    # num_pretrain_steps = cfg.train.agent.get('num_pretrain_steps', 0)
+    # if num_pretrain_steps > 0 and init_data_loaded and (not pretrained_loaded):
+    agent_name = cfg.train.agent.name
+    run_pretraining = (train_from_scratch and init_data_loaded) or (agent_name == "BP")
+    
+    if run_pretraining:
+        print('Running Behavior Pretraining')
+        pretrain_log_info = init_logging(cfg.task_name, 'BP', cfg)
         pretrain_agent = BPAgent(
             cfg.train.agent, envs=envs, task=task, obs_dim=obs_dim, action_dim=act_dim, 
             buffer=init_buffer, policy=policy, critic=critic, runner_fn=episode_runner, 
-            logger=log, tb_writer=writer, device=cfg.rl_device, eval_rng=eval_rng)
-        pretrain_agent.train(model_dir=model_dir)
-        print('Pretraining done')
-    
-    agent_name = cfg.train.agent.name
+            logger=pretrain_log_info['log'], tb_writer=writer, device=cfg.rl_device, eval_rng=eval_rng)
+        pretrain_agent.train(model_dir=pretrain_log_info['model_dir'])
+        print('Behavior Pretraining done')
+
     
     if  agent_name == 'SAC':
         agent = SACAgent(cfg.train.agent, envs=envs, task=task, obs_dim=obs_dim, action_dim=act_dim, 
@@ -144,14 +183,12 @@ def main(cfg: DictConfig):
         agent = MPQAgent(
             cfg.train.agent, envs=envs, task=task, obs_dim=obs_dim, action_dim=act_dim,
             buffer=buffer, policy=policy, mpc_policy=mpc_policy, target_mpc_policy=target_mpc_policy,
-            critic=critic, runner_fn=episode_runner, 
-            target_critic=target_critic, logger=log, tb_writer=writer, device=cfg.rl_device)
+            critic=critic, runner_fn=episode_runner, target_critic=target_critic,
+            init_buffer=init_buffer, logger=log, tb_writer=writer, device=cfg.rl_device)
 
     if agent_name in ['SAC', 'MPO', 'MPQ']:
         print('Training {} agent'.format(cfg.train.agent.name))
         agent.train(model_dir=model_dir)
-    # else:
-        # raise NotImplementedError('Invalid agent type: {}'.format(cfg.train.agent.name))
     
 
 if __name__ == "__main__":

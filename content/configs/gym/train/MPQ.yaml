@@ -1,5 +1,6 @@
-dataset_path: 'MPC/data/agent_buffer_0.pt'
-pretrained_policy_path: 'BP/models/agent_checkpoint_0.pt'
+dataset_path: 'policy_eval/data/mpc_buffer_0.pt'
+# data_folder: 'policy_eval/data/mpc'
+pretrained_path: 'BP/models/agent_checkpoint_0.pt'
 
 policy:
   mlp_params:
@@ -8,13 +9,15 @@ policy:
     output_activation: null
     dropout_prob: 0.0 
     layer_norm: false
-  init_std: 0.01 #1.0
+  init_std: 1.0
   min_std: 0.00001
   max_std: 10.0
   std_type: 'heteroscedastic'
   learn_logvar_bounds: false
   use_tanh: false
+  #check if needed
   world: ${task.world}
+  #check if needed
   rollout: ${task.rollout}
 
 critic:
@@ -63,7 +66,9 @@ agent:
   target_update_interval: 1
   backup_entropy: false
   relabel_data: true
-  load_pretrained_policy: true
+  # load_pretrained: true
+  load_init_data: true
+  train_from_scratch: false
 
   #Pretraining related
   num_pretrain_steps: 500

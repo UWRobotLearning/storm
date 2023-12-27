@@ -262,7 +262,6 @@ class GaussianMPC(Controller):
             num_policy_rollouts=self.num_cl_particles
         )
         cl_act_seq = rollout_info['cl_act_seq']
-        
         if ol_act_seq is None:
             act_seq = cl_act_seq
         elif cl_act_seq is None:

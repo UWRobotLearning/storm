@@ -149,7 +149,7 @@ class IsaacGymRobotEnv():
             if sim_params.up_axis == gymapi.UP_AXIS_Z:
                 # cam_pos = gymapi.Vec3(-5.0, -10.0, 3.0)
                 # cam_target = gymapi.Vec3(10.0, 15.0, 0.0)
-                cam_pos = gymapi.Vec3(4.0, 0.0, 3.0)
+                cam_pos = gymapi.Vec3(2.0, 0.0, 1.0)
                 cam_target = gymapi.Vec3(-4.0, 0.0, 0.0)
 
             else:

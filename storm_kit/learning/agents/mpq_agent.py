@@ -26,6 +26,7 @@ class MPQAgent(Agent):
             critic,
             runner_fn,
             target_critic,
+            init_buffer=None,
             logger=None,
             tb_writer=None,
             device=torch.device('cpu'),
@@ -42,6 +43,9 @@ class MPQAgent(Agent):
             device=device, train_rng=train_rng,
             eval_rng=eval_rng        
         )
+        self.init_buffer = init_buffer
+        if self.init_buffer is not None:
+            self.buffer.concatenate(self.init_buffer.qlearning_dataset())
         self.critic = critic
         self.target_critic = target_critic
         self.mpc_policy = mpc_policy
@@ -116,7 +120,7 @@ class MPQAgent(Agent):
                 for k in range(num_update_steps):
                     with record_function('sample_batch'):
                         # qlearning_dataset = self.buffer.qlearning_dataset()
-                        batch = self.buffer.sample(self.cfg['train_batch_size'])
+                        batch = self.buffer.sample(self.cfg['train_batch_size'], sample_next_state=True)
                         batch = dict_to_device(batch, self.device)
 
                     if self.relabel_data:
@@ -228,10 +232,8 @@ class MPQAgent(Agent):
             if not self.use_mpc_value_targets:
                 # next_actions, next_actions_log_prob = self.policy.entropy(policy_input)
                 if self.learn_policy:
-                    print('using policy')
                     next_actions_dist = self.policy(policy_input)
                 else:
-                    print('using mpc')
                     self.target_mpc_policy.reset(dict(goal_dict=goal_dict))
                     next_actions_dist, _, _ = self.target_mpc_policy(policy_input)
                 next_actions = next_actions_dist.sample()

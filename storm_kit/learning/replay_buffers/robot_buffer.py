@@ -49,7 +49,7 @@ class RobotBuffer():
         self.curr_idx = (self.curr_idx + num_points_added) % self.capacity
         self.num_stored = min(self.num_stored + num_points_added, self.capacity)
 
-    def sample(self, batch_size):
+    def sample(self, batch_size, sample_next_state:bool=False):
         idxs = torch.randint(0, len(self), size=(batch_size,), device=self.device)
         
         batch = defaultdict(lambda:{})
@@ -60,7 +60,7 @@ class RobotBuffer():
                     batch[k][k2] = v2[idxs]
             else:
                 batch[k] = v[idxs]
-                if k.startswith('state'):
+                if sample_next_state and k.startswith('state'):
                     batch['next_' + k] = v[idxs + 1]
         return batch
     

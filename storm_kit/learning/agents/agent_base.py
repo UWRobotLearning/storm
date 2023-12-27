@@ -201,9 +201,5 @@ class Agent(nn.Module):
             next_obs = self.task.compute_observations(new_batch_dict['next_state_dict'], compute_full_state=True)
             new_batch_dict['next_obs'] = next_obs.clone()
 
-        # new_next_obs = self.task.compute_observations(next_state_batch, compute_full_state=True)
-
-        # batch_dict['next_obs'] = new_next_obs.clone()
-
         return new_batch_dict
 
