@@ -247,14 +247,16 @@ class IsaacGymRobotEnv():
         #load objects
         self.num_object_bodies = 0
         self.num_object_shapes = 0
-        if self.num_objects > 0:
-            object_color = gymapi.Vec3(0.0, 0.0, 1.0)
-            object_asset_file = self.cfg["env"]["asset"].get("assetFileNameObject")
+        if self.num_objects > 0: #changes for multiple objects' loading
+            object_color_1 = gymapi.Vec3(0.0, 0.0, 1.0)
+            object_color_2 = gymapi.Vec3(0.8, 0.1, 0.1)
+            object_asset_file = self.cfg["env"]["asset"].get("assetFileNameObjects")
             object_assets = []
-            for _ in range(self.num_objects):
+            for asset in object_asset_file:
+                print("Loading asset '%s'" % (asset))
                 object_asset = load_urdf_asset(
-                    self.gym, self.sim, asset_file=object_asset_file, 
-                    fix_base_link=True, disable_gravity=False)
+                    self.gym, self.sim, asset_file=asset, 
+                    fix_base_link=False, disable_gravity=False)
                 self.num_object_bodies += self.gym.get_asset_rigid_body_count(object_asset)
                 self.num_object_shapes = self.gym.get_asset_rigid_shape_count(object_asset)
                 object_assets.append(object_asset)
@@ -317,16 +319,36 @@ class IsaacGymRobotEnv():
             if self.aggregate_mode == 1:
                 self.gym.begin_aggregate(env_ptr, max_agg_bodies, max_agg_shapes, True)
 
+            #create actors for multiple objects
             if self.num_objects > 0:
-                for i, object_asset in enumerate(object_assets):
-                    object_actor = self.gym.create_actor(env_ptr, object_asset, self.object_start_pose_world, "ball_{}".format(i), i, 0, 0)
-                    self.gym.set_rigid_body_color(env_ptr, object_actor, 0, gymapi.MESH_VISUAL_AND_COLLISION, object_color)
-                    body_props = self.gym.get_actor_rigid_body_properties(env_ptr, object_actor)
-                    for b in range(len(body_props)):
-                        body_props[b].flags = gymapi.RIGID_BODY_NONE
-                    self.gym.set_actor_rigid_body_properties(env_ptr, object_actor, body_props)
+                for j, object_asset in enumerate(object_assets):
+                    if j==0:
+                        object_actor = self.gym.create_actor(env_ptr, object_asset, self.object_start_pose_world, "cube_{}".format(j), i, 0, 0)
+                        self.gym.set_rigid_body_color(env_ptr, object_actor, 0, gymapi.MESH_VISUAL_AND_COLLISION, object_color_1)
+                    else:
+                        object_actor = self.gym.create_actor(env_ptr, object_asset, self.object_start_pose_world, "cube_{}".format(j), i, 4, 0)
+                        self.gym.set_rigid_body_color(env_ptr, object_actor, 0, gymapi.MESH_VISUAL_AND_COLLISION, object_color_2)
+                    obj_props = self.gym.get_actor_rigid_shape_properties(env_ptr, object_actor)
+                    obj_props[0].friction = 0.8
+                    obj_props[0].rolling_friction = 0.8  # default = 0.0
+                    # obj_props[0].torsion_friction = 0.0  # default = 0.0
+                    # obj_props[0].restitution = 0.0  # default = 0.0
+                    # obj_props[0].compliance = 0.0  # default = 0.0
+                    # obj_props[0].thickness = 0.0  # default = 0.0
+                    obj_props = self.gym.get_actor_rigid_body_properties(env_ptr, object_actor)
+                    # for b in range(len(body_props)):
+                    #     body_props[b].flags = gymapi.RIGID_BODY_NONE
+                    self.gym.set_actor_rigid_body_properties(env_ptr, object_actor, obj_props)
                     env_objects.append(object_actor)
-
+            #set rigid properties for tray
+            robot_props = self.gym.get_actor_rigid_shape_properties(env_ptr, robot_actor)
+            robot_props[-1].friction = 0.8 #for tray link
+            robot_props[-1].rolling_friction = 0.8  # default = 0.0
+            # robot_props[0].torsion_friction = 0.0  # default = 0.0
+            # robot_props[0].restitution = 0.0  # default = 0.0
+            # robot_props[0].compliance = 0.0  # default = 0.0
+            # robot_props[0].thickness = 0.0  # default = 0.0
+            self.gym.set_actor_rigid_shape_properties(env_ptr, robot_actor, robot_props)
             if self.aggregate_mode > 0:
                 self.gym.end_aggregate(env_ptr)
 
@@ -408,27 +430,70 @@ class IsaacGymRobotEnv():
             self.robot_base_state = self.rigid_body_states[:, 3]
         self.ee_state = self.rigid_body_states[:, self.ee_handle]
 
-
         #Note: this needs to change to support more than one object!!!
         if self.num_objects > 0:
-            self.object_state = self.root_state[:,-1]
-            self.init_object_state = torch.zeros(self.num_envs, 13, device=self.device)
-            self.init_object_state[:,0] = self.object_start_pose_world.p.x
-            self.init_object_state[:,1] = self.object_start_pose_world.p.y
-            self.init_object_state[:,2] = self.object_start_pose_world.p.z
-            self.init_object_state[:,3] = self.object_start_pose_world.r.x
-            self.init_object_state[:,4] = self.object_start_pose_world.r.y
-            self.init_object_state[:,5] = self.object_start_pose_world.r.z
-            self.init_object_state[:,6] = self.object_start_pose_world.r.w
+            if self.num_objects == 1:
+                self.object_state_1 = self.root_state[:,-1]
+            else:
+                self.object_state_1 = self.root_state[:,-2]
+                self.object_state_2 = self.root_state[:,-1]
+            self.init_object_state_1 = torch.zeros(self.num_envs, 13, device=self.device)
+            self.init_object_state_2 = torch.zeros(self.num_envs, 13, device=self.device)
+            # self.init_object_state[:,0] = self.object_start_pose_world.p.x
+            # self.init_object_state[:,1] = self.object_start_pose_world.p.y
+            # self.init_object_state[:,2] = self.object_start_pose_world.p.z
+            # self.init_object_state[:,3] = self.object_start_pose_world.r.x
+            # self.init_object_state[:,4] = self.object_start_pose_world.r.y
+            # self.init_object_state[:,5] = self.object_start_pose_world.r.z
+            # self.init_object_state[:,6] = self.object_start_pose_world.r.w
 
+            #lateral tray object transfer (right to left)
+            # self.init_object_state_1[:,0] = -1.8488e-01 #0.2185e-01   
+            # self.init_object_state_1[:,1] = -3.4987e-01 #2.7730e-05    
+            # self.init_object_state_1[:,2] = 5.3405e-01 #5.0005e-01 
+            # self.init_object_state_1[:,3] = 9.5840e-01 #7.0723e-01    
+            # self.init_object_state_1[:,4] = 2.8105e-01 #7.0698e-01   
+            # self.init_object_state_1[:,5] = 1.4265e-02 #-1.8236e-04    
+            # self.init_object_state_1[:,6] = 4.7758e-02 #-0.0322
+
+            # self.init_object_state_2[:,0] = -1.8488e-01 #0.2185e-01    
+            # self.init_object_state_2[:,1] = -3.4987e-01 #2.7730e-05    
+            # self.init_object_state_2[:,2] = 5.7405e-01 #5.0005e-01 
+            # self.init_object_state_2[:,3] = 9.5840e-01 #7.0723e-01    
+            # self.init_object_state_2[:,4] = 2.8105e-01 #7.0698e-01   
+            # self.init_object_state_2[:,5] = 1.4265e-02 #-1.8236e-04    
+            # self.init_object_state_2[:,6] = 4.7758e-02 
+
+            #for basic tray object reaching
+            self.init_object_state_1[:,0] = 1.3653e-01
+            self.init_object_state_1[:,1] = 7.8287e-03 
+            self.init_object_state_1[:,2] = 5.7433e-01
+            self.init_object_state_1[:,3] = 6.9506e-01 
+            self.init_object_state_1[:,4] = 7.1866e-01
+            self.init_object_state_1[:,5] = 2.0540e-02
+            self.init_object_state_1[:,6] = 2.6329e-03
+
+            self.init_object_state_2[:,0] = 1.3653e-01
+            self.init_object_state_2[:,1] = 7.8287e-03 
+            self.init_object_state_2[:,2] = 5.9433e-01
+            self.init_object_state_2[:,3] = 6.9506e-01 
+            self.init_object_state_2[:,4] = 7.1866e-01
+            self.init_object_state_2[:,5] = 2.0540e-02
+            self.init_object_state_2[:,6] = 2.6329e-03 
+            self.cube1_reset_pose = self.init_object_state_1.detach().clone()
+            self.cube2_reset_pose = self.init_object_state_2.detach().clone()
 
         self.num_bodies = self.rigid_body_states.shape[1]
         self.target_poses = None
 
         # self._num_dofs = self.gym.get_sim_dof_count(self.sim) // self.num_envs
         # self.robot_dof_targets = torch.zeros((self.num_envs, self.num_dofs), dtype=torch.float, device=self.device) 
-        self.effort_control = torch.zeros((self.num_envs, self.num_dofs), dtype=torch.float, device=self.device) 
-        self.global_indices = torch.arange(self.num_envs * 1, dtype=torch.int32, device=self.device).view(self.num_envs, -1)
+        self.effort_control = torch.zeros((self.num_envs, self.num_dofs), dtype=torch.float, device=self.device)
+        if self.num_objects == 0: 
+            self.global_indices = torch.arange(self.num_envs * 1, dtype=torch.int32, device=self.device).view(self.num_envs, -1)
+        else:
+            #for two cubes on a tray
+            self.global_indices = torch.arange(self.num_envs * 4, dtype=torch.int32, device=self.device).view(self.num_envs, -1)
 
     def init_joint_controller(self):
         if self.joint_control_mode == 'inverse_dynamics':
@@ -521,6 +586,11 @@ class IsaacGymRobotEnv():
         # compute observations, rewards, resets, ...
         state_dict = self.post_physics_step()
 
+        #after reset, retrieve tray_link pose
+        self.ee_handle = self.gym.find_actor_rigid_body_handle(self.envs[0], self.robots[0], self.ee_link_name)
+        self.ee_state = self.rigid_body_states[:, self.ee_handle]
+        print("post physics tray link pose", self.ee_state)
+
         self.control_steps += 1
 
         # fill time out buffer: set to 1 if we reached the max episode length AND the reset buffer is 1. Timeout == 1 makes sense only if the reset buffer is 1.
@@ -576,14 +646,22 @@ class IsaacGymRobotEnv():
             state_dict['base_pos'] = self.robot_base_state[:, 0:3].to(self.rl_device)
             state_dict['base_rot'] = self.robot_base_state[:, 3:7].to(self.rl_device)
             state_dict['base_vel'] = self.robot_base_state[:, 7:10].to(self.rl_device)
-
+        #depending on number of objects, populate state_dict with states
         if self.num_objects > 0:
-            #Note: This won't work for more than one object
-            state_dict['object_pos'] = self.object_state[:,0:3].to(self.rl_device)
-            state_dict['object_rot'] = self.object_state[:,3:7].to(self.rl_device)
-            state_dict['object_vel'] = self.object_state[:,7:10].to(self.rl_device)
-            state_dict['object_ang_vel'] = self.object_state[:,10:13].to(self.rl_device)
+            object_states = [self.object_state_1]
+            keys = ['object_pos', 'object_rot', 'object_vel', 'object_ang_vel']
 
+            if self.num_objects > 1:
+                object_states.append(self.object_state_2)
+                keys = ['object1_pos', 'object1_rot', 'object1_vel', 'object1_ang_vel',
+                        'object2_pos', 'object2_rot', 'object2_vel', 'object2_ang_vel']
+
+            for i, object_state in enumerate(object_states):
+                state_dict[keys[i*4]] = object_state[:, 0:3].to(self.rl_device)
+                state_dict[keys[i*4 + 1]] = object_state[:, 3:7].to(self.rl_device)
+                state_dict[keys[i*4 + 2]] = object_state[:, 7:10].to(self.rl_device)
+                state_dict[keys[i*4 + 3]] = object_state[:, 10:13].to(self.rl_device)
+        print("state dict",state_dict)
         return state_dict
     
     def reset_idx(self, env_ids, reset_data=None):
@@ -617,15 +695,45 @@ class IsaacGymRobotEnv():
         self.progress_buf[env_ids] = 0
         self.reset_buf[env_ids] = 0 
         self.prev_action_buff[env_ids] = torch.zeros_like(self.prev_action_buff[env_ids])
+        
+        #for resetting object states
+        if self.num_objects>0:
+            self.object_reset(env_ids)
+        
         if reset_data is not None:
             if 'goal_dict' in reset_data:
                 self.update_goal(reset_data['goal_dict'])
 
         self.last_sim_time = torch.ones(self.num_envs, 1, device=self.device) * self.gym.get_sim_time(self.sim)
         state_dict = self.get_state_dict()
+        self.ee_handle = self.gym.find_actor_rigid_body_handle(self.envs[0], self.robots[0], self.ee_link_name)
+        self.ee_state = self.rigid_body_states[:, self.ee_handle]
+        print("reset function tray link pose", self.ee_state)
 
         return state_dict 
 
+    #only for object reset
+    def object_reset(self, env_ids, reset_data=None):
+        object_asset_file = self.cfg["env"]["asset"].get("assetFileNameObjects")
+        len_obj_urdfs = len(object_asset_file)
+        self.object_state_1[env_ids] = self.cube1_reset_pose
+        if self.num_objects > 1:
+            self.object_state_2[env_ids] = self.cube2_reset_pose
+        index = -self.num_objects
+        print("index", index)
+        #setting actor root state tensor based on num_objects and urdfs mentioned
+        if self.num_objects == 1:
+            multi_env_ids_object1_int32 = self.global_indices[env_ids, 2 if len_obj_urdfs == 1 else index].flatten()
+            self.gym.set_actor_root_state_tensor_indexed(
+                self.sim,
+                gymtorch.unwrap_tensor(self.root_state),
+                gymtorch.unwrap_tensor(multi_env_ids_object1_int32), len(multi_env_ids_object1_int32))
+        else:
+            multi_env_ids_objects_int32 = self.global_indices[env_ids, index:].flatten()
+            self.gym.set_actor_root_state_tensor_indexed(
+                self.sim,
+                gymtorch.unwrap_tensor(self.root_state),
+                gymtorch.unwrap_tensor(multi_env_ids_objects_int32), len(multi_env_ids_objects_int32))
 
     def reset(self, reset_data=None):
         return self.reset_idx(torch.arange(self.num_envs, device=self.device), reset_data=reset_data)

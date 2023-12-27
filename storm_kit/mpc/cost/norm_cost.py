@@ -18,7 +18,7 @@ class NormCost(nn.Module):
         self.device = device
         self.weight = weight
         self.hinge_val = hinge_val
-        self.alpha = 10.0
+        self.alpha = 3
         self.log_two = torch.log(torch.tensor([2.0], device=self.device))
     
 

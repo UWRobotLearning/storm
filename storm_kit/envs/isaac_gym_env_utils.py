@@ -24,7 +24,7 @@ def load_urdf_asset(gym_instance, sim_instance, asset_file:str, fix_base_link:bo
     asset_options = gymapi.AssetOptions()
     asset_options.flip_visual_attachments = True
     asset_options.fix_base_link = fix_base_link
-    asset_options.collapse_fixed_joints = True
+    asset_options.collapse_fixed_joints = False #True #for parsing fixed joints from the urdf as well
     asset_options.disable_gravity = disable_gravity
     asset_options.thickness = 0.001
     asset_options.default_dof_drive_mode = gymapi.DOF_MODE_EFFORT
