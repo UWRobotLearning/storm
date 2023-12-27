@@ -60,21 +60,21 @@ def build_fd_matrix(horizon:int, device:torch.device=torch.device('cpu'), order:
     return fd_mat
 
 
-def build_int_matrix(horizon, diagonal=0, device='cpu', dtype=torch.float32, order=1,
-                     traj_dt=None):
+def build_int_matrix(
+        horizon:int, diagonal:int=0, device='cpu', 
+        dtype=torch.float32, order:int=1, traj_dt=None):
+    
     integrate_matrix = torch.tril(torch.ones((horizon, horizon), device=device, dtype=dtype), diagonal=diagonal)
     chain_list = [torch.eye(horizon, device=device, dtype=dtype)]
     if traj_dt is None:
         chain_list.extend([integrate_matrix for i in range(order)])
     else:
         diag_dt = torch.diag(traj_dt)
-        
         for _ in range(order):
             chain_list.append(integrate_matrix)
             chain_list.append(diag_dt)
     integrate_matrix = torch.chain_matmul(*chain_list)
     return integrate_matrix
-
 
 @torch.jit.script
 def euler_integrate(
@@ -115,40 +115,38 @@ def tensor_step_acc(
     integrate_matrix: torch.Tensor, 
     fd_matrix: torch.Tensor,
     n_dofs: int, 
-    num_instances:int, 
+    # num_instances:int, 
+    state_batch_size:int,
     batch_size:int, 
     horizon:int) -> torch.Tensor:
     
     # This is batch,n_dof
-    q = state[:, :, :n_dofs]
-    qd = state[:, :, n_dofs:2*n_dofs]
-    qdd_new = act.view(num_instances*batch_size, horizon, -1)
+    q = state[..., :n_dofs]
+    qd = state[..., n_dofs:2*n_dofs]
+    qdd_new = act.view(state_batch_size*batch_size, horizon, -1) #num_instances*
     diag_dt = torch.diag(dt_h)
 
     qd_new = torch.matmul(integrate_matrix, torch.matmul(diag_dt, qdd_new))
-    qd_new = qd_new.view(num_instances, batch_size, horizon, -1)
-    qd_new += qd.unsqueeze(1)
+    qd_new = qd_new.view(state_batch_size, batch_size, horizon, -1) #num_instances, 
+    qd_new += qd.unsqueeze(1).unsqueeze(1)
 
     q_new = torch.matmul(
         integrate_matrix, 
-        torch.matmul(diag_dt, qd_new.view(num_instances*batch_size, horizon, -1)))
-    q_new = q_new.view(num_instances, batch_size, horizon, -1)
-    q_new += q.unsqueeze(1)
+        torch.matmul(diag_dt, qd_new.view(state_batch_size*batch_size, horizon, -1))) #num_instances*
+    q_new = q_new.view(state_batch_size, batch_size, horizon, -1) #num_instances, 
+    q_new += q.unsqueeze(1).unsqueeze(1)
 
+    # qd_new = euler_integrate(qd, qdd_new, diag_dt, integrate_matrix).view(state_batch_size, batch_size, horizon, -1)
+    # q_new = euler_integrate(q, qd_new, diag_dt, integrate_matrix).view(state_batch_size, batch_size, horizon, -1)
     # qddd_new = torch.matmul(diag_dt, torch.matmul(fd_matrix, qdd_new))
     # qddd_new = qddd_new.view(num_instances, batch_size, horizon, -1)
     # qddd_new = qddd_new.view(num_instances, batch_size, horizon, -1)
 
-    qdd_new = qdd_new.view(num_instances, batch_size, horizon, -1)
+    qdd_new = qdd_new.view(state_batch_size, batch_size, horizon, -1) #num_instances, 
 
-    
-    # qd_new = euler_integrate(qd, qdd_new, diag_dt, integrate_matrix)
-    # q_new = euler_integrate(q, qd_new, diag_dt, integrate_matrix)
-
-    state_seq[:, :, :, :n_dofs] = q_new
-    state_seq[:, :, :, n_dofs:2*n_dofs] = qd_new
-    state_seq[:, :, :, 2*n_dofs:3*n_dofs] = qdd_new
-    # state_seq[:, :, :, 3*n_dofs:4*n_dofs] = qddd_new
+    state_seq[..., :n_dofs] = q_new
+    state_seq[..., n_dofs:2*n_dofs] = qd_new
+    state_seq[..., 2*n_dofs:3*n_dofs] = qdd_new
     
     return state_seq
 
@@ -166,7 +164,7 @@ def tensor_step_vel(
     horizon:int):
     
     # This is batch,n_dof
-    q = state[:, :, 0:n_dofs]
+    q = state[..., 0:n_dofs]
     qd_new = act.view(num_instances*batch_size, horizon, -1)
     diag_dt = torch.diag(dt_h)
 

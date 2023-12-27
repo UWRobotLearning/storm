@@ -1,0 +1,71 @@
+dataset_path: 'MPC/data/agent_buffer_0.pt'
+pretrained_policy_path: 'BP/models/agent_checkpoint_0.pt'
+
+policy:
+  mlp_params:
+    hidden_layers: [256, 256] 
+    activation: torch.nn.ReLU 
+    output_activation: null
+    dropout_prob: 0.0 
+    layer_norm: false
+  init_std: 0.01 #1.0
+  min_std: 0.00001
+  max_std: 10.0
+  std_type: 'heteroscedastic'
+  learn_logvar_bounds: false
+  use_tanh: false
+  world: ${task.world}
+  rollout: ${task.rollout}
+
+critic:
+  mlp_params:
+    hidden_layers: [256, 256] 
+    activation: torch.nn.ReLU 
+    output_activation: null
+    dropout_prob: 0.0 
+    layer_norm: false
+  ensemble_size: 1
+  prediction_size: 2
+
+agent:
+  name: 'MPQ'
+  save_buffer: false
+  num_epochs: 1e6
+  num_train_episodes_per_epoch: 1
+  num_updates_per_epoch: 20
+  update_to_data_ratio: 2
+  policy_update_delay: 1
+  discount: 0.99
+  train_batch_size: 128 #256
+  max_buffer_size: 1e6
+  min_buffer_size: 0
+  num_action_samples: 1
+  checkpoint_freq: 20
+  eval_freq: 1000
+  eval_first_policy: false
+  num_eval_episodes: 1
+  learn_policy: true
+  use_mpc_value_targets: false
+  # fixed_alpha: 0.2
+  # init_log_alpha: 0.0
+  random_ensemble_q: false
+  reward_scale: 1.0
+  policy_optimizer:
+    __target__: torch.optim.Adam
+    lr: 3e-4
+  critic_optimizer:
+    __target__: torch.optim.Adam
+    lr: 3e-4
+  # alpha_optimizer:
+  #   __target__: torch.optim.Adam
+  #   lr: 3e-4
+  polyak_tau: 5e-3
+  target_update_interval: 1
+  backup_entropy: false
+  relabel_data: true
+  load_pretrained_policy: true
+
+  #Pretraining related
+  num_pretrain_steps: 500
+  policy_use_tanh: ${train.policy.use_tanh}
+  policy_loss_type: nll

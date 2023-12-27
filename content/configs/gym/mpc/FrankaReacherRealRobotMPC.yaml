@@ -113,7 +113,7 @@ world: ${task.world}
 viz_rollouts: False
 
 mppi:
-  num_instances     : ${task.env.num_envs}
+  state_batch_size  : 1
   horizon           : 20
   init_cov          : 0.01 #0.005 #.5 #.5
   gamma             : 0.99 #0.98

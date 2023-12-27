@@ -35,7 +35,6 @@ def _create_sim_once(gym, *args, **kwargs):
 class IsaacGymRobotEnv():
     def __init__(self, cfg, rl_device, sim_device, graphics_device_id, headless, virtual_screen_capture, force_render):        
         self.cfg = cfg
-
         self.rl_device = rl_device
         self.device = sim_device
         device_name = torch.cuda.get_device_name(sim_device)
@@ -148,8 +147,11 @@ class IsaacGymRobotEnv():
             # set the camera position based on up axis
             sim_params = self.gym.get_sim_params(self.sim)
             if sim_params.up_axis == gymapi.UP_AXIS_Z:
-                cam_pos = gymapi.Vec3(-5.0, -10.0, 3.0)
-                cam_target = gymapi.Vec3(10.0, 15.0, 0.0)
+                # cam_pos = gymapi.Vec3(-5.0, -10.0, 3.0)
+                # cam_target = gymapi.Vec3(10.0, 15.0, 0.0)
+                cam_pos = gymapi.Vec3(4.0, 0.0, 3.0)
+                cam_target = gymapi.Vec3(-4.0, 0.0, 0.0)
+
             else:
                 cam_pos = gymapi.Vec3(20.0, 3.0, 25.0)
                 cam_target = gymapi.Vec3(10.0, 0.0, 15.0)
@@ -497,9 +499,6 @@ class IsaacGymRobotEnv():
             Observations, rewards, resets, info
             Observations are dict of observations (currently only one member called 'obs')
         """
-
-
-
         # randomize actions
         # if self.dr_randomizations.get('actions', None):
         #     actions = self.dr_randomizations['actions']['noise_lambda'](actions)
@@ -554,7 +553,7 @@ class IsaacGymRobotEnv():
         state_dict = self.get_state_dict()
         self.reset_buf[:] = torch.where(
             self.progress_buf >= self.max_episode_length - 1, torch.ones_like(self.reset_buf), self.reset_buf)
-
+        
         return state_dict
 
     def get_state_dict(self):
@@ -734,9 +733,6 @@ class IsaacGymRobotEnv():
 
                 gymutil.draw_lines(axes_geom_ee, self.gym, self.viewer, self.envs[i], ee_pose_world)
                 gymutil.draw_lines(sphere_geom_ee, self.gym, self.viewer, self.envs[i], ee_pose_world)
-
-
-
 
 
     def __parse_sim_params(self, physics_engine: str, config_sim: Dict[str, Any]) -> gymapi.SimParams:

@@ -80,10 +80,10 @@ class RobotWorldCollisionPrimitive(RobotWorldCollision):
         world_collision = WorldPrimitiveCollision(world_collision_params, batch_size=world_batch_size, bounds=bounds, grid_resolution=grid_resolution, device=self.device)
         super().__init__(robot_collision, world_collision)
         self.robot_batch_size = robot_batch_size
-        self.initialize()
+        self.allocate_buffers(self.robot_batch_size)
     
-    def initialize(self):
-        self.dist_buff = torch.zeros((self.robot_batch_size, self.robot_coll.num_links), device=self.device)
+    def allocate_buffers(self, batch_size):
+        self.dist_buff = torch.zeros((batch_size, self.robot_coll.num_links), device=self.device)
 
     # def build_batch_features(self, batch_size, clone_pose=True, clone_points=True):
     #     self.batch_size = batch_size
@@ -99,11 +99,11 @@ class RobotWorldCollisionPrimitive(RobotWorldCollision):
         Returns:
             tensor: signed distance [b,1]
         """        
-        # batch_size = link_trans.shape[0]
-        # update link pose:
-        # if self.robot_batch_size != batch_size:
-        #     self.robot_batch_size = batch_size
-        #     self.build_batch_features(self.robot_batch_size, clone_pose=True, clone_points=True)
+        batch_size = link_trans.shape[0]
+        #allocate new buffers if needed
+        if self.robot_batch_size != batch_size:
+            self.robot_batch_size = batch_size
+            self.allocate_buffers(self.robot_batch_size)
 
         with record_function('robot_world:update_batch_collision_objs'):
             self.robot_coll.update_batch_robot_collision_objs(link_trans, link_rot)
@@ -114,7 +114,7 @@ class RobotWorldCollisionPrimitive(RobotWorldCollision):
         #compute self collisions
         self_coll_dist = self.robot_coll.compute_link_distances(w_link_spheres)
         
-        n_links = len(w_link_spheres.keys())
+        # n_links = len(w_link_spheres.keys())
         # if self.dist is None or self.dist.shape[0] != n_links:
             # self.dist = torch.zeros((batch_size, n_links), device=self.device)
         dist = self.dist_buff

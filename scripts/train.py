@@ -13,7 +13,7 @@ from storm_kit.learning.policies import MPCPolicy, GaussianPolicy, JointControlW
 from storm_kit.learning.value_functions import QFunction, TwinQFunction, EnsembleQFunction
 from storm_kit.learning.world_models import GaussianWorldModel
 from storm_kit.learning.replay_buffers import RobotBuffer
-from storm_kit.learning.learning_utils import Log, buffer_from_folder, buffer_from_file
+from storm_kit.learning.learning_utils import Log, buffer_from_file
 from storm_kit.util_file import get_data_path
 from storm_kit.learning.learning_utils import episode_runner
 from task_map import task_map
@@ -34,7 +34,6 @@ def main(cfg: DictConfig):
     eval_rng.manual_seed(cfg.seed)
     train_rng = torch.Generator(device=cfg.rl_device)
     train_rng.manual_seed(cfg.seed)
-
 
     if not os.path.exists(model_dir):
         os.makedirs(model_dir)
@@ -82,29 +81,30 @@ def main(cfg: DictConfig):
             policy_state_dict = {k[len(remove_prefix):] if k.startswith(remove_prefix) else k: v for k, v in policy_state_dict.items()}
             policy.load_state_dict(policy_state_dict)
             pretrained_policy_loaded = True
+            print('Pre-trained policy loaded')
         except:
             print('Policy loading failed')
     
     policy = JointControlWrapper(config=cfg.task.joint_control, policy=policy, device=cfg.rl_device)
-
     random_ensemble_q = cfg.train.agent.get('random_ensemble_q', False)
-    if random_ensemble_q:
-        critic = EnsembleQFunction(obs_dim=obs_dim, act_dim=act_dim, config=cfg.train.critic, device=cfg.rl_device) 
-    else:
+    
+    #Note: Later we will make this a single class
+    if cfg.train.critic.ensemble_size == 1:
+        critic = QFunction(obs_dim=obs_dim, act_dim=act_dim, config=cfg.train.critic, device=cfg.rl_device)
+    elif cfg.train.critic.ensemble_size == 2:
         critic = TwinQFunction(obs_dim=obs_dim, act_dim=act_dim, config=cfg.train.critic, device=cfg.rl_device)
+    else:
+        critic = EnsembleQFunction(obs_dim=obs_dim, act_dim=act_dim, config=cfg.train.critic, device=cfg.rl_device) 
     target_critic = copy.deepcopy(critic)
 
     num_pretrain_steps = cfg.train.agent.get('num_pretrain_steps', 0)
-    
     if num_pretrain_steps > 0 and (not pretrained_policy_loaded):
-    # if cfg.train.agent.name == "BP" or cfg.train.agent.num_pretrain:
         try:
             base_dir = os.path.abspath('./tmp_results/{}'.format(cfg.task_name))
             data_path = os.path.join(base_dir, cfg.train.dataset_path)
-            init_buffer, num_datapoints = buffer_from_file(data_path)
+            init_buffer, _ = buffer_from_file(data_path)
         except Exception as e:
-            print('Could not load data')
-            print(e)
+            print('Could not load data', e)
         print('Pretraining')
         pretrain_agent = BPAgent(
             cfg.train.agent, envs=envs, task=task, obs_dim=obs_dim, action_dim=act_dim, 
@@ -124,18 +124,28 @@ def main(cfg: DictConfig):
         agent = MPOAgent(cfg.train.agent, envs=envs, obs_space=envs.obs_space, action_space=envs.action_space, 
                         buffer=buffer, policy=policy, critic=critic, logger=log, tb_writer=writer, device=cfg.rl_device)
     
-    elif agent_name == 'MPQ':        
-        mpc_policy = MPCPolicy(obs_dim=obs_dim, act_dim=act_dim, config=cfg.mpc, value_function=critic, task_cls=task_cls, device=cfg.rl_device) 
+    elif agent_name == 'MPQ': 
+        dyn_model_cls = task_details['dynamics_model_cls']
+        mpc_policy = MPCPolicy(
+            obs_dim=obs_dim, act_dim=act_dim, config=cfg.mpc, 
+            sampling_policy=policy.policy, value_function=critic, 
+            task_cls=task_cls, dynamics_model_cls=dyn_model_cls,
+            device=cfg.rl_device) 
         mpc_policy = JointControlWrapper(config=cfg.task.joint_control, policy=mpc_policy, device=cfg.rl_device)
         #For target mpc policy, we need to set num_instances to the train batch size
         target_mpc_cfg = cfg.mpc
-        target_mpc_cfg['mppi']['num_instances'] = cfg.train.agent.train_batch_size
-        target_mpc_policy = MPCPolicy(obs_dim=obs_dim, act_dim=act_dim, config=target_mpc_cfg, value_function=target_critic, task_cls=task_cls, device=cfg.rl_device) 
-        target_mpc_policy = JointControlWrapper(config=cfg.task.joint_control, policy=target_mpc_policy, device=cfg.rl_device)
+        target_mpc_cfg['mppi']['state_batch_size'] = cfg.train.agent.train_batch_size
+        target_mpc_policy = MPCPolicy(
+            obs_dim=obs_dim, act_dim=act_dim, config=target_mpc_cfg, 
+            sampling_policy=policy.policy, value_function=critic, 
+            task_cls=task_cls, dynamics_model_cls=dyn_model_cls,
+            device=cfg.rl_device) 
         # world_model = GaussianWorldModel(obs_dim=obs_dim, act_dim=act_dim, config=cfg.train.world_model, device=cfg.rl_device)
-        agent = MPQAgent(cfg.train.agent, envs=envs, task=task, obs_dim=obs_dim, action_dim=act_dim,
-                        buffer=buffer, policy=policy, mpc_policy=mpc_policy, target_mpc_policy=target_mpc_policy, critic=critic, runner_fn=episode_runner, 
-                        target_critic=target_critic, logger=log, tb_writer=writer, device=cfg.rl_device)
+        agent = MPQAgent(
+            cfg.train.agent, envs=envs, task=task, obs_dim=obs_dim, action_dim=act_dim,
+            buffer=buffer, policy=policy, mpc_policy=mpc_policy, target_mpc_policy=target_mpc_policy,
+            critic=critic, runner_fn=episode_runner, 
+            target_critic=target_critic, logger=log, tb_writer=writer, device=cfg.rl_device)
 
     if agent_name in ['SAC', 'MPO', 'MPQ']:
         print('Training {} agent'.format(cfg.train.agent.name))

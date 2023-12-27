@@ -22,9 +22,6 @@
 # FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 # DEALINGS IN THE SOFTWARE.#
 from abc import abstractmethod
-import copy
-
-import numpy as np
 import torch
 import torch.nn as nn
 from torch.profiler import record_function
@@ -40,9 +37,9 @@ class Controller(nn.Module):
                  gamma:float,
                  td_lam:float,
                  n_iters:int,
-                 rollout_fn=None,
+                #  rollout_fn=None,
                  hotstart:bool=True,
-                 num_instances:int=1,
+                 state_batch_size:int=1,
                  seed:int=0,
                  tensor_args={'device':torch.device('cpu'), 'dtype':torch.float32}):
         """
@@ -97,10 +94,10 @@ class Controller(nn.Module):
         self.n_iters = n_iters
         self.gamma_seq = torch.cumprod(torch.tensor([1.0] + [self.gamma] * (horizon - 1)), dim=0).reshape(1, horizon).to(**self.tensor_args)
         self.gammalam_seq = torch.cumprod(torch.tensor([1.0] + [self.gamma*self.td_lam] * (horizon - 1)), dim=0).reshape(1, self.horizon).to(**self.tensor_args)
-        self._rollout_fn = rollout_fn
+        # self._rollout_fn = rollout_fn
         self.num_steps = 0
         self.hotstart = hotstart
-        self.num_instances = num_instances
+        self.state_batch_size = state_batch_size
         self.seed_val = seed
         self.trajectories = None
         
@@ -176,33 +173,31 @@ class Controller(nn.Module):
         """
         return False
         
-    @property
-    def rollout_fn(self):
-        return self._rollout_fn
+    # @property
+    # def rollout_fn(self):
+    #     return self._rollout_fn
     
-    @rollout_fn.setter
-    def rollout_fn(self, fn):
-        """
-        Set the rollout function from 
-        input function pointer
-        """
-        self._rollout_fn = fn
+    # @rollout_fn.setter
+    # def rollout_fn(self, fn):
+    #     """
+    #     Set the rollout function from 
+    #     input function pointer
+    #     """
+    #     self._rollout_fn = fn
     
     @abstractmethod
     def generate_rollouts(self, state):
         pass
-
-    def forward(self, state, calc_val:bool=False, shift_steps:int=1, n_iters=None):
-        distrib_info, value, aux_info =  self.optimize(state, calc_val, shift_steps, n_iters)
-        return distrib_info, value, aux_info
     
     @abstractmethod
-    def sample(self, state, calc_val:bool=False, shift_steps:int=1, n_iters=None, deterministic:bool=False, num_samples:int=1):
+    def sample(self, state, shift_steps:int=1, n_iters=None, deterministic:bool=False): #calc_val:bool=False , num_samples:int=1
         pass
 
+    def forward(self, state, shift_steps:int=1, n_iters=None): #calc_val:bool=False
+        distrib_info, value, aux_info =  self.optimize(state, shift_steps, n_iters) #calc_val
+        return distrib_info, value, aux_info
 
-
-    def optimize(self, state, calc_val:bool=False, shift_steps:int=1, n_iters:int=None):
+    def optimize(self, state, shift_steps:int=1, n_iters:int=None): #calc_val:bool=False
         """
         Optimize for best action at current state
 
@@ -227,7 +222,7 @@ class Controller(nn.Module):
 
         n_iters = n_iters if n_iters is not None else self.n_iters
 
-        aux_info = {}
+        aux_info = {} #TODO: Return rollout trajectories? 
 
         # shift distribution to hotstart from previous timestep
         if self.hotstart:
@@ -253,28 +248,17 @@ class Controller(nn.Module):
                         break
 
         self.trajectories = trajectory
-        #calculate best action
-        # curr_action = self._get_next_action(state, mode=self.sample_mode)
-        # with record_function('mpc:get_action_seq'):
-        #     # curr_action_seq = self._get_action_seq(mode=self.sample_mode)
-        #     curr_action_seq = self._get_action_seq(deterministic=deterministic)
 
-        #calculate optimal value estimate if required
-        value = 0.0
-        if calc_val:
-            trajectories = self.generate_rollouts(state)
-            value = self._calc_val(trajectories)
-
-        # # shift distribution to hotstart next timestep
-        # if self.hotstart:
-        #     self._shift()
-        # else:
-        #     self.reset_distribution()
+        # #calculate optimal value estimate if required
+        # value = 0.0
+        # if calc_val:
+        #     value = self.compute_optimal_value(state, trajectory)
         self.num_steps += 1
 
-        return distrib_info, value, aux_info
-
-    def get_optimal_value(self, state):
+        return distrib_info, aux_info #value
+    
+    @abstractmethod
+    def compute_optimal_value(self, state, trajectories=None):
         """
         Calculate optimal value of a state, i.e 
         value under optimal policy. 
@@ -288,14 +272,7 @@ class Controller(nn.Module):
         value : float
             optimal value estimate of the state
         """
-        self.reset() #reset the control distribution
-        _, value, _ = self.optimize(state, calc_val=True, shift_steps=0)
-        return value
-    
-    
-    # def seed(self, seed=None):
-    #     self.np_random, seed = seeding.np_random(seed)
-    #     return seed
+        pass    
 
 
 

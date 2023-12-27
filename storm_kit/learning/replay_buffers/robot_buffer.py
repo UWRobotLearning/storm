@@ -12,7 +12,7 @@ class RobotBuffer():
         self.num_stored = 0
 
     def add_to_buffer(self, buff:Dict[str, torch.Tensor], v:torch.Tensor):
-
+        
         v = v.to(self.device)
         num_points = v.shape[0]
         remaining = min(self.capacity - self.curr_idx, num_points)
@@ -23,7 +23,6 @@ class RobotBuffer():
         #add to end
         buff[self.curr_idx:self.curr_idx + remaining] = v[0:remaining]
         return num_points
-
 
     def add(self, 
             batch_dict: Dict[str, torch.Tensor]):
@@ -52,6 +51,7 @@ class RobotBuffer():
 
     def sample(self, batch_size):
         idxs = torch.randint(0, len(self), size=(batch_size,), device=self.device)
+        
         batch = defaultdict(lambda:{})
         for k, v in self.buffers.items():
             # name = k.split('_buff')[0]
@@ -59,20 +59,69 @@ class RobotBuffer():
                 for k2, v2 in v.items():
                     batch[k][k2] = v2[idxs]
             else:
-                batch[k] = v[idxs] #self.buffers[k][idxs]
+                batch[k] = v[idxs]
+                if k.startswith('state'):
+                    batch['next_' + k] = v[idxs + 1]
         return batch
+    
+    def qlearning_dataset(self):
+        #add next_state buffers
+        num_points = len(self)
+        assert num_points > 1
+        new_dataset = RobotBuffer(capacity=num_points-1, device=self.device)
+        buff_dict = {}
+        for k in self.buffers:
+            if k != 'timeouts':
+                # if k == 'terminals':
+                #     curr_buff = self.buffers[k][1:num_points]
+                # else:
+                curr_buff = self.buffers[k][0:num_points-1]
+                
+                if k.startswith('state'):
+                    next_state_buff = self.buffers[k][1:num_points]
+            
+                #now we remove the elements corresponding to timeouts
+                if 'timeouts' in self.buffers:
+                    timeouts = self.buffers['timeouts'][0:num_points-1]
+                    curr_buff = curr_buff[~timeouts.bool()]
+                    buff_dict[k] = curr_buff
+                    if k.startswith('state'):
+                        next_state_buff = next_state_buff[~timeouts.bool()]
+                        buff_dict['next_'+k] = next_state_buff
+        
+        new_dataset.add(buff_dict)
+        # new_dataset.curr_idx = (new_dataset.curr_idx + num_points) % new_dataset.capacity
+        # new_dataset.num_stored = min(new_dataset.num_stored + num_points, new_dataset.capacity)
+        return new_dataset
 
-    def concatenate(self, state_dict):
-        buffers = state_dict['buffers']
+    def episode_iterator(self, max_episode_length=None):
+        """Returns an iterator over episodes."""
+
+        terminals = self.buffers['terminals'][0:len(self)]
+        if 'timeouts' in self.buffers:
+            timeouts = self.buffers['timeouts'][0:len(self)]
+        else:
+            raise NotImplementedError()
+            # num_episodes = len(self) // max_episode_length
+            # timeouts = torch.linspace(0, num_episodes, num_episodes)
+            # print(num_episodes, timeouts, len(self), max_episode_length)
+            # input('....')
+
+        episode_end_idxs = torch.logical_or(terminals, timeouts).nonzero()
+
+        start_idx = 0
+        for end_idx in episode_end_idxs:
+            episode_buffer = {}
+            for k,v in self.buffers.items():
+                episode_buffer[k] = v[start_idx:end_idx+1]
+
+            start_idx = end_idx + 1
+            yield episode_buffer
+
+
+    def concatenate(self, new_buffer):
+        buffers = new_buffer.state_dict()['buffers']
         self.add(buffers)
-        # batch_dict = {}
-        # for k, v in buffers:
-        #     # name, _ = k.split("_")
-        #     if isinstance(v, dict):
-
-        #     else:
-        #         batch_dict[name] = v
-        # self.add(batch_dict)
     
     def save(self, filepath):
         state = self.state_dict()
@@ -111,3 +160,9 @@ class RobotBuffer():
         str = 'num_stored={}, capacity={}, keys = {}'.format(
             self.num_stored, self.capacity, self.buffers.keys())
         return str
+
+    def __getitem__(self, item):
+        return self.buffers[item]
+
+    def __setitem__(self, item, value):
+        self.buffers[item] = value

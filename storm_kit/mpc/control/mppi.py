@@ -65,9 +65,15 @@ class MPPI(GaussianMPC):
                  action_lows,
                  action_highs,
                  null_act_frac=0.,
-                 rollout_fn=None,
+                 cl_act_frac=0.,
+                #  rollout_fn=None,
+                 task=None,
+                 dynamics_model=None,
+                 sampling_policy=None,
+                 value_function=None,
                  hotstart=True,
-                 num_instances=1,
+                 state_batch_size:int = 1,
+                #  num_instances=1,
                  squash_fn='clamp',
                  update_cov=False,
                  cov_type='sigma_I',
@@ -91,9 +97,15 @@ class MPPI(GaussianMPC):
                                    step_size_mean,
                                    step_size_cov, 
                                    null_act_frac,
-                                   rollout_fn,
+                                   cl_act_frac,
+                                #    rollout_fn,
+                                   task,
+                                   dynamics_model,
+                                   sampling_policy,
+                                   value_function,
                                    hotstart,
-                                   num_instances,
+                                   state_batch_size,
+                                #    num_instances,
                                    squash_fn,
                                    cov_type,
                                    seed,
@@ -113,37 +125,34 @@ class MPPI(GaussianMPC):
 
 
         """
-        costs = trajectories["costs"].to(**self.tensor_args)
+        # costs = trajectories["costs"].to(**self.tensor_args)
         # vis_seq = trajectories[self.visual_traj].to(**self.tensor_args)
         actions = trajectories["actions"].to(**self.tensor_args)
-        
-        value_preds = trajectories['value_preds']
+        # value_preds = trajectories['value_preds']
 
         with record_function('mppi:exp_util'):
-            w = self._exp_util(costs, actions, value_preds)
-        
+            # w, v_opt = self._exp_util(costs, actions, value_preds)
+            w, v_opt = self._exp_util(trajectories)
+
         #Update best action
         best_idx = torch.argmax(w, dim=1)
+        # best_idx = torch.argmax(w, dim=0)
         self.best_idx = best_idx
         self.best_traj = torch.index_select(actions, 1, best_idx)[:,0]#.squeeze(1)
+        # self.best_traj = torch.index_select(actions, 0, best_idx).squeeze(0) #[:,0]#.squeeze(1)
         # self.best_traj = actions[:, self.best_idx]
         # top_values, top_idx = torch.topk(self.total_costs, 10)
         # self.top_values = top_values
         # self.top_idx = top_idx
-        # print(vis_seq.shape, top_idx.shape)
         # self.top_trajs = torch.index_select(vis_seq, 1, top_idx).squeeze(1) #.squeeze(0)
         
-        # print("mean", w.shape, actions.shape, w.T.shape, actions.T.shape)
         # weighted_seq = w.T * actions.T
         # mean_update = torch.sum(weighted_seq.T, dim=1)
         w = w.unsqueeze(-1).unsqueeze(-1)
         weighted_seq = w * actions
         mean_update = torch.sum(weighted_seq, dim=1)
-        # print("weightted_seq", weighted_seq.shape)
         # assert torch.allclose(weighted_seq.T, weighted_seq_2)
-
         # new_mean = sum_seq
-        
         delta = actions - self.mean_action.unsqueeze(1)
         #Update Covariance
         if self.update_cov: 
@@ -161,19 +170,24 @@ class MPPI(GaussianMPC):
                 # cov_update = torch.diag(torch.mean(torch.sum(weighted_delta.T, dim=0), dim=0))
                 #sum across batch dimension and mean across temporal dimension aka horizon
                 cov_update = torch.mean(torch.sum(weighted_delta, dim=1), dim=1)
+                # cov_update = torch.mean(torch.sum(weighted_delta, dim=0), dim=0)
             elif self.cov_type == 'diag_HxH':
                 weighted_delta = w * (delta**2)
-                # assert(torch.allclose(weighted_delta, weighted_delta_2))
                 # cov_update = torch.diag(torch.mean(torch.sum(weighted_delta.T, dim=0), dim=0))
                 #sum across batch dimension and mean across temporal dimension aka horizon
                 cov_update = torch.sum(weighted_delta, dim=1)
-                raise NotImplementedError
+                raise NotImplementedError('Need to test/debug covariance update of form diag_HxH')
             elif self.cov_type == 'full_AxA':
                 #Full Covariance of size AxA
                 delta = delta.unsqueeze(-1)
                 cov_update = torch.matmul(delta, delta.transpose(-1,-2))
                 cov_update = w.unsqueeze(-1) * cov_update
                 cov_update = torch.mean(torch.sum(cov_update, dim=1), dim=1)
+                # cov_update = torch.sum(torch.sum(cov_update, dim=1), dim=1) /  (cov_update.shape[1] + cov_update.shape[2])
+                # cov_update = torch.mean(torch.sum(cov_update, dim=0), dim=0)
+                ####TO TEST: OR
+                #### cov_update = torch.sum(torch.sum(cov_update, dim=1), dim=1) / (cov_update.shape[1] + cov_update.shape[2])
+                #### cov_update = torch.mean(cov_update.view(cov_update.shape[0]*cov_update.shape[1],-1,-1), dim=0)
 
                 # weighted_delta = torch.sqrt(w.unsqueeze(-1).unsqueeze(-1)) * delta
                 # weighted_delta = weighted_delta.view(self.num_instances, self.num_particles*self.horizon, -1)
@@ -192,6 +206,7 @@ class MPPI(GaussianMPC):
             elif self.cov_type == 'full_HAxHA':# and self.sample_type != 'stomp':
                 weighted_delta = torch.sqrt(w) * delta.view(delta.shape[0], delta.shape[1] * delta.shape[2]).T #.unsqueeze(-1)
                 cov_update = torch.matmul(weighted_delta, weighted_delta.T)
+                raise NotImplementedError('Need to test/debug covariance update of form full_HAxHA')
                 
                 # weighted_cov = w * (torch.matmul(delta_new, delta_new.transpose(-2,-1))).T
                 # weighted_cov = w * cov.T
@@ -212,11 +227,12 @@ class MPPI(GaussianMPC):
             #if(cov_update == 'diag_AxA'):
             #    self.scale_tril = torch.sqrt(self.cov_action)
             # self.scale_tril = torch.cholesky(self.cov_action)
-        # print(torch.norm(self.cov_action))
         self.mean_action.data = (1.0 - self.step_size_mean) * self.mean_action.data +\
             self.step_size_mean * mean_update
-        
-        return dict(mean=self.mean_action, cov=self.full_cov, scale_tril=self.full_scale_tril)
+                
+        return dict(
+            mean=self.mean_action, cov=self.full_cov, 
+            scale_tril=self.full_scale_tril, optimal_value=v_opt)
 
         
     def _shift(self, shift_steps):
@@ -268,33 +284,64 @@ class MPPI(GaussianMPC):
                 self.cov_action[-shift_dim:, -shift_dim:] = self.init_cov*I2 
                 #update cholesky decomp
                 self.scale_tril = torch.linalg.cholesky(self.cov_action)
-                # self.inv_cov_action = torch.cholesky_inverse(self.scale_tril)
+                raise NotImplementedError('Need to test/debug covariance update of form full_HAxHA')
 
-
-    def _exp_util(self, costs, actions, value_preds):
+    # def _exp_util(self, costs, actions, value_preds):
+    def _exp_util(self, trajectories):
         """
             Calculate weights using exponential utility
         """
-        
-        if value_preds is not None:
-            costs[:,:,-1] = value_preds[:,:,-1] 
-
-        # traj_returns = cost_to_go(costs, self.gamma_seq)
-        traj_returns = cost_to_go(costs, self.gammalam_seq)
-        # assert torch.allclose(traj_returns, traj_returns_2)
-        # if not self.time_based_weights: traj_returns = traj_returns[:,0]
-        traj_returns = traj_returns[:,:,0]
+        # costs = trajectories['costs'].to(self.device)
+        # value_preds = trajectories['value_preds']
+        # if value_preds is not None:
+        #     costs[..., -1] = value_preds[..., -1] 
+        # traj_returns = cost_to_go(costs, self.gammalam_seq)
+        # # if not self.time_based_weights: traj_returns = traj_returns[:,0]
+        # traj_returns = traj_returns[...,0]
+        traj_returns = self._compute_traj_returns(trajectories)
         #control_costs = self._control_costs(actions)
         # total_returns = traj_returns #+ self.beta * control_costs
+        normalized_traj_returns = traj_returns
         if self.normalize_returns:
             max_return = torch.max(traj_returns, dim=-1)[0][:,None]
             min_return = torch.min(traj_returns, dim=-1)[0][:,None]
-            traj_returns = (traj_returns - min_return) / (max_return - min_return)
-
-        # calculate soft-max
-        w = torch.softmax((-1.0/self.beta) * traj_returns, dim=1)
+            normalized_traj_returns = (traj_returns - min_return) / (max_return - min_return)
+        
+        # calculate soft-max for weights
+        # returns_weight = normalized_traj_returns if self.normalize_returns else traj_returns
+        w = torch.softmax((-1.0/self.beta) * normalized_traj_returns, dim=1) 
+        # calculate soft optimal value (using non-normalized returns)
+        val = -1.0 * self.beta * torch.logsumexp((-1.0/self.beta) * traj_returns, dim=1)
         self.total_costs = traj_returns
-        return w
+        return w, val
+
+
+    def _compute_traj_returns(self, trajectories)->torch.Tensor:
+        costs = trajectories["costs"]#.to(**self.tensor_args)
+        actions = trajectories["actions"]#.to(**self.tensor_args)
+        value_preds = trajectories['value_preds']
+        terminals = trajectories['terminals']
+        term_cost = trajectories['term_cost']
+
+        costs += term_cost #* terminals
+        # if terminals.nonzero().numel() > 0:
+        #     import pdb; pdb.set_trace()
+            # print(costs)
+            # input('....')
+            # print(terminals.nonzero(as_tuple=True))
+            # print(costs[terminals.nonzero(as_tuple=True)])
+
+            # input('...')
+
+        if value_preds is not None:
+            # value_preds = value_preds * (1. - terminals) + costs * terminals
+            costs[..., -1] = value_preds[..., -1]
+        
+        traj_returns = cost_to_go(costs, self.gammalam_seq)
+        # if not self.time_based_weights: traj_returns = traj_returns[:,0]
+        traj_returns = traj_returns[...,0]
+        return traj_returns
+   
 
     def _control_costs(self, actions):
         if self.alpha == 1:
@@ -316,14 +363,15 @@ class MPPI(GaussianMPC):
         return control_costs
     
     def _calc_val(self, trajectories):
-        costs = trajectories["costs"]#.to(**self.tensor_args)
-        actions = trajectories["actions"]#.to(**self.tensor_args)
+        costs = trajectories["costs"]
         value_preds = trajectories["value_preds"]
-        # delta = actions - self.mean_action.unsqueeze(0)
-        
-        traj_returns = cost_to_go(costs, self.gammalam_seq)[:,:,0]
-        # control_costs = self._control_costs(delta)
-        # traj_returns +=  self.beta * control_costs
+
+        if value_preds is not None:
+            costs[...,-1] = value_preds[...,-1] 
+
+        traj_returns = cost_to_go(costs, self.gammalam_seq)[..., 0]
+        traj_returns = self.normalize_traj_returns(costs)
+
         # calculate log-sum-exp
         # c = (-1.0/self.beta) * total_costs.copy()
         # cmax = np.max(c)
@@ -335,5 +383,14 @@ class MPPI(GaussianMPC):
         # val = -self.beta * scipy.special.logsumexp((-1.0/self.beta) * total_costs, b=(1.0/total_costs.shape[0]))
         val = -self.beta * torch.logsumexp((-1.0/self.beta) * traj_returns, dim=1)
         return val
-        
+
+    def normalize_traj_returns(self, traj_returns):
+        max_return = torch.max(traj_returns, dim=-1)[0][:,None]
+        min_return = torch.min(traj_returns, dim=-1)[0][:,None]
+        normalized_traj_returns = (traj_returns - min_return) / (max_return - min_return)
+        return normalized_traj_returns       
+
+    def get_optimal_value(self, state):
+        trajectories = self.generate_rollouts(state)
+        return self._calc_val(trajectories)
 

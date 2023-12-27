@@ -56,50 +56,70 @@ def main(cfg: DictConfig):
     act_dim = task.action_dim
     act_lows, act_highs = task.action_lims
 
-    buffer = RobotBuffer(capacity=int(1e6), device=cfg.rl_device)  
+    # buffer = RobotBuffer(capacity=int(1e6), device=cfg.rl_device)  
     
     eval_pretrained = cfg.eval.eval_pretrained and (cfg.eval.pretrained_policy is not None)
+    load_pretrained = cfg.eval.load_pretrained and (cfg.eval.pretrained_policy is not None)
+    load_pretrained = eval_pretrained or load_pretrained 
 
-    if eval_pretrained:
+    pretrained_policy = None
+    policy_loaded = False
+    if eval_pretrained or load_pretrained:
         #we provide a task to policy as well to re-calculate observations
         policy_task = task_cls(
             cfg=cfg.task.task, device=cfg.rl_device, viz_rollouts=False, world_params=cfg.task.world)
         #load pretrained policy weights
-        policy = GaussianPolicy(obs_dim=obs_dim, act_dim=act_dim, config=cfg.train.policy, task=policy_task, act_lows=act_lows, act_highs=act_highs, device=cfg.rl_device)
+        pretrained_policy = GaussianPolicy(obs_dim=obs_dim, act_dim=act_dim, config=cfg.train.policy, task=policy_task, act_lows=act_lows, act_highs=act_highs, device=cfg.rl_device)
         checkpoint_path = Path('./tmp_results/{}/{}'.format(cfg.task_name, cfg.eval.pretrained_policy))
         print('Loading policy from {}'.format(checkpoint_path))
-        checkpoint = torch.load(checkpoint_path)
-        policy_state_dict = checkpoint['policy_state_dict']
-        remove_prefix = 'policy.'
-        policy_state_dict = {k[len(remove_prefix):] if k.startswith(remove_prefix) else k: v for k, v in policy_state_dict.items()}
-        policy.load_state_dict(policy_state_dict)
-        policy.eval()
+        try:
+            checkpoint = torch.load(checkpoint_path)
+            policy_state_dict = checkpoint['policy_state_dict']
+            remove_prefix = 'policy.'
+            policy_state_dict = {k[len(remove_prefix):] if k.startswith(remove_prefix) else k: v for k, v in policy_state_dict.items()}
+            pretrained_policy.load_state_dict(policy_state_dict)
+            pretrained_policy.eval()
+            policy_loaded = True
+            print('Loaded Pretrained Policy Successfully')
+        except:
+            policy_loaded = False
+            print('Pretrained Policy Not Loaded Successfully')
 
+    if eval_pretrained and policy_loaded:
+        print('Evaluating Pretrained Policy')
+        policy = pretrained_policy
     else:
-        print('Evaluating MPC Policy')
-        policy = MPCPolicy(obs_dim=obs_dim, act_dim=act_dim, config=cfg.mpc, task_cls=task_cls, device=cfg.rl_device)
+        print('Evaluating MPC Policy. Loaded Pretrained?: {}'.format(policy_loaded))
+        dyn_model_cls = task_details['dynamics_model_cls']
+        policy = MPCPolicy(
+            obs_dim=obs_dim, act_dim=act_dim, config=cfg.mpc,
+            task_cls=task_cls, dynamics_model_cls=dyn_model_cls, 
+            sampling_policy=pretrained_policy, device=cfg.rl_device)
         policy_task = None
 
     policy = JointControlWrapper(config=cfg.task.joint_control, policy=policy, device=cfg.rl_device)
-    # #Initialize Agent
-    # agent = MPCAgent(cfg.eval, envs=envs, task=task, obs_dim=obs_dim, action_dim=act_dim, 
-    #                  buffer=buffer, policy=policy, runner_fn=episode_runner, device=cfg.rl_device)
+
     st=time.time()
     num_episodes = cfg.eval.num_episodes
     deterministic_eval = cfg.eval.deterministic_eval
     print('Collecting {} episodes. Deterministic = {}'.format(num_episodes, deterministic_eval))
-    metrics = episode_runner(
+    buffer, metrics = episode_runner(
         envs,
         num_episodes = num_episodes, 
         policy = policy,
         task = task,
-        buffer = buffer,
+        # buffer = buffer,
+        collect_data = True,
         deterministic = deterministic_eval,
         debug = False,
         device = cfg.rl_device,
         rng = eval_rng)
     print(metrics)
-    
+
+    for episode in buffer.episode_iterator():
+        episode_metrics = task.compute_metrics(episode)
+        print(episode_metrics)
+
     print('Time taken = {}'.format(time.time() - st))
     data_dir = data_dir if cfg.eval.save_buffer else None
     # if model_dir is not None:

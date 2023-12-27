@@ -100,12 +100,13 @@ class GaussianMLP(nn.Module):
         return mean, None
 
 
-    def sample(self, x:torch.Tensor, deterministic:bool = False, num_samples:int = 1):
+    def sample(self, x:torch.Tensor, deterministic:bool = False): #, num_samples:int = 1):
         mean, std = self.forward(x)
         if deterministic or self.std_type == 'no_std':
             return mean
         
-        random_samples = torch.randn(num_samples, mean.shape[0], mean.shape[1], device=self.device)
+        # random_samples = torch.randn(num_samples, *mean.size(), device=self.device)
+        random_samples = torch.randn(*mean.size(), device=self.device)
         
         return mean + std * random_samples
 

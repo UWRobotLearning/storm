@@ -595,3 +595,21 @@ class CoordinateTransform(object):
 
 
 
+@torch.jit.script
+def quat_multiply(q1:torch.Tensor, q2:torch.Tensor) -> torch.Tensor:
+    a_w = q1[..., 0]
+    a_x = q1[..., 1]
+    a_y = q1[..., 2]
+    a_z = q1[..., 3]
+    b_w = q2[..., 0]
+    b_x = q2[..., 1]
+    b_y = q2[..., 2]
+    b_z = q2[..., 3]
+
+
+    q_res_w = (a_w * b_w - a_x * b_x - a_y * b_y - a_z * b_z).unsqueeze(-1)
+    q_res_x = (a_w * b_x + b_w * a_x + a_y * b_z - b_y * a_z).unsqueeze(-1)
+    q_res_y = (a_w * b_y + b_w * a_y + a_z * b_x - b_z * a_x).unsqueeze(-1)
+    q_res_z = (a_w * b_z + b_w * a_z + a_x * b_y - b_x * a_y).unsqueeze(-1)
+
+    return torch.cat([q_res_w, q_res_x, q_res_y, q_res_z], dim=-1)

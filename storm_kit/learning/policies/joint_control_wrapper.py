@@ -38,7 +38,7 @@ class JointControlWrapper(nn.Module):
     def forward(self, input_dict):
         return self.policy.forward(input_dict)
 
-    def get_action(self, input_dict, deterministic=False, num_samples:int = 1):
+    def get_action(self, input_dict, deterministic=False): #, num_samples:int = 1):
         # state_dict = dict_to_device(input_dict['states'], self.device)
         #filter states
         input_dict['states'] = copy.deepcopy(self.state_filter.filter_joint_state(
@@ -51,13 +51,12 @@ class JointControlWrapper(nn.Module):
         #     input_dict['obs'] = self.task.compute_observations(
         #         input_dict['states'], compute_full_state=True)
 
-        action = self.policy.get_action(input_dict, deterministic, num_samples)
+        action = self.policy.get_action(input_dict, deterministic) #, num_samples)
         # if num_samples == 1 and action.ndim > 2:
         #     action = action[:, 0]
-
-        # #TODO: Thjis must go by making state_filter compatible with num actions
-        if action.ndim > 2:
-            action = action[0]
+        # # #TODO: This must go by making state_filter compatible with num actions
+        # if action.ndim > 2:
+        #     action = action[0]
 
         # scaled_action = action
         # if self.act_highs is not None:

@@ -8,8 +8,9 @@ class NormCost(nn.Module):
     def __init__(
             self,
             weight:float=1.0,
-            norm_type: str = 'squared_l2',
-            hinge_val: float = 0.0,
+            norm_type:str = 'squared_l2',
+            hinge_val:float = 0.0,
+            alpha:float = 1.0,
             device: torch.device = torch.device('cpu'),
             ):
         super().__init__()
@@ -17,7 +18,9 @@ class NormCost(nn.Module):
         self.device = device
         self.weight = weight
         self.hinge_val = hinge_val
+        self.alpha = 10.0
         self.log_two = torch.log(torch.tensor([2.0], device=self.device))
+    
 
     @torch.jit.export
     def forward(self, x:torch.Tensor, hinge_x:Optional[torch.Tensor]=None, keepdim:bool=False) -> torch.Tensor:
@@ -29,13 +32,13 @@ class NormCost(nn.Module):
         elif self.norm_type == 'l1':
             dist = torch.norm(x, p=1, dim=-1, keepdim=keepdim)
         elif self.norm_type == 'logcosh':
-            #computes logcosh(x) using softplus and +ve,-ve splitting
-            # for numerical stability
-            dist = torch.where(x > 0, F.softplus(-2.0 * x) + x - self.log_two, F.softplus(2.0 * x) - x - self.log_two)
-            dist = torch.sum(dist, dim=-1, keepdim=keepdim)
-            #option 2
-            # x = torch.norm(x, p=2, dim=-1, keepdim=keepdim)
-            # dist = logcosh(x)
+            # dist = torch.where(x > 0, F.softplus(-2.0 * x) + x - self.log_two, F.softplus(2.0 * x) - x - self.log_two)
+            norm = torch.norm(x, p=2, dim=-1, keepdim=keepdim)
+            dist = logcosh(self.alpha * norm)
+            # dist2 = torch.log(torch.cosh(self.alpha * norm))
+            # is_close = torch.isclose(dist, dist2)
+            # print(dist[~is_close], dist2[~is_close])
+            # assert torch.allclose(dist, dist2)
         elif self.norm_type == 'smooth_l1':
             l1_dist = torch.norm(x, p=1, dim=-1)
             dist = None
@@ -48,3 +51,13 @@ class NormCost(nn.Module):
             dist[hinge_mask] = 0.0
 
         return self.weight * dist
+
+@torch.jit.script
+def logcosh(x:torch.Tensor)->torch.Tensor:
+    #computes logcosh(x) using softplus and +ve,-ve splitting
+    # for numerical stability
+    # Note: removed +ve, -ve splitting since we call
+    # logcosh only on the norm
+    LOG_TWO = torch.log(2.0)
+    return  x + F.softplus(-2.0 * x) - LOG_TWO
+ 

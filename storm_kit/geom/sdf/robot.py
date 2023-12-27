@@ -310,20 +310,22 @@ class RobotSphereCollision:
     def initialize(self):
         #load collision model from supplied yaml file
         self.load_robot_collision_model()
+        self.allocate_buffers(self.batch_size)
 
         #initialize buffers to be used for batched computation
         # self._batch_link_spheres = []
         # for i in range(len(self._link_spheres)):
         #     self._batch_link_spheres.append(self._link_spheres[i].unsqueeze(0).repeat(self.batch_size, 1, 1).clone())
+    
+    def allocate_buffers(self, batch_size):    
         self._batch_link_spheres = {}
         for k in self._link_spheres.keys():
-            self._batch_link_spheres[k] = self._link_spheres[k].unsqueeze(0).repeat(self.batch_size, 1, 1).clone()
+            self._batch_link_spheres[k] = self._link_spheres[k].unsqueeze(0).repeat(batch_size, 1, 1).clone()
 
         self._w_batch_link_spheres = copy.deepcopy(self._batch_link_spheres)
-        # self.num_links = len(self.w_batch_link_spheres)
         self.num_links = len(self._w_batch_link_spheres.keys())
 
-        self.dist_buff = torch.zeros((self.batch_size, self.num_links, self.num_links), device=self.device)
+        self.dist_buff = torch.zeros((batch_size, self.num_links, self.num_links), device=self.device)
 
     def load_robot_collision_model(self):
         """Load robot collision model, called from constructor
@@ -468,6 +470,11 @@ class RobotSphereCollision:
         links_pos: bxnx3
         links_rot: bxnx3x3
         '''
+
+        curr_batch_size = links_pos.shape[0]
+        if curr_batch_size != self.batch_size:
+            self.batch_size = curr_batch_size
+            self.allocate_buffers(self.batch_size)
 
         # for i in range(len(self.w_batch_link_spheres)):
         for i,link in enumerate(self._w_batch_link_spheres.keys()):

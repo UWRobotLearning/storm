@@ -59,15 +59,14 @@ class GaussianPolicy(Policy):
             dist = TransformedDistribution(dist, TanhTransform(cache_size=1))
         return dist
 
-    def get_action(self, input_dict: Dict[str, torch.Tensor], deterministic: bool = False, num_samples:int = 1):
+    def get_action(self, input_dict: Dict[str, torch.Tensor], deterministic: bool = False): #, num_samples:int = 1):
         if 'obs' in input_dict:
             inp = input_dict['obs']
         else:
             if self.task is not None:
                 inp = self.task.compute_observations(
                     input_dict['states'], compute_full_state=True)
-
-        act = self.mlp.sample(inp, deterministic=deterministic, num_samples=num_samples)
+        act = self.mlp.sample(inp, deterministic=deterministic) #, num_samples=num_samples)
         if self.use_tanh:
             act = torch.tanh(act)
         if self.rescale_action:
@@ -89,7 +88,6 @@ class GaussianPolicy(Policy):
         if self.task is not None:
             self.task.update_params(reset_data)                
 
-    
     def extra_repr(self):
         repr_str = '(use_tanh): {}\n'.format(self.use_tanh)
         return repr_str

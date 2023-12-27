@@ -45,7 +45,6 @@ class QFunction(nn.Module):
         return preds
 
 
-
 class TwinQFunction(nn.Module):
     def __init__(
             self,

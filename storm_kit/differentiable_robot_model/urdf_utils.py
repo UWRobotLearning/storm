@@ -117,10 +117,10 @@ class URDFRobotModel(object):
             body_params["inertia_mat"] = torch.eye(3, 3, device=self._device).unsqueeze(
                 0
             )
-            print(
-                "Warning: No dynamics information for link: {}, setting all inertial properties to 1.".format(
-                    link.name
-                )
-            )
+            # print(
+            #     "Warning: No dynamics information for link: {}, setting all inertial properties to 1.".format(
+            #         link.name
+            #     )
+            # )
 
         return body_params

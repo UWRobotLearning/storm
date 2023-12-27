@@ -22,6 +22,7 @@ class SACAgent(Agent):
             policy,
             critic,
             runner_fn,
+            init_buffer=None,
             target_critic=None,
             logger=None,
             tb_writer=None,
@@ -39,6 +40,7 @@ class SACAgent(Agent):
             device=device, train_rng=train_rng,
             eval_rng=eval_rng        
         )
+        self.init_buffer = init_buffer #initial dataset
         self.critic = critic
         # self.target_critic = copy.deepcopy(self.critic)
         self.target_critic = target_critic
@@ -99,12 +101,14 @@ class SACAgent(Agent):
                         self.tb_writer.add_scalar('Eval/' + k, v, i)
 
             #collect new experience
-            self.buffer, play_metrics = self.collect_experience(
+            new_buffer, play_metrics = self.collect_experience(
+                policy=self.policy,
                 num_episodes=self.num_train_episodes_per_epoch, 
                 update_buffer=True, 
                 deterministic=False,
                 debug=debug)
-            
+                    
+            self.buffer.concatenate(new_buffer.qlearning_dataset())
             print(play_metrics, 'Buffer len = {}'.format(len(self.buffer)))
             num_steps_collected = play_metrics['num_steps_collected'] 
             total_env_steps += num_steps_collected
@@ -131,7 +135,7 @@ class SACAgent(Agent):
                     
                     if self.relabel_data:
                         with record_function('relabel_data'):
-                            batch = self.relabel_batch(batch)
+                            batch = self.preprocess_batch(batch, compute_cost_and_terminals=True)
 
                     # batch = self.buffer.sample(self.cfg['train_batch_size'])
                     with record_function('update'):
@@ -225,7 +229,6 @@ class SACAgent(Agent):
         new_actions, log_pi_new_actions = self.policy.entropy(policy_input, self.num_action_samples)
         log_pi_new_actions = log_pi_new_actions.mean(-1) #mean along action dimension
 
-
         self.critic.requires_grad_(False)
         q_pred = self.critic(
             {'obs': batch_dict['obs'].unsqueeze(0).repeat(self.num_action_samples, 1, 1)}, 
@@ -246,7 +249,7 @@ class SACAgent(Agent):
         act_batch = batch_dict['actions']
         next_obs_batch = batch_dict['next_obs']
         next_state_batch = batch_dict['next_state_dict']
-        done_batch = batch_dict['done'].squeeze(-1).float()
+        done_batch = batch_dict['terminals'].squeeze(-1).float()
 
         with torch.no_grad():
             policy_input = {

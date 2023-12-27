@@ -36,9 +36,10 @@ class BoundCost(nn.Module):
         
         self.device = device
         self.weight = torch.as_tensor(weight, device=self.device)
-        self.bounds = torch.as_tensor(bounds, device=self.device)
+        # self.bounds = torch.as_tensor(bounds, device=self.device)
+        self.bounds = bounds.clone().to(self.device)
         self.n_dofs = self.bounds.shape[0]
-        self.scaled_bounds = torch.as_tensor(bounds, device=self.device)
+        self.scaled_bounds = bounds.clone().to(self.device)
         self.bnd_range = (self.bounds[:,1] - self.bounds[:,0]) / 2.0
         self.bound_thresh = bound_thresh * self.bnd_range
         self.scaled_bounds[:,1] -= self.bound_thresh
@@ -47,16 +48,23 @@ class BoundCost(nn.Module):
     def forward(self, state_batch:torch.Tensor)->Tuple[torch.Tensor, Dict[str, torch.Tensor]]:
         inp_device = state_batch.device
 
-        bound_mask = torch.logical_and(state_batch < self.scaled_bounds[:,1],
-                                       state_batch > self.scaled_bounds[:,0])
+        bound_mask = torch.logical_and(
+            state_batch < self.bounds[:,1],
+            state_batch > self.bounds[:,0])
 
+        bound_mask_scaled = torch.logical_and(
+            state_batch < self.scaled_bounds[:,1],
+            state_batch > self.scaled_bounds[:,0])
+        
         cost = torch.minimum(
             torch.square(state_batch - self.scaled_bounds[:,0]), 
             torch.square(self.scaled_bounds[:,1] - state_batch))
         
-        cost[bound_mask] = 0.0
+        cost[bound_mask_scaled] = 0.0
         cost = torch.sum(cost, dim=-1)
-        cost = self. weight * torch.sqrt(cost)
+        # cost = self.weight * torch.sqrt(cost)
+        cost = self.weight * cost
         info = {}
         info['in_bounds'] = bound_mask
+        info['in_bounds_scaled'] = bound_mask_scaled
         return cost.to(inp_device), info

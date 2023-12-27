@@ -88,7 +88,7 @@ class BPAgent(Agent):
             
             if self.relabel_data:
                 with record_function('relabel_data'):
-                    batch = self.relabel_batch(batch)
+                    batch = self.preprocess_batch(batch)
             
             with record_function('update'):
                 train_metrics = self.update(batch, i)
@@ -123,10 +123,10 @@ class BPAgent(Agent):
 
 
     def compute_policy_loss(self, batch_dict):
-        
         obs_batch = batch_dict['obs']
-        state_batch =batch_dict['state_dict']
+        state_batch = batch_dict['state_dict']
         act_batch = batch_dict['actions']
+        
         if self.policy_use_tanh:
             act_batch = torch.tanh(act_batch)
 
