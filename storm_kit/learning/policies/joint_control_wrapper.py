@@ -46,11 +46,14 @@ class JointControlWrapper(nn.Module):
         return self.policy.forward(input_dict)
 
     def get_action(self, input_dict, deterministic=False):
+        # st=time.time()
         #filter states
         input_dict['states'] = copy.deepcopy(self.state_filter.filter_joint_state(
             dict_to_device(input_dict['states'], self.device)))
 
         action = self.policy.get_action(input_dict, deterministic)
+        # print(time.time()-st)
+
         # if num_samples == 1 and action.ndim > 2:
         #     action = action[:, 0]
         # # #TODO: This must go by making state_filter compatible with num actions
@@ -93,8 +96,8 @@ class JointControlWrapper(nn.Module):
 
     #     return mid_range.unsqueeze(0) + value * half_range.unsqueeze(0)
 
-    # def update_rollout_params(self, param_dict):
-    #     self.policy.update_rollout_params(param_dict)
+    def update_task_params(self, param_dict):
+        self.policy.update_task_params(param_dict)
     
     def compute_value_estimate(self, input_dict):
         return self.policy.compute_value_estimate(input_dict)

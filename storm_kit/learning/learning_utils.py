@@ -320,6 +320,7 @@ def episode_runner(
         collect_data: bool = False,
         deterministic: bool = False,
         debug: bool = False,
+        check_termination: bool = True,
         device: torch.device = torch.device('cpu'),
         rng:Optional[torch.Generator] = None):  
         
@@ -346,7 +347,7 @@ def episode_runner(
         # transition_dict_list = []
         # episode_metrics_list = []
         # episode_cost_buffer = []
-
+        print('Collecting {} episodes'.format(num_episodes))
         while num_episodes_done < num_episodes:
             with torch.no_grad():
 
@@ -361,13 +362,15 @@ def episode_runner(
 
                 next_state_dict, done_env = envs.step(command)
                 # next_obs, cost, done_task, cost_terms, done_cost, done_info = task.forward(next_state_dict, actions)
-                done_task, done_cost, done_info = task.compute_termination(
-                    curr_state_dict, actions, compute_full_state=True)
-                if done_task.item() > 0:
-                    print(done_info['in_bounds'])
-                    print('state_dict', curr_state_dict)
-                    print('state_bounds', task.state_bounds)
-                    print('command', command)
+                done_task = torch.zeros_like(done_env)
+                if check_termination:
+                    done_task, done_cost, done_info = task.compute_termination(
+                        curr_state_dict, actions, compute_full_state=True)
+                    if done_task.item() > 0:
+                        print(done_info['in_bounds'])
+                        print('state_dict', curr_state_dict)
+                        print('state_bounds', task.state_bounds)
+                        print('command', command)
                 # done_task = done_task.view(envs.num_envs,)
                 # cost = cost.view(envs.num_envs,)
                 # done_cost = done_cost.view(envs.num_envs,)

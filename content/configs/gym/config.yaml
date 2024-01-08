@@ -48,7 +48,11 @@ capture_video_freq: 1464
 capture_video_len: 100
 force_render: True
 
+# enable/disable debug mode
 debug: False
+
+# if running on real robot
+real_robot_exp: False
 
 # disables rendering
 headless: False
@@ -61,7 +65,7 @@ defaults:
   - hydra/job_logging: disabled
 
 eval: 
-  num_episodes: 20
+  num_episodes: 2
   save_buffer: false
   deterministic_eval: true
   log_freq: 50

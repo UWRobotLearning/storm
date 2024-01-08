@@ -69,7 +69,7 @@ rollout:
       # hinge_val: -1.0
 
     zero_q_jerk:
-      weight: 0.0 #1e-1 #0.01
+      weight: 0.0 #1e-3
       norm_type: 'l2'
       # hinge_val: -1.0
       
@@ -94,7 +94,7 @@ rollout:
       order: 1
 
     primitive_collision:
-      weight: 100.0
+      weight: 200.0
       distance_threshold_world: 0.03
       distance_threshold_self: 0.03
 
@@ -103,7 +103,7 @@ rollout:
     #   distance_threshold: 0.05
 
     state_bound:
-      weight: 100.0 
+      weight: 200.0 
       bound_thresh: 0.03
 
     retract_state : [0.00, 0.0, 0.00, -1.5, 0.00, 2.0, 0.0] #check
@@ -128,6 +128,8 @@ mppi:
   cov_type          : 'full_AxA' # 
   kappa             : 0.005
   null_act_frac     : 0.01
+  cl_act_frac       : 0.0
+  use_cl_std        : False #whether to use std of closed loop policy for exploration
   base_action       : 'repeat'
   squash_fn         : 'clamp'
   hotstart          : True

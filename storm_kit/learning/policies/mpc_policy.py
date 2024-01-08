@@ -143,8 +143,8 @@ class MPCPolicy(Policy):
         # return rollout_cls(
         #     cfg = rollout_params, world_params = world_params, value_function=self.value_function, viz_rollouts=self.cfg.viz_rollouts, device=self.device)
 
-    # def update_rollout_params(self, param_dict):
-    #     self.controller.rollout_fn.update_params(param_dict)
+    def update_task_params(self, param_dict):
+        self.controller.task.update_params(param_dict)
         
     def reset(self, reset_data=None):
         self.controller.reset(reset_data)

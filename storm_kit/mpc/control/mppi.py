@@ -119,6 +119,7 @@ class MPPI(GaussianMPC):
         self.kappa = kappa
         self.visual_traj = visual_traj
         self.normalize_returns = normalize_returns
+        self.log_B = torch.log(torch.tensor([self.num_particles], device=self.device))
 
     def _update_distribution(self, trajectories):
         """
@@ -313,9 +314,10 @@ class MPPI(GaussianMPC):
         # returns_weight = normalized_traj_returns if self.normalize_returns else traj_returns
         w = torch.softmax((-1.0/self.beta) * normalized_traj_returns, dim=1) 
         # calculate soft optimal value (using non-normalized returns)
-        val = -1.0 * self.beta * (torch.logsumexp((-1.0/self.beta) * traj_returns, dim=1) - torch.log(torch.tensor([traj_returns.shape[1]], device=self.device)))
-        val2 = -1.0 * self.beta * scipy.special.logsumexp((-1.0/self.beta) * traj_returns.cpu().numpy(), axis=1, b=(1.0/traj_returns.shape[1]))
-        import pdb; pdb.set_trace()
+        val = -1.0 * self.beta * (torch.logsumexp((-1.0/self.beta) * traj_returns, dim=1) - self.log_B)
+        # print(self.log_B, torch.log(torch.tensor([traj_returns.shape[1]], device=self.device)))
+        # val2 = -1.0 * self.beta * scipy.special.logsumexp((-1.0/self.beta) * traj_returns.cpu().numpy(), axis=1, b=(1.0/traj_returns.shape[1]))
+        # import pdb; pdb.set_trace()
         self.total_costs = traj_returns
         return w, val
 

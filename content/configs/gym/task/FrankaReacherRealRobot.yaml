@@ -8,7 +8,7 @@ n_dofs: 7
 # if given, will override the device setting in gym. 
 env:
   num_envs: 1
-  episodeLength: 500
+  episodeLength: 300
   num_objects: 0
   robot_default_dof_pos: [0.0, -0.7853, 0.0, -2.3561, 0.0, 1.5707, 0.7853]
   asset:
@@ -71,21 +71,23 @@ task:
     grid_resolution: 0.05
 
   task_specs:
-    default_ee_target: [0.4, 0.0, 0.5, 0.0, 0.707, 0.707, 0.0]
-    target_position_noise: 0.0 #meters
-    target_rotation_noise: 0.0 #radians
+    default_ee_target: [0.6, 0.0, 0.15, 0.0, 0.707, 0.707, 0.0]
+    # default_ee_target: [0.6, 0.0, 0.5, 0.0, 0.707, 0.707, 0.0]
+    # default_ee_target: [0.4, -0.3, 0.5, 0.0, 0.707, 0.707, 0.0]
+    target_position_noise: [0.2, 0.2, 0.0] #xyz (meters)
+    target_rotation_noise: [0.0, 0.0, 0.0] #radians
 
   cost:
     goal_pose:
       vec_weight: [1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
-      weight: [6.0, 20.0] #[10.0, 50.0] #[50.0, 100.0]
+      weight: [5.0, 20.0] #[10.0, 50.0] #[50.0, 100.0]
       cost_type: 'se3_twist'
       norm_type: 'l2'
       hinge_val: -1
       convergence_val: [0.0, 0.0] # orientation, position
 
     ee_vel_twist:
-      weight: 1e-4
+      weight: 8e-3
       norm_type: 'l2'
       # hinge_val: 0.01
       # vec_weight: [1.0, 1.0, 1.0] 
@@ -111,7 +113,7 @@ task:
       # hinge_val: -1.0
       
     manipulability:
-      weight: 1.0 #30.0 #30.0 #10.0 #100.0 #0.05 #0.5 #1.0
+      weight: 0.5 #30.0 #30.0 #10.0 #100.0 #0.05 #0.5 #1.0
       thresh: 0.1 #0.1 #0.05 #0.03
 
     joint_l2:

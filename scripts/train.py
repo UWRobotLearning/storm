@@ -47,37 +47,33 @@ def main(cfg: DictConfig):
     task_cls = task_details['task_cls']    
 
     logging_info = init_logging(cfg.task_name, cfg.train.agent.name, cfg)
-    # base_dir = logging_info.base_dir
     model_dir = logging_info['model_dir']
-    log_dir = logging_info['log_dir']
     log = logging_info['log']
     writer = logging_info['tb_writer']
-    # base_dir = Path('./tmp_results/{}/{}'.format(cfg.task_name, cfg.train.agent.name))
-    # log_dir = os.path.join(base_dir, 'logs')
-    # model_dir = os.path.join(base_dir, 'models')
     eval_rng = torch.Generator(device=cfg.rl_device)
     eval_rng.manual_seed(cfg.seed)
     train_rng = torch.Generator(device=cfg.rl_device)
     train_rng.manual_seed(cfg.seed)
 
-    # if not os.path.exists(model_dir):
-    #     os.makedirs(model_dir)
-    # if not os.path.exists(log_dir):
-    #     os.makedirs(log_dir)
-    # log = Log(log_dir, cfg)
-    # log(f'Log dir: {log.dir}')
-    # writer = SummaryWriter(log.dir)
-
     #Initialize environment
-    envs = IsaacGymRobotEnv(
-        cfg.task, 
-        cfg.rl_device, 
-        cfg.sim_device, 
-        cfg.graphics_device_id, 
-        cfg.headless, 
-        False, 
-        cfg.force_render
-    )
+    if not cfg.real_robot_exp:
+        from storm_kit.envs import IsaacGymRobotEnv
+        envs = IsaacGymRobotEnv(
+            cfg.task, 
+            cfg.rl_device, 
+            cfg.sim_device, 
+            cfg.graphics_device_id, 
+            cfg.headless, 
+            False, 
+            cfg.force_render
+        )
+    else:
+        from storm_kit.envs.panda_real_robot_env import PandaRealRobotEnv
+        envs = PandaRealRobotEnv(
+            cfg.task,
+            device=cfg.rl_device,
+            headless=cfg.headless
+        )
 
     #Initialize task
     task = task_cls(

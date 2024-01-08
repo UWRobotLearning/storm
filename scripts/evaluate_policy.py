@@ -12,14 +12,11 @@ from storm_kit.learning.policies import MPCPolicy, GaussianPolicy, JointControlW
 from storm_kit.learning.learning_utils import episode_runner, plot_episode
 from task_map import task_map
 
-
-
 @hydra.main(config_name="config", config_path="../content/configs/gym")
 def main(cfg: DictConfig):
     torch.set_default_dtype(torch.float32)
     torch.manual_seed(cfg.seed)
 
-    from storm_kit.envs import IsaacGymRobotEnv
     task_details = task_map[cfg.task.name]
     task_cls = task_details['task_cls']   
     
@@ -37,15 +34,25 @@ def main(cfg: DictConfig):
             os.makedirs(data_dir)
 
     #Initialize environment
-    envs = IsaacGymRobotEnv(
-        cfg.task, 
-        cfg.rl_device, 
-        cfg.sim_device, 
-        cfg.graphics_device_id, 
-        cfg.headless, 
-        False, 
-        cfg.force_render
-    )
+    if not cfg.real_robot_exp:
+        from storm_kit.envs import IsaacGymRobotEnv
+        envs = IsaacGymRobotEnv(
+            cfg.task, 
+            cfg.rl_device, 
+            cfg.sim_device, 
+            cfg.graphics_device_id, 
+            cfg.headless, 
+            False, 
+            cfg.force_render
+        )
+    else:
+        from storm_kit.envs.panda_real_robot_env import PandaRealRobotEnv
+        envs = PandaRealRobotEnv(
+            cfg.task,
+            device=cfg.rl_device,
+            headless=cfg.headless,
+            safe_mode=False
+        )
     #Initialize task
     task = task_cls(
         cfg=cfg.task.task, device=cfg.rl_device, viz_rollouts=False, world_params=cfg.task.world)
@@ -115,6 +122,7 @@ def main(cfg: DictConfig):
         collect_data = True,
         deterministic = deterministic_eval,
         debug = False,
+        check_termination= not cfg.real_robot_exp,
         device = cfg.rl_device,
         rng = eval_rng)
     print(metrics)

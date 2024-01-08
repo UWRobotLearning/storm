@@ -63,4 +63,5 @@ dependencies:
     - opencv-python
     - open3d
     - m2r2
+    - netifaces
 

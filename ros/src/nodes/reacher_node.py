@@ -23,6 +23,7 @@ import rospkg
 
 #STORM imports
 from storm_kit.tasks import ArmReacher
+from storm_kit.mpc.model import URDFKinematicModel
 from storm_kit.learning.policies import MPCPolicy, JointControlWrapper
 from storm_kit.learning.learning_utils import dict_to_device
 from storm_kit.util_file import get_root_path
@@ -60,12 +61,13 @@ class MPCReacherNode():
         self.device = self.config.rl_device
 
         #STORM Initialization
+        
         obs_dim = 1
         act_dim = 1
         self.policy = MPCPolicy(
             obs_dim=obs_dim, act_dim=act_dim, 
             config=self.config.mpc, task_cls=ArmReacher, 
-            device=self.device)
+            dynamics_model_cls=URDFKinematicModel, device=self.device)
         self.policy = JointControlWrapper(config=self.config.task.joint_control, policy=self.policy, device=self.device)
 
         if self.save_data:
@@ -172,7 +174,7 @@ class MPCReacherNode():
                 #check if goal was updated
                 if self.new_ee_goal:
                     param_dict = {'goal_dict': dict_to_device(self.goal_dict, device=self.device)}
-                    self.policy.update_rollout_params(param_dict)
+                    self.policy.update_task_params(param_dict)
                     self.new_ee_goal = False
 
                 for k in self.robot_state.keys():

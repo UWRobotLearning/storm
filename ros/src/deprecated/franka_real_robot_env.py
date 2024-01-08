@@ -21,6 +21,7 @@ class FrankaRealRobotEnv():
         self.device = device
         self.num_envs = cfg.env.get('num_envs', 1)
         self.robot_default_dof_pos = self.cfg["env"]["robot_default_dof_pos"]
+        rospy.init_node("real_robot_env", anonymous=True, disable_signals=True)    
 
         rospack = rospkg.RosPack()
         self.pkg_path = rospack.get_path('storm_ros')
