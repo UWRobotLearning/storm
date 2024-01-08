@@ -44,7 +44,7 @@ agent:
   eval_first_policy: false
   num_eval_episodes: 1
   learn_policy: true
-  use_mpc_value_targets: false
+  use_mpc_value_targets: true
   # fixed_alpha: 0.2
   # init_log_alpha: 0.0
   random_ensemble_q: false

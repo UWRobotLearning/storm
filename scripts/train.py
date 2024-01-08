@@ -168,9 +168,10 @@ def main(cfg: DictConfig):
     
     elif agent_name == 'MPQ': 
         dyn_model_cls = task_details['dynamics_model_cls']
+        # policy.policy
         mpc_policy = MPCPolicy(
             obs_dim=obs_dim, act_dim=act_dim, config=cfg.mpc, 
-            sampling_policy=policy.policy, value_function=critic, 
+            sampling_policy=None, value_function=critic, 
             task_cls=task_cls, dynamics_model_cls=dyn_model_cls,
             device=cfg.rl_device) 
         
@@ -182,9 +183,9 @@ def main(cfg: DictConfig):
         #For target mpc policy, we need to set num_instances to the train batch size
         target_mpc_cfg = cfg.mpc
         target_mpc_cfg['mppi']['state_batch_size'] = cfg.train.agent.train_batch_size
-        target_mpc_cfg['mppi']['horizon'] = 20
-        target_mpc_cfg['mppi']['n_iters'] = 2
-        target_mpc_cfg['mppi']['cl_act_frac'] = 0.0
+        # target_mpc_cfg['mppi']['horizon'] = 20
+        # target_mpc_cfg['mppi']['n_iters'] = 2
+        # target_mpc_cfg['mppi']['cl_act_frac'] = 0.0
         target_mpc_policy = MPCPolicy(
             obs_dim=obs_dim, act_dim=act_dim, config=target_mpc_cfg, 
             sampling_policy=None, value_function=None, 
