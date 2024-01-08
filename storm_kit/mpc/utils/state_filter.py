@@ -68,7 +68,7 @@ class RobotStateFilter(object):
             self.filtered_state['acceleration'] = (self.filtered_state['velocity'] - self.prev_filtered_state['velocity']) / dt
         return self.filtered_state
 
-@torch.jit.script     
+# @torch.jit.script     
 class JointStateFilter(object):
     
     def __init__(
@@ -78,6 +78,7 @@ class JointStateFilter(object):
             filter_coeff: Dict[str, float], 
             n_dofs: int,
             dt: float = 0.1, 
+            # bounds: Optional[torch.Tensor] = None,
             device: Optional[torch.device] = torch.device('cpu')
             ):
         
@@ -158,13 +159,13 @@ class JointStateFilter(object):
             return self.internal_jnt_state
         dt = self.dt if dt is None else dt 
         self.internal_jnt_state['q_acc'] = qdd_des
-        self.internal_jnt_state['q_vel'] += self.internal_jnt_state['q_acc'] * dt
+        self.internal_jnt_state['q_vel'] += self.internal_jnt_state['q_acc'] * dt        
         self.internal_jnt_state['q_pos'] += self.internal_jnt_state['q_vel'] * dt
+
         return self.internal_jnt_state
         # self.internal_jnt_state[...,2*self.n_dofs:3*self.n_dofs] = qdd_des
         # self.internal_jnt_state[...,self.n_dofs:2*self.n_dofs] += self.internal_jnt_state[...,2*self.n_dofs:3*self.n_dofs] * dt
         # self.internal_jnt_state[...,0:self.n_dofs] += self.internal_jnt_state[...,self.n_dofs:2*self.n_dofs] * dt
-        
 
     # def integrate_jerk(self, qddd_des, raw_joint_state, dt=None):
     #     dt = self.dt if dt is None else dt 
@@ -207,5 +208,4 @@ class JointStateFilter(object):
 
     def reset(self):
         self.internal_jnt_state = {}
-        # self.prev_cmd_qdd = None
         self.initial_step = True

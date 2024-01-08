@@ -59,7 +59,6 @@ class IsaacGymRobotEnv():
             self.virtual_display = SmartDisplay(size=SCREEN_CAPTURE_RESOLUTION)
             self.virtual_display.start()
 
-
         self.force_render = force_render
         self.max_episode_length = self.cfg["env"]["episodeLength"]
         self.aggregate_mode = self.cfg["env"]["aggregateMode"]
@@ -589,7 +588,7 @@ class IsaacGymRobotEnv():
         #after reset, retrieve tray_link pose
         self.ee_handle = self.gym.find_actor_rigid_body_handle(self.envs[0], self.robots[0], self.ee_link_name)
         self.ee_state = self.rigid_body_states[:, self.ee_handle]
-        print("post physics tray link pose", self.ee_state)
+        # print("post physics tray link pose", self.ee_state)
 
         self.control_steps += 1
 
@@ -638,7 +637,7 @@ class IsaacGymRobotEnv():
             'q_pos': self.robot_q_pos_buff.to(self.rl_device),
             'q_vel': self.robot_q_vel_buff.to(self.rl_device),
             'q_acc': self.robot_q_acc_buff.to(self.rl_device),
-            'prev_action': self.prev_action_buff.to(self.rl_device),
+            # 'prev_action': self.prev_action_buff.to(self.rl_device),
             'tstep': self.episode_time
         }
         
@@ -661,7 +660,7 @@ class IsaacGymRobotEnv():
                 state_dict[keys[i*4 + 1]] = object_state[:, 3:7].to(self.rl_device)
                 state_dict[keys[i*4 + 2]] = object_state[:, 7:10].to(self.rl_device)
                 state_dict[keys[i*4 + 3]] = object_state[:, 10:13].to(self.rl_device)
-        print("state dict",state_dict)
+        # print("state dict",state_dict)
         return state_dict
     
     def reset_idx(self, env_ids, reset_data=None):
@@ -708,7 +707,7 @@ class IsaacGymRobotEnv():
         state_dict = self.get_state_dict()
         self.ee_handle = self.gym.find_actor_rigid_body_handle(self.envs[0], self.robots[0], self.ee_link_name)
         self.ee_state = self.rigid_body_states[:, self.ee_handle]
-        print("reset function tray link pose", self.ee_state)
+        # print("reset function tray link pose", self.ee_state)
 
         return state_dict 
 

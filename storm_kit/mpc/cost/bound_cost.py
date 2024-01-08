@@ -62,8 +62,8 @@ class BoundCost(nn.Module):
         
         cost[bound_mask_scaled] = 0.0
         cost = torch.sum(cost, dim=-1)
-        # cost = self.weight * torch.sqrt(cost)
-        cost = self.weight * cost
+        cost = self.weight * torch.sqrt(cost)
+        # cost = self.weight * cost
         info = {}
         info['in_bounds'] = bound_mask
         info['in_bounds_scaled'] = bound_mask_scaled

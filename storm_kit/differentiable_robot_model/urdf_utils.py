@@ -10,17 +10,18 @@ from urdf_parser_py.urdf import URDF
 
 
 class URDFRobotModel(object):
-    def __init__(self, urdf_path, device="cpu"):
+    def __init__(self, urdf_path:str, device:torch.device=torch.device("cpu")):
         self.robot = URDF.from_xml_file(urdf_path)
-        self._device = torch.device(device)
+        # self._device = torch.device(device)
+        self._device = device
 
-    def find_joint_of_body(self, body_name):
+    def find_joint_of_body(self, body_name:str)->int:
         for (i, joint) in enumerate(self.robot.joints):
             if joint.child == body_name:
                 return i
         return -1
 
-    def get_name_of_parent_body(self, link_name):
+    def get_name_of_parent_body(self, link_name:str)->str:
         jid = self.find_joint_of_body(link_name)
         joint = self.robot.joints[jid]
         return joint.parent

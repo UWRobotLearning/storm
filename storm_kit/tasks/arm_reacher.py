@@ -47,29 +47,41 @@ class ArmReacher(ArmTask):
         
         obs =  super().compute_observations(state_dict)
 
-        # orig_size = state_dict['q_pos_seq'].size()[0:-1]
+        orig_size = state_dict['q_pos_seq'].size()[0:-1]
         # new_size = reduce(mul, list(orig_size))  
         # obs = obs.view(new_size, -1)
 
         ee_pos = state_dict['ee_pos_seq']
         ee_quat = state_dict['ee_quat_seq']
+        ee_rot = state_dict['ee_rot_seq']
+        
 
         if ee_pos.ndim == 2:
             ee_goal_pos = self.goal_ee_pos.expand_as(ee_pos)
             ee_goal_quat = self.goal_ee_quat.expand_as(ee_quat)
+            ee_goal_rot = self.goal_ee_rot.reshape_as(ee_rot)
         elif ee_pos.ndim == 3:
             ee_goal_pos = self.goal_ee_pos.unsqueeze(1).expand_as(ee_pos)
             ee_goal_quat = self.goal_ee_quat.unsqueeze(1).expand_as(ee_quat)
+            ee_goal_rot = self.goal_ee_rot.unsqueeze(1).reshape_as(ee_rot)
         elif ee_pos.ndim == 4:
             ee_goal_pos = self.goal_ee_pos.unsqueeze(1).unsqueeze(1).expand_as(ee_pos)
             ee_goal_quat = self.goal_ee_quat.unsqueeze(1).unsqueeze(1).expand_as(ee_quat)
+            ee_goal_rot = self.goal_ee_rot.unsqueeze(1).unsqueeze(1).expand_as(ee_rot)
 
             # ee_goal_pos = ee_goal_pos.view(ee_goal_pos.shape[0], *(1,)*(len(target_shape)-ee_goal_pos.ndim), ee_goal_pos.shape[-1]).expand(target_shape)
             # ee_goal_quat = ee_goal_quat.view(ee_goal_quat.shape[0], *(1,)*(len(target_shape)-ee_goal_quat.ndim), ee_goal_quat.shape[-1]).expand(target_shape)
-
         
-
-        obs = torch.cat((obs, ee_goal_pos, ee_goal_quat), dim=-1)
+        _, pose_cost_info = self.goal_cost.forward(
+            ee_pos.view(-1, 3), ee_rot.view(-1,3,3), 
+            ee_goal_pos.view(-1,3), ee_goal_rot.view(-1,3,3)
+        )
+        translation_res = pose_cost_info['translation_residual'].view(*orig_size,-1)
+        rotation_res = pose_cost_info['rotation_residual'].view(*orig_size,-1)
+        
+        obs = torch.cat(
+            (obs, ee_goal_pos, ee_goal_quat,
+            translation_res, rotation_res), dim=-1)
 
         return obs
 
@@ -106,8 +118,8 @@ class ArmReacher(ArmTask):
             with record_function("pose_cost"):
 
                 goal_cost, goal_cost_info = self.goal_cost.forward(
-                    ee_pos.view(new_size, 3), ee_rot.view(new_size, 3, 3),
-                    goal_ee_pos.view(new_size, 3), goal_ee_rot.view(new_size, 3, 3))
+                    ee_pos.view(-1, 3), ee_rot.view(-1, 3, 3),
+                    goal_ee_pos.view(-1, 3), goal_ee_rot.view(-1, 3, 3))
                 
                 goal_cost = goal_cost.view(orig_size)
                 cost_terms['goal_pose_cost'] = goal_cost
@@ -235,37 +247,40 @@ class ArmReacher(ArmTask):
 
             self.ee_goal_buff[env_ids] = self.default_ee_goal
 
-            if goal_position_noise > 0.:
-                #randomize goal position around the default
-                self.ee_goal_buff[env_ids, 0] = self.ee_goal_buff[env_ids, 0] +  2.0*goal_position_noise * (torch.rand(self.ee_goal_buff[env_ids, 0].size(), device=self.device, generator=rng) - 0.5)
-                self.ee_goal_buff[env_ids, 1] = self.ee_goal_buff[env_ids, 1] +  2.0*goal_position_noise * (torch.rand(self.ee_goal_buff[env_ids, 1].size(), device=self.device, generator=rng) - 0.5)
-                self.ee_goal_buff[env_ids, 2] = self.ee_goal_buff[env_ids, 2] +  2.0*goal_position_noise * (torch.rand(self.ee_goal_buff[env_ids, 2].size(), device=self.device, generator=rng) - 0.5)
-            
-            if goal_rotation_noise > 0.:
-                #randomize goal orientation around defualt
-                default_quat = self.default_ee_goal[3:7]
-                default_euler = matrix_to_euler_angles(quaternion_to_matrix(default_quat).unsqueeze(0), convention='XYZ')
-                roll = default_euler[:,0] + 2.0 * goal_rotation_noise * (torch.rand(env_ids.shape[0], 1, device=self.device, generator=rng) - 0.5)
-                pitch = default_euler[:,1] + 2.0 * goal_rotation_noise * (torch.rand(env_ids.shape[0], 1, device=self.device, generator=rng) - 0.5)
-                yaw = default_euler[:,2] + 2.0 * goal_rotation_noise * (torch.rand(env_ids.shape[0], 1, device=self.device, generator=rng) - 0.5)
-                quat = matrix_to_quaternion(euler_angles_to_matrix(torch.cat([roll, pitch, yaw], dim=-1), convention='XYZ'))
-                self.ee_goal_buff[env_ids, 3:7] = quat           
+            # if goal_position_noise > 0.:
+            #randomize goal position around the default
+            self.ee_goal_buff[env_ids, 0] = self.ee_goal_buff[env_ids, 0] +  goal_position_noise[0] * (2.0*torch.rand(self.ee_goal_buff[env_ids, 0].size(), device=self.device, generator=rng) - 1.0)
+            self.ee_goal_buff[env_ids, 1] = self.ee_goal_buff[env_ids, 1] +  goal_position_noise[1] * (2.0*torch.rand(self.ee_goal_buff[env_ids, 1].size(), device=self.device, generator=rng) - 1.0)
+            self.ee_goal_buff[env_ids, 2] = self.ee_goal_buff[env_ids, 2] +  goal_position_noise[2] * (2.0*torch.rand(self.ee_goal_buff[env_ids, 2].size(), device=self.device, generator=rng) - 1.0)
+        
+            # if goal_rotation_noise > 0.:
+            #randomize goal orientation around defualt
+            # TODO: fix
+            # default_quat = self.ee_goal_buff[env_ids, 3:7]
+            # default_euler = matrix_to_euler_angles(quaternion_to_matrix(default_quat), convention='XYZ')
+            # roll = default_euler[:,0] + goal_rotation_noise[0] * (2.0*torch.rand(env_ids.shape[0], 1, device=self.device, generator=rng) - 1.0)
+            # pitch = default_euler[:,1] + goal_rotation_noise[1] * (2.0*torch.rand(env_ids.shape[0], 1, device=self.device, generator=rng) - 1.0)
+            # yaw = default_euler[:,2] + goal_rotation_noise[2] * (2.0*torch.rand(env_ids.shape[0], 1, device=self.device, generator=rng) - 1.0)
+            # print(default_euler)
+            # quat = matrix_to_quaternion(euler_angles_to_matrix(torch.cat([roll, pitch, yaw], dim=-1), convention='XYZ'))
+            # self.ee_goal_buff[env_ids, 3:7] = quat 
+            # print(self.ee_goal_buff)          
 
-                #     roll = -torch.pi + 2*torch.pi * torch.rand(
-                #         size=(env_ids.shape[0],1), device=self.device) #roll from [-pi, pi)
-                #     pitch = -torch.pi + 2*torch.pi * torch.rand(
-                #         size=(env_ids.shape[0],1), device=self.device) #pitch from [-pi, pi)
-                #     yaw = -torch.pi + 2*torch.pi * torch.rand(
-                #         size=(env_ids.shape[0],1), device=self.device) #yaw from [-pi, pi)
-                #     quat = matrix_to_quaternion(rpy_angles_to_matrix(torch.cat([roll, pitch, yaw], dim=-1)))
-                #     curr_target_buff[env_ids, 3:7] = quat
+            #     roll = -torch.pi + 2*torch.pi * torch.rand(
+            #         size=(env_ids.shape[0],1), device=self.device) #roll from [-pi, pi)
+            #     pitch = -torch.pi + 2*torch.pi * torch.rand(
+            #         size=(env_ids.shape[0],1), device=self.device) #pitch from [-pi, pi)
+            #     yaw = -torch.pi + 2*torch.pi * torch.rand(
+            #         size=(env_ids.shape[0],1), device=self.device) #yaw from [-pi, pi)
+            #     quat = matrix_to_quaternion(rpy_angles_to_matrix(torch.cat([roll, pitch, yaw], dim=-1)))
+            #     curr_target_buff[env_ids, 3:7] = quat
 
 
             self.goal_ee_pos = self.ee_goal_buff[..., 0:3]
             self.goal_ee_quat = self.ee_goal_buff[..., 3:7]
             self.goal_ee_rot = quaternion_to_matrix(self.goal_ee_quat)
 
-            self.prev_state_buff[env_ids] = torch.zeros_like(self.prev_state_buff[env_ids])
+            # self.prev_state_buff[env_ids] = torch.zeros_like(self.prev_state_buff[env_ids])
             goal_dict = dict(ee_goal=self.ee_goal_buff)
             reset_data['goal_dict'] = goal_dict
 
@@ -309,7 +324,7 @@ class ArmReacher(ArmTask):
     
     @property
     def obs_dim(self)->int:
-        return super().obs_dim + 7 #37 
+        return super().obs_dim + 13 
 
     @property
     def action_lims(self)->Tuple[torch.Tensor, torch.Tensor]:

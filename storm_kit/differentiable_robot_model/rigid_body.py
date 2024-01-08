@@ -151,6 +151,7 @@ class DifferentiableRigidBody(torch.nn.Module):
         }
 
     # Get/set
+    @torch.jit.export
     def update_joint_state(self, q, qd):
         batch_size = q.shape[0]
 
@@ -190,7 +191,8 @@ class DifferentiableRigidBody(torch.nn.Module):
         # self.joint_pose.set_rotation(fixed_rotation.repeat(batch_size, 1, 1) @ rot)
         self.joint_pose.set_rotation(self._batch_rot @ rot)
         return
-
+    
+    @torch.jit.export
     def update_joint_acc(self, qdd):
         # local z axis (w.r.t. joint coordinate frame):
         joint_ang_acc = qdd @ self.joint_axis
@@ -200,8 +202,10 @@ class DifferentiableRigidBody(torch.nn.Module):
         )
         return
 
+    @torch.jit.export
     def get_joint_limits(self):
         return self.joint_limits
 
+    @torch.jit.export
     def get_joint_damping_const(self):
         return self.joint_damping()

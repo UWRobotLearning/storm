@@ -89,6 +89,7 @@ def main(cfg: DictConfig):
     obs_dim = task.obs_dim
     act_dim = task.action_dim
     act_lows, act_highs = task.action_lims
+    state_bounds = task.state_bounds
 
     buffer = RobotBuffer(capacity=int(cfg.train.agent.max_buffer_size), device=cfg.rl_device)
 
@@ -96,9 +97,10 @@ def main(cfg: DictConfig):
     #Load init data
     load_init_data = cfg.train.agent.get('load_init_data', False) or train_from_scratch
     init_data_loaded = False
+    init_buffer = None
     if load_init_data:
         try:
-            base_dir = os.path.abspath('./tmp_results/{}'.format(cfg.task_name))
+            base_dir = os.path.abspath('./tmp_results2/{}'.format(cfg.task_name))
             data_path = os.path.join(base_dir, cfg.train.dataset_path)
             init_buffer, _ = buffer_from_file(data_path)
             init_data_loaded = True
@@ -126,8 +128,11 @@ def main(cfg: DictConfig):
             print('Pre-trained loading failed. Training from scratch...')
             train_from_scratch = True
 
-    policy = JointControlWrapper(config=cfg.task.joint_control, policy=policy, device=cfg.rl_device)
-    # random_ensemble_q = cfg.train.agent.get('random_ensemble_q', False)
+    policy = JointControlWrapper(
+        config=cfg.task.joint_control, 
+        policy=policy, 
+        state_bounds=state_bounds,
+        device=cfg.rl_device)
     
     #Note: Later we will make this a single class
     if cfg.train.critic.ensemble_size == 1:
@@ -142,18 +147,20 @@ def main(cfg: DictConfig):
     # if num_pretrain_steps > 0 and init_data_loaded and (not pretrained_loaded):
     agent_name = cfg.train.agent.name
     run_pretraining = (train_from_scratch and init_data_loaded) or (agent_name == "BP")
-    
+    run_pretraining = run_pretraining and (cfg.train.agent.num_pretrain_steps > 0)
+    pretrain_critic = cfg.train.agent.pretrain_critic
     if run_pretraining:
         print('Running Behavior Pretraining')
         pretrain_log_info = init_logging(cfg.task_name, 'BP', cfg)
         pretrain_agent = BPAgent(
             cfg.train.agent, envs=envs, task=task, obs_dim=obs_dim, action_dim=act_dim, 
-            buffer=init_buffer, policy=policy, critic=critic, runner_fn=episode_runner, 
+            buffer=init_buffer, policy=policy, 
+            critic=critic if pretrain_critic else None, 
+            target_critic=target_critic if pretrain_critic else None, runner_fn=episode_runner, 
             logger=pretrain_log_info['log'], tb_writer=writer, device=cfg.rl_device, eval_rng=eval_rng)
         pretrain_agent.train(model_dir=pretrain_log_info['model_dir'])
         print('Behavior Pretraining done')
 
-    
     if  agent_name == 'SAC':
         agent = SACAgent(cfg.train.agent, envs=envs, task=task, obs_dim=obs_dim, action_dim=act_dim, 
                          buffer=buffer, policy=policy, critic=critic, runner_fn=episode_runner, target_critic=target_critic, 
@@ -170,25 +177,34 @@ def main(cfg: DictConfig):
             sampling_policy=policy.policy, value_function=critic, 
             task_cls=task_cls, dynamics_model_cls=dyn_model_cls,
             device=cfg.rl_device) 
-        mpc_policy = JointControlWrapper(config=cfg.task.joint_control, policy=mpc_policy, device=cfg.rl_device)
+        
+        mpc_policy = JointControlWrapper(
+            config=cfg.task.joint_control, 
+            policy=mpc_policy, 
+            state_bounds=state_bounds,
+            device=cfg.rl_device)
         #For target mpc policy, we need to set num_instances to the train batch size
         target_mpc_cfg = cfg.mpc
         target_mpc_cfg['mppi']['state_batch_size'] = cfg.train.agent.train_batch_size
+        target_mpc_cfg['mppi']['horizon'] = 20
+        target_mpc_cfg['mppi']['n_iters'] = 2
+        target_mpc_cfg['mppi']['cl_act_frac'] = 0.0
         target_mpc_policy = MPCPolicy(
             obs_dim=obs_dim, act_dim=act_dim, config=target_mpc_cfg, 
-            sampling_policy=policy.policy, value_function=critic, 
+            sampling_policy=None, value_function=None, 
             task_cls=task_cls, dynamics_model_cls=dyn_model_cls,
             device=cfg.rl_device) 
-        # world_model = GaussianWorldModel(obs_dim=obs_dim, act_dim=act_dim, config=cfg.train.world_model, device=cfg.rl_device)
         agent = MPQAgent(
             cfg.train.agent, envs=envs, task=task, obs_dim=obs_dim, action_dim=act_dim,
             buffer=buffer, policy=policy, mpc_policy=mpc_policy, target_mpc_policy=target_mpc_policy,
             critic=critic, runner_fn=episode_runner, target_critic=target_critic,
-            init_buffer=init_buffer, logger=log, tb_writer=writer, device=cfg.rl_device)
+            init_buffer=init_buffer, logger=log, tb_writer=writer, device=cfg.rl_device,
+            train_rng=train_rng, eval_rng=eval_rng)
 
     if agent_name in ['SAC', 'MPO', 'MPQ']:
         print('Training {} agent'.format(cfg.train.agent.name))
-        agent.train(model_dir=model_dir)
+        print(cfg.debug)
+        agent.train(model_dir=model_dir, debug=cfg.debug)
     
 
 if __name__ == "__main__":

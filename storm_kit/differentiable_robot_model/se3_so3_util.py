@@ -36,7 +36,7 @@ def integrateAxisAngle(axis_angle, omega, dt):
     quat = quat / torch.norm(quat)
     return quat
 
-
+@torch.jit.script
 def convertQuaternionToAxisAngle(quat, alpha=0.05, epsilon=1.0e-15):
     # if not torch.is_tensor(quat):
     #     quat = torch.Tensor(quat)
@@ -60,7 +60,7 @@ def getSkewSymMatFromVec3(omega):
             sign_multiplier = -sign_multiplier
     return omegahat
 
-
+@torch.jit.export
 def getVec3FromSkewSymMat(omegahat:torch.Tensor, epsilon:float=1.0e-14)->torch.Tensor:
     # assert torch.norm(torch.diag(omegahat)) < assert_epsilon, (
     #     "omegahat = \n%s" % omegahat

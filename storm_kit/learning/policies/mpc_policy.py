@@ -29,15 +29,8 @@ class MPCPolicy(Policy):
         self.controller = self.init_controller(
             task_cls, dynamics_model_cls,
             sampling_policy, value_function)
-        # self.prev_action = self.init_action[:,0].clone()
         self.prev_command_time = time.time()
         # self.dt = self.cfg.rollout.control_dt
-
-        # self.state_filter = JointStateFilter(
-        #     filter_coeff=self.cfg.state_filter_coeff, 
-        #     device=self.device, 
-        #     n_dofs=self.n_dofs,
-        #     dt=self.dt)
         
     def forward(self, obs_dict): #calc_val:bool=False
         states = obs_dict['states']

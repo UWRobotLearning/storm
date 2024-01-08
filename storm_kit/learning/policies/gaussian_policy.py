@@ -19,7 +19,9 @@ class GaussianPolicy(Policy):
             device: torch.device = torch.device('cpu'),
             ):
         
-        super().__init__(obs_dim, act_dim, config, device)
+        super().__init__(
+            obs_dim, act_dim, config, 
+            act_highs, act_lows, device)
         self.mlp_params = self.cfg['mlp_params']
         self.init_std = self.cfg['init_std']
         self.min_std = self.cfg['min_std']
@@ -91,12 +93,6 @@ class GaussianPolicy(Policy):
     def extra_repr(self):
         repr_str = '(use_tanh): {}\n'.format(self.use_tanh)
         return repr_str
-
-    def scale_action(self, action:torch.Tensor):
-        act_half_range = (self.act_highs - self.act_lows) / 2.0
-        act_mid_range = (self.act_highs + self.act_lows) / 2.0
-    
-        return act_mid_range.unsqueeze(0) + action * act_half_range.unsqueeze(0)
 
 
 if __name__ == "__main__":

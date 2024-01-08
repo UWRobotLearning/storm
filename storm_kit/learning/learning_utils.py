@@ -1,4 +1,4 @@
-import csv, json, os, random, string, sys
+import csv, os, sys
 import numpy as np
 import copy
 from datetime import datetime
@@ -7,9 +7,9 @@ from omegaconf import OmegaConf
 import torch
 from tqdm import tqdm
 from typing import Optional
-import time
 from torch.utils.data import TensorDataset, DataLoader
 from storm_kit.learning.replay_buffers import RobotBuffer
+import matplotlib.pyplot as plt
 
 
 def _gen_dir_name():
@@ -262,9 +262,6 @@ def fit_mlp(
 
     return best_net, train_losses, train_accuracies, validation_losses, validation_accuracies, norm_dict
     
-
-
-
 def scale_to_net(data, norm_dict, key):
     """Scale the tensor network range
 
@@ -366,6 +363,11 @@ def episode_runner(
                 # next_obs, cost, done_task, cost_terms, done_cost, done_info = task.forward(next_state_dict, actions)
                 done_task, done_cost, done_info = task.compute_termination(
                     curr_state_dict, actions, compute_full_state=True)
+                if done_task.item() > 0:
+                    print(done_info['in_bounds'])
+                    print('state_dict', curr_state_dict)
+                    print('state_bounds', task.state_bounds)
+                    print('command', command)
                 # done_task = done_task.view(envs.num_envs,)
                 # cost = cost.view(envs.num_envs,)
                 # done_cost = done_cost.view(envs.num_envs,)
@@ -628,3 +630,26 @@ def minimal_episode_runner(
     #     metrics[k] = avg_val
 
     return buffer, metrics
+
+
+def plot_episode(episode, block=False):
+    q_pos = episode['states/q_pos'].cpu().numpy()
+    q_vel = episode['states/q_vel'].cpu().numpy()
+    q_acc = episode['states/q_acc'].cpu().numpy()
+    actions = episode['actions'].cpu().numpy()
+
+    fig, ax = plt.subplots(3,1)
+    num_points, n_dofs = q_pos.shape
+    for n in range(n_dofs):
+
+        ax[0].plot(q_pos[:,n])
+        ax[1].plot(q_vel[:,n])
+        ax[2].plot(actions[:,n])
+    
+    plt.show(block=block)
+    if not block:
+        plt.waitforbuttonpress(-1)
+        plt.close(fig)
+
+
+

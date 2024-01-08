@@ -1,4 +1,4 @@
-from typing import Dict
+from typing import Dict, Optional
 import copy
 import torch
 import torch.nn as nn
@@ -12,8 +12,7 @@ class JointControlWrapper(nn.Module):
             self, 
             config, 
             policy,
-            # act_highs=None,
-            # act_lows=None,
+            state_bounds:Optional[torch.Tensor]=None,
             device=torch.device('cpu')):
         
         super().__init__()
@@ -22,54 +21,50 @@ class JointControlWrapper(nn.Module):
         self.device = device
         self.n_dofs = self.cfg.n_dofs
         self.dt = self.cfg.control_dt
-        # self.task = task
-        # self.act_highs = act_highs
-        # self.act_lows = act_lows
+        self.state_bounds = state_bounds
+
+        if self.state_bounds is not None:
+            self.bounds_mid_range = (self.state_bounds[:,1] + self.state_bounds[:,0])/2.0
+            self.bounds_half_range = (self.state_bounds[:,1] - self.state_bounds[:,0])/2.0
+
+            self.q_pos_bounds = self.state_bounds[0:self.n_dofs]
+            self.q_pos_mid_range = self.bounds_mid_range[0:self.n_dofs]
+            self.q_pos_half_range = self.bounds_half_range[0:self.n_dofs]
+
+            self.q_vel_bounds = self.state_bounds[self.n_dofs:2*self.n_dofs]
+            self.q_vel_mid_range = self.bounds_mid_range[self.n_dofs:2*self.n_dofs]
+            self.q_vel_half_range = self.bounds_half_range[self.n_dofs:2*self.n_dofs]
 
         self.state_filter = JointStateFilter(
             filter_coeff=self.cfg.state_filter_coeff, 
+            # bounds=self.state_bounds,
             device=self.device,
             n_dofs=self.n_dofs,
             dt=self.dt)
         
-        self.prev_qdd_des = None
-        self.goal_dict = None 
-
     def forward(self, input_dict):
         return self.policy.forward(input_dict)
 
-    def get_action(self, input_dict, deterministic=False): #, num_samples:int = 1):
-        # state_dict = dict_to_device(input_dict['states'], self.device)
+    def get_action(self, input_dict, deterministic=False):
         #filter states
         input_dict['states'] = copy.deepcopy(self.state_filter.filter_joint_state(
             dict_to_device(input_dict['states'], self.device)))
 
-        # new_input_dict = {'states': planning_states}
-        # if 'obs' in input_dict:
-        #     new_input_dict['obs'] = input_dict['obs']
-        # if self.task is not None:
-        #     input_dict['obs'] = self.task.compute_observations(
-        #         input_dict['states'], compute_full_state=True)
-
-        action = self.policy.get_action(input_dict, deterministic) #, num_samples)
+        action = self.policy.get_action(input_dict, deterministic)
         # if num_samples == 1 and action.ndim > 2:
         #     action = action[:, 0]
         # # #TODO: This must go by making state_filter compatible with num actions
         # if action.ndim > 2:
         #     action = action[0]
-
-        # scaled_action = action
-        # if self.act_highs is not None:
-        #     scaled_action = self.scale_action(action)
         
-        command_dict = self.state_filter.predict_internal_state(action)
+        command_dict = copy.deepcopy(self.state_filter.predict_internal_state(action))
+        # command_dict = self.bound_joint_command(command_dict)
 
-        command_tensor = torch.cat(
-            [command_dict['q_pos'], command_dict['q_vel'], 
+        command_tensor = torch.cat([
+            command_dict['q_pos'], 
+            command_dict['q_vel'], 
             command_dict['q_acc']], dim=-1)
-        
-        self.prev_qdd_des = action.clone()
-        
+                
         return command_tensor, {'action': action, 'filtered_states': input_dict['states']} #, 'scaled_action': scaled_action}
 
     def log_prob(self, input_dict: Dict[str, torch.Tensor], actions:torch.Tensor):
@@ -78,8 +73,28 @@ class JointControlWrapper(nn.Module):
     def entropy(self, input_dict: Dict[str, torch.Tensor], num_samples:int = 1):
         return self.policy.entropy(input_dict, num_samples)
 
-    def update_rollout_params(self, param_dict):
-        self.policy.update_rollout_params(param_dict)
+    def bound_joint_command(self, command_dict:Dict[str, torch.Tensor]):
+        if self.state_bounds is not None:
+            q_vel_before = command_dict['q_vel'].clone()
+            command_dict['q_vel'] = command_dict['q_vel'].clamp(self.q_vel_bounds[:,0], self.q_vel_bounds[:,1])
+            command_dict['q_pos'] = command_dict['q_pos'].clamp(self.q_pos_bounds[:,0], self.q_pos_bounds[:,1])
+            if not torch.allclose(q_vel_before, command_dict['q_vel']):
+                print('q_vel_clamped')
+
+        return command_dict
+
+    # def enforce_bounds(self, value, lows, highs):
+    #     # value = torch.tanh(value)
+    
+    #     return value.clamp(lows, highs)
+
+    # def enforce_bounds(self, value, mid_range, half_range):
+    #     value = torch.tanh(value)
+
+    #     return mid_range.unsqueeze(0) + value * half_range.unsqueeze(0)
+
+    # def update_rollout_params(self, param_dict):
+    #     self.policy.update_rollout_params(param_dict)
     
     def compute_value_estimate(self, input_dict):
         return self.policy.compute_value_estimate(input_dict)
@@ -90,10 +105,4 @@ class JointControlWrapper(nn.Module):
         self.policy.reset(reset_data)
         # if self.task is not None:
         #     self.task.update_params(reset_data)                
-
-    # def scale_action(self, action:torch.Tensor):
-    #     act_half_range = (self.act_highs - self.act_lows) / 2.0
-    #     act_mid_range = (self.act_highs + self.act_lows) / 2.0
-    
-    #     return act_mid_range.unsqueeze(0) + action * act_half_range.unsqueeze(0)
 

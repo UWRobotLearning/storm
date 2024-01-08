@@ -53,6 +53,7 @@ class GaussianMPC(Controller):
                  step_size_cov,
                  null_act_frac=0.,
                  cl_act_frac=0.,
+                 use_cl_std:bool=False,
                 #  rollout_fn=None,
                  task=None,
                  dynamics_model=None,
@@ -107,47 +108,39 @@ class GaussianMPC(Controller):
         self.value_function = value_function
         self.null_act_frac = null_act_frac
         self.cl_act_frac = cl_act_frac
+        self.use_cl_std = use_cl_std
+
+        self.num_null_particles:int = round(int(null_act_frac * self.num_particles * 1.0))
+        self.num_nonzero_particles:int = self.num_particles - self.num_null_particles # - self.num_neg_particles
 
         self.num_cl_particles:int = 0
         if self.sampling_policy is not None:
-            self.num_cl_particles = round(int(self.cl_act_frac * self.num_particles * 1.0))
-        self.num_ol_particles:int = self.num_particles - self.num_cl_particles 
+            # self.num_cl_particles = round(int(self.cl_act_frac * self.num_particles * 1.0))
+            self.num_cl_particles = round(int(self.cl_act_frac * self.num_nonzero_particles * 1.0))
+        
+        self.num_ol_particles:int = self.num_nonzero_particles - self.num_cl_particles #self.num_particles - self.num_cl_particles 
         # self.num_null_particles = round(int(null_act_frac * self.num_particles * 1.0))
-        self.num_null_particles = round(int(null_act_frac * self.num_ol_particles * 1.0))
+        # self.num_null_particles = round(int(null_act_frac * self.num_ol_particles * 1.0))
         # self.num_neg_particles = round(int(null_act_frac * self.num_particles)) - self.num_null_particles
         # self.num_nonzero_particles = self.num_particles - self.num_null_particles - self.num_cl_particles # - self.num_neg_particles
-        self.num_nonzero_particles = self.num_ol_particles - self.num_null_particles # - self.num_neg_particles
+        # self.num_nonzero_particles = self.num_ol_particles - self.num_null_particles # - self.num_neg_particles
+
+        # Handling an edge case where only closed loop mean is 
+        # used as all particles might be the same in this case
+        if self.num_ol_particles == 0 and not self.use_cl_std:
+            self.normalize_returns = False
+        
+        print('[GaussianMPC]:\nNum Particles = {0}\nNum OL Particles = {1} \nNum CL Particles = {2}\nNum Null Particles = {3}\nSampling Policy Loaded = {4}'.format(
+            self.num_particles, self.num_ol_particles, self.num_cl_particles, self.num_null_particles, self.sampling_policy is not None
+        ))
+
+        self.sample_shape = torch.Size([self.num_nonzero_particles - 2])
+        if self.num_cl_particles > 0 and self.num_ol_particles > 0 and not self.use_cl_std:
+            self.sample_shape = torch.Size([self.num_nonzero_particles - 3])
 
         self.sample_params = sample_params
         self.sample_type = sample_params['type']
-        # initialize sampling library:
-        if sample_params['type'] == 'stomp':
-            self.sample_lib = StompSampleLib(self.horizon, self.d_action, tensor_args=self.tensor_args)
-            self.sample_shape = torch.Size([self.num_nonzero_particles - 2])
-            self.i_ha = torch.eye(self.d_action, **self.tensor_args).repeat(1, self.horizon)
-
-        elif sample_params['type'] == 'halton':
-            self.sample_lib = HaltonSampleLib(
-                self.state_batch_size, self.horizon,   
-                self.d_action, device=self.tensor_args['device'],
-                **self.sample_params)
-            self.sample_shape = torch.Size([self.num_nonzero_particles - 2])
-
-        elif sample_params['type'] == 'random':
-            self.sample_lib = RandomSampleLib(
-                self.state_batch_size, self.horizon, 
-                self.d_action, device=self.tensor_args['device'],
-                **self.sample_params)
-            self.sample_shape = torch.Size([self.num_nonzero_particles - 2])
-
-        elif sample_params['type'] == 'multiple':
-            self.sample_lib = MultipleSampleLib(
-                self.state_batch_size, self.horizon, 
-                self.d_action, device=self.tensor_args['device'], 
-                **self.sample_params)
-            self.sample_shape = torch.Size([self.num_nonzero_particles - 2])
-
-        self.stomp_matrix = None #self.sample_lib.stomp_cov_matrix
+        self.sample_lib = self.initialize_sample_lib(self.sample_params)
         # initialize covariance types:
         if self.cov_type == 'full_HAxHA':
             self.I = torch.eye(self.horizon * self.d_action, **self.tensor_args).unsqueeze(0).repeat(self.state_batch_size, 1)
@@ -161,8 +154,6 @@ class GaussianMPC(Controller):
         if self.num_null_particles > 0:
             self.null_act_seqs = torch.zeros(self.state_batch_size, self.num_null_particles, self.horizon, self.d_action, **self.tensor_args) 
             
-        self.delta = None
-
     # def _get_action_seq(self, deterministic:bool=True):
     #     if deterministic:
     #         act_seq = self.mean_action.data#.clone()
@@ -198,46 +189,55 @@ class GaussianMPC(Controller):
         return mean + scaled_samples
 
         
-    def sample_actions(self, state=None):
+    def sample_action_sequences(self, state=None):
         delta = self.sample_lib.get_samples(sample_shape=self.sample_shape, base_seed=self.seed_val + self.num_steps)
-        #add zero-noise seq so mean is always a part of samples
-        delta = torch.cat((delta, self.Z_seq), dim=1)
-        # delta = torch.cat((delta, self.Z_seq), dim=0)
-        #TODO: Is this right?
-        # delta = delta.unsqueeze(0).repeat(self.num_instances, 1, 1, 1)
-        # samples could be from HAxHA or AxA:
-        # We reshape them based on covariance type:
-        # if cov is AxA, then we don't reshape samples as samples are: N x H x A
-        # if cov is HAxHA, then we reshape
-        if self.cov_type == 'full_HAxHA':
-            # delta: N * H * A -> N * HA
-            delta = delta.view(delta.shape[0], delta.shape[1], self.horizon * self.d_action)
-        
-        scaled_delta = torch.matmul(delta, self.full_scale_tril.unsqueeze(1)).view(
-            self.state_batch_size, delta.shape[1],
-            self.horizon, self.d_action)
-        # scaled_delta = torch.matmul(delta, self.full_scale_tril).view(
-        #     delta.shape[0],
-        #     self.horizon,
-        #     self.d_action)
-        act_seq = self.mean_action.unsqueeze(1) + scaled_delta
+        act_seq = []
+        if self.num_ol_particles > 0:
+            delta_ol = delta[:,0:self.num_ol_particles]
+
+            #add zero-noise seq so mean is always a part of samples
+            delta_ol = torch.cat((delta_ol, self.Z_seq), dim=1)
+
+            # samples could be from HAxHA or AxA:
+            # We reshape them based on covariance type:
+            # if cov is AxA, then we don't reshape samples as samples are: N x H x A
+            # if cov is HAxHA, then we reshape
+            if self.cov_type == 'full_HAxHA':
+                # delta: N * H * A -> N * HA
+                raise NotImplementedError('cov_type full_HAxHA needs to be debugged')
+                delta = delta.view(delta.shape[0], delta.shape[1], self.horizon * self.d_action)
+            
+            scaled_delta_ol = torch.matmul(delta_ol, self.full_scale_tril.unsqueeze(1)).view(
+                self.state_batch_size, delta_ol.shape[1],
+                self.horizon, self.d_action)
+            act_seq_ol = self.mean_action.unsqueeze(1) + scaled_delta_ol
+            act_seq.append(act_seq_ol)
+
+
+        if self.num_cl_particles > 0 and (not self.use_cl_std):
+            delta_cl = delta[:, self.num_ol_particles:]
+            #add zero-noise seq so mean is always a part of samples
+            delta_cl = torch.cat((delta_cl, self.Z_seq), dim=1)
+            scaled_delta_cl = torch.matmul(delta_cl, self.full_scale_tril.unsqueeze(1)).view(
+                self.state_batch_size, delta_cl.shape[1],
+                self.horizon, self.d_action)
+            act_seq_cl = self.mean_action_cl.unsqueeze(1) + scaled_delta_cl
+            # act_seq = torch.cat((act_seq, act_seq_cl), dim=1)
+            act_seq.append(act_seq_cl)
+
         # act_seq = scale_ctrl(act_seq, self.action_lows, self.action_highs, squash_fn=self.squash_fn)
         append_acts = self.best_traj.unsqueeze(1)
         #append zero actions (for stopping)
         if self.num_null_particles > 0:
-            # zero particles:
-
             # negative action particles:
             # neg_action = -1.0 * self.mean_action.unsqueeze(1)
-            # print(neg_action.shape)
             # neg_act_seqs = neg_action.expand(1, self.num_neg_particles,-1,-1)
-            # print(append_acts.shape, self.null_act_seqs.shape, neg_act_seqs.shape)
-
             # append_acts = torch.cat((append_acts, self.null_act_seqs, neg_act_seqs),dim=1)
             append_acts = torch.cat((append_acts, self.null_act_seqs), dim=1)
-            # append_acts = torch.cat((append_acts, self.null_act_seqs), dim=0)
+            act_seq.append(append_acts)
 
-        act_seq = torch.cat((act_seq, append_acts), dim=1)
+        # act_seq = torch.cat((act_seq, append_acts), dim=1)
+        act_seq = torch.cat(act_seq, dim=1)
         # act_seq = torch.cat((act_seq, append_acts), dim=0)
         return act_seq
     
@@ -249,32 +249,37 @@ class GaussianMPC(Controller):
 
             Parameters
             ----------
-            state : dict or np.ndarray
-                Initial state to set the simulation env to
+            state : dict or torch.Tensor
          """
-        ol_act_seq, cl_act_seq = None, None
-
-        if self.num_ol_particles > 0:
-            ol_act_seq = self.sample_actions(state=state) # sample noise from covariance of current control distribution
-        # trajectories = self._rollout_fn(state, act_seq)
+        
+        num_policy_rollouts = 0
+        if self.num_cl_particles > 0 and self.use_cl_std:
+            num_policy_rollouts = self.num_cl_particles
+        elif self.num_cl_particles > 0 and (not self.use_cl_std):
+            #rollout cl policy to get mean
+            state_tensor = torch.cat([state[k] for k in state], dim=-1).to(self.device)
+            _, rl_info = self.dynamics_model.rollout_closed_loop(
+                state_tensor, self.sampling_policy, num_rollouts=1,
+                deterministic=True)
+            num_policy_rollouts = 0
+            self.mean_action_cl.data = rl_info['cl_act_seq'][:,0]
+        
+        cl_act_seq = None
+        act_seq = self.sample_action_sequences(state=state)
         state_dict, rollout_info = self.dynamics_model.compute_rollouts(
-            state, ol_act_seq, sampling_policy=self.sampling_policy,
-            num_policy_rollouts=self.num_cl_particles
+            state, act_seq, sampling_policy=self.sampling_policy,
+            num_policy_rollouts=num_policy_rollouts,
         )
         cl_act_seq = rollout_info['cl_act_seq']
-        if ol_act_seq is None:
-            act_seq = cl_act_seq
-        elif cl_act_seq is None:
-            act_seq = ol_act_seq
-        else:
-            act_seq = torch.cat([ol_act_seq, cl_act_seq], dim=1)
-
+        
+        if act_seq is None: act_seq = cl_act_seq
+        act_seq = torch.cat([act_seq, cl_act_seq], dim=1) if cl_act_seq is not None else act_seq
+        
         with record_function("compute_cost"):
             cost_seq, cost_terms = self.task.compute_cost(state_dict, act_seq)
 
         with record_function("compute_termination"):
             term_seq, term_cost, term_info = self.task.compute_termination(state_dict, act_seq)
-
 
         # if term_cost is not None:
         #     cost_seq += term_cost
@@ -371,11 +376,17 @@ class GaussianMPC(Controller):
             self.init_cov_action = torch.diag(torch.tensor([self.init_cov] * (self.horizon * self.d_action), **self.tensor_args))
             self.init_cov_action = self.init_cov_action.unsqueeze(0).repeat(self.state_batch_size, 1, 1)
             self.cov_action = nn.Parameter(self.init_cov_action, requires_grad=False)
-            self.scale_tril = torch.cholesky(self.cov_action.data)
+            self.scale_tril = torch.linalg.cholesky(self.cov_action.data)
             self.inv_cov_action = torch.cholesky_inverse(self.scale_tril)
             
         else:
             raise ValueError('Unidentified covariance type in reset_covariance')
+
+        if self.sampling_policy is not None and self.num_cl_particles > 0:             
+            self.cov_action_cl = nn.Parameter(data=self.cov_action.clone(), requires_grad=False)
+            self.scale_tril_cl = torch.linalg.cholesky(self.cov_action_cl.data)
+            self.inv_cov_action_cl = torch.cholesky_inverse(self.scale_tril_cl)
+
 
     def reset_distribution(self):
         """
@@ -396,6 +407,37 @@ class GaussianMPC(Controller):
         if trajectories is None:
             trajectories = self.generate_rollouts(state)
         return self._calc_val(trajectories)
+    
+    def initialize_sample_lib(self, sample_params):
+        # initialize sampling library:
+        if sample_params['type'] == 'stomp':
+            sample_lib = StompSampleLib(self.horizon, self.d_action, tensor_args=self.tensor_args)
+            # self.sample_shape = torch.Size([self.num_nonzero_particles - 2])
+            self.i_ha = torch.eye(self.d_action, **self.tensor_args).repeat(1, self.horizon)
+
+        elif sample_params['type'] == 'halton':
+            sample_lib = HaltonSampleLib(
+                self.state_batch_size, self.horizon,   
+                self.d_action, device=self.tensor_args['device'],
+                **self.sample_params)
+            # self.sample_shape = torch.Size([self.num_nonzero_particles - 2])
+
+        elif sample_params['type'] == 'random':
+            sample_lib = RandomSampleLib(
+                self.state_batch_size, self.horizon, 
+                self.d_action, device=self.tensor_args['device'],
+                **self.sample_params)
+            # self.sample_shape = torch.Size([self.num_nonzero_particles - 2])
+
+        elif sample_params['type'] == 'multiple':
+            sample_lib = MultipleSampleLib(
+                self.state_batch_size, self.horizon, 
+                self.d_action, device=self.tensor_args['device'], 
+                **self.sample_params)
+            # self.sample_shape = torch.Size([self.num_nonzero_particles - 2])
+
+        self.stomp_matrix = None #self.sample_lib.stomp_cov_matrix
+        return sample_lib
             
     @property
     def squashed_mean(self):

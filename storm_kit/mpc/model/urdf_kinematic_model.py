@@ -143,10 +143,9 @@ class URDFKinematicModel(nn.Module):
         self.state_seq = torch.zeros(state_batch_size, batch_size, self.num_traj_points, self.d_state, device=self.device, dtype=self.dtype)
         self.ee_pos_seq = torch.zeros(state_batch_size, batch_size, self.num_traj_points, 3, device=self.device, dtype=self.dtype)
         self.ee_rot_seq = torch.zeros(state_batch_size, batch_size, self.num_traj_points, 3, 3, device=self.device, dtype=self.dtype)
-        self.link_pos_seq = torch.empty((state_batch_size, batch_size, self.num_traj_points, len(self.link_names),3), dtype=self.dtype, device=self.device)
-        self.link_rot_seq = torch.empty((state_batch_size, batch_size, self.num_traj_points, len(self.link_names),3,3), dtype=self.dtype, device=self.device)
+        self.link_pos_seq = torch.zeros((state_batch_size, batch_size, self.num_traj_points, len(self.link_names),3), dtype=self.dtype, device=self.device)
+        self.link_rot_seq = torch.zeros((state_batch_size, batch_size, self.num_traj_points, len(self.link_names),3,3), dtype=self.dtype, device=self.device)
         self.prev_state_buffer = torch.zeros((state_batch_size, 10, self.d_state), device=self.device, dtype=self.dtype) 
-
 
     def forward(self, curr_state: torch.Tensor, act:torch.Tensor, dt) -> torch.Tensor: 
         return self.get_next_state(curr_state, act, dt)
@@ -209,7 +208,6 @@ class URDFKinematicModel(nn.Module):
         
     @torch.jit.export
     def rollout_open_loop(self, start_state_dict: Dict[str, torch.Tensor], act_seq: torch.Tensor) -> Dict[str, torch.Tensor]:
-        #dt=None
         # batch_size, horizon, d_act = act_seq.shape
         # curr_dt = self.dt if dt is None else dt
         # curr_horizon = self.horizon
@@ -237,13 +235,13 @@ class URDFKinematicModel(nn.Module):
 
         # compute dt w.r.t previous data?
         state_seq = self.state_seq
-        ee_pos_seq = self.ee_pos_seq
-        ee_rot_seq = self.ee_rot_seq
+        # ee_pos_seq = self.ee_pos_seq
+        # ee_rot_seq = self.ee_rot_seq
         # curr_horizon = self.horizon
         curr_batch_size = self.batch_size
         num_traj_points = self.num_traj_points
-        link_pos_seq = self.link_pos_seq
-        link_rot_seq = self.link_rot_seq
+        # link_pos_seq = self.link_pos_seq
+        # link_rot_seq = self.link_rot_seq
 
         
         # curr_state = self.prev_state_buffer[:,-1:,:self.n_dofs * 3]
@@ -252,73 +250,25 @@ class URDFKinematicModel(nn.Module):
             # forward step with step matrix:
             state_seq = self.tensor_step(curr_state, act_seq, state_seq, curr_batch_size, num_traj_points)
 
-        q_pos_seq = state_seq[..., 0:self.n_dofs]
-        q_vel_seq = state_seq[..., self.n_dofs:2*self.n_dofs]
-        q_acc_seq = state_seq[..., 2*self.n_dofs:3*self.n_dofs]
-        tstep_seq = state_seq[..., -1]
+        return state_seq #self.compute_full_state(state_seq)
 
-        #Compute jerk sequence
-        prev_acc = self.prev_state_buffer[:,-1, 2*self.n_dofs:3*self.n_dofs].unsqueeze(1).unsqueeze(1)
-        prev_acc = prev_acc.expand(self.state_batch_size, self.batch_size, 1, -1)
-        q_jerk_seq = torch.cat((prev_acc, q_acc_seq), dim=-2)
-        q_jerk_seq = torch.einsum('bijk, lj->bilk', q_jerk_seq, self._fd_matrix_jerk)
-        q_jerk_seq = torch.div(q_jerk_seq, self.traj_dt[:, None])
-
-        shape_tup = (self.state_batch_size * curr_batch_size * num_traj_points, self.n_dofs)
-        with record_function("fk + jacobian"):
-            ee_pos_seq, ee_rot_seq, lin_jac_seq, ang_jac_seq = self.robot_model.compute_fk_and_jacobian(
-                state_seq[:,:,:,:self.n_dofs].view(shape_tup),
-                link_name=self.ee_link_name)
-
-        # get link poses:
-        for ki,k in enumerate(self.link_names):
-            link_pos, link_rot = self.robot_model.get_link_pose(k)
-            link_pos_seq[:,:,:,ki,:] = link_pos.view((self.state_batch_size, curr_batch_size, num_traj_points, 3))
-            link_rot_seq[:,:,:,ki,:,:] = link_rot.view((self.state_batch_size, curr_batch_size, num_traj_points, 3, 3))
-            
-        
-        ee_pos_seq = ee_pos_seq.view((self.state_batch_size, curr_batch_size, num_traj_points, 3))
-        ee_rot_seq = ee_rot_seq.view((self.state_batch_size, curr_batch_size, num_traj_points, 3, 3))
-        lin_jac_seq = lin_jac_seq.view((self.state_batch_size, curr_batch_size, num_traj_points, 3, self.n_dofs))
-        ang_jac_seq = ang_jac_seq.view((self.state_batch_size, curr_batch_size, num_traj_points, 3, self.n_dofs))
-        ee_jacobian_seq = torch.cat((ang_jac_seq, lin_jac_seq), dim=-2)
-
-        ee_vel_twist_seq = torch.matmul(ee_jacobian_seq, q_vel_seq.unsqueeze(-1)).squeeze(-1)
-        # this is a first order approximation of ee acceleation i.e ignoreing \dot{J}
-        # TODO: Test this against finite differencing and/or RNE
-        ee_acc_twist_seq = torch.matmul(ee_jacobian_seq, q_acc_seq.unsqueeze(-1)).squeeze(-1) 
-
-        state_dict = {'state_seq': state_seq.to(inp_device),
-                      'q_pos_seq': q_pos_seq.to(inp_device),
-                      'q_vel_seq': q_vel_seq.to(inp_device),
-                      'q_acc_seq': q_acc_seq.to(inp_device),
-                      'q_jerk_seq': q_jerk_seq.to(inp_device),
-                      'ee_pos_seq': ee_pos_seq.to(inp_device),
-                      'ee_rot_seq': ee_rot_seq.to(inp_device),
-                      'ee_jacobian_seq': ee_jacobian_seq.to(inp_device),
-                      'ee_vel_twist_seq': ee_vel_twist_seq.to(inp_device),
-                      'ee_acc_twist_seq': ee_acc_twist_seq.to(inp_device),
-                      'link_pos_seq': link_pos_seq.to(inp_device),
-                      'link_rot_seq': link_rot_seq.to(inp_device),
-                      'prev_state_seq': self.prev_state_buffer.to(inp_device),
-                      'tstep_seq': tstep_seq.to(inp_device)}
-
-        return state_dict
-
-
-    def rollout_policy(
+    def rollout_closed_loop(
             self, start_state: torch.Tensor,
-            sampling_policy: Policy, state_seq: torch.Tensor,
-            num_rollouts:int, horizon:int, deterministic:bool=False):
+            sampling_policy: Policy, num_rollouts:int, 
+            horizon:Optional[int]=None, deterministic:bool=False,
+            state_seq: Optional[torch.Tensor]=None):
 
-        # state_seq[:,:,0, 0:-1] = start_state
+        if horizon is None: horizon=self.num_traj_points
+
+        if state_seq is None:
+            state_seq = torch.zeros(start_state.shape[0], num_rollouts, horizon, self.d_state, device=self.device)
+
         state_seq[..., -1] = self._traj_tstep # timestep array
-        state_seq[:,:, 0, 0:-1] = start_state.unsqueeze(1)
-        # curr_state = start_state.unsqueeze(1).repeat(1, num_rollouts, 1)
+        state_seq[..., 0, 0:-1] = start_state[..., 0:-1].unsqueeze(1)
+
         act_seq = []
         for h in range(horizon):
-            curr_state = state_seq[..., h, 0:-1]
-
+            curr_state = state_seq[..., h, :-1]
             curr_state_dict = {
                 'q_pos': curr_state[..., 0:self.n_dofs],
                 'q_vel': curr_state[..., self.n_dofs:2*self.n_dofs],
@@ -328,6 +278,8 @@ class URDFKinematicModel(nn.Module):
             policy_input = {'states': curr_state_dict}
             action = sampling_policy.get_action(
                 policy_input, deterministic=deterministic)#[0]
+            
+            #clamp actions?
     
             #ignoring last action for now 
             if h < horizon-1:
@@ -335,7 +287,6 @@ class URDFKinematicModel(nn.Module):
                     curr_state, action, self.traj_dt[h],
                     state_buff=state_seq[..., h+1, 0:-1]
                 )
-            # curr_state = state_seq[..., h, 0:-1]
             act_seq.append(action.unsqueeze(-2))
         
         act_seq = torch.cat(act_seq, dim=-2)
@@ -347,16 +298,9 @@ class URDFKinematicModel(nn.Module):
         open_loop_act_seq: Optional[torch.Tensor]=None,
         sampling_policy: Optional[Policy]=None,
         num_policy_rollouts:int=0) -> Dict[str, torch.Tensor]:
-
-        # inp_device = open_loop_act_seq.device
-        # start_state = start_state.to(self.device, dtype=self.dtype)
-        # open_loop_act_seq = open_loop_act_seq.to(self.device, dtype=self.dtype)
         
         num_open_loop_rollouts = open_loop_act_seq.shape[1] if open_loop_act_seq is not None else 0
-        # batch_size = open_loop_batch_size + num_policy_rollouts
-        # if batch_size != self.batch_size:
-        #     self.batch_size = batch_size
-        #     self.allocate_buffers()
+        # TODO: clamp actions?
 
         start_q_pos = start_state_dict[self.robot_keys[0]]
         start_q_vel = start_state_dict[self.robot_keys[1]]
@@ -364,18 +308,23 @@ class URDFKinematicModel(nn.Module):
         start_t = start_state_dict['tstep']
 
         curr_robot_state = torch.cat((start_q_pos, start_q_vel, start_q_acc, start_t), dim=-1)
+        # curr_robot_state = torch.cat((start_state_dict[k] for k in start_state_dict), dim=-1)
         state_batch_size = curr_robot_state.shape[0]
         batch_size = num_open_loop_rollouts + num_policy_rollouts
+        
         if batch_size != self.batch_size or state_batch_size != self.state_batch_size:
             self.batch_size = batch_size
             self.state_batch_size = state_batch_size
+            #TODO: Just call reset here?
             self.allocate_buffers(self.state_batch_size, self.batch_size)
-   
+
+        self.prev_state_buffer = self.prev_state_buffer.roll(-1, dims=1)
+        self.prev_state_buffer[:,-1,:] = curr_robot_state
+
         # curr_robot_state = curr_robot_state.unsqueeze(1)
         # self.prev_state_buffer = self.prev_state_buffer.roll(-1, dims=1)
         # self.prev_state_buffer[:,-1,:] = curr_robot_state#.squeeze(1)
 
-        # compute dt w.r.t previous data?
         state_seq = self.state_seq
 
         # curr_state = self.prev_state_buffer[:,-1:,:self.n_dofs * 3]
@@ -388,20 +337,18 @@ class URDFKinematicModel(nn.Module):
                         curr_state, open_loop_act_seq, 
                         state_seq[:,:num_open_loop_rollouts], 
                         num_open_loop_rollouts, self.num_traj_points)
-            
+
         info = {'cl_act_seq': None}
         if sampling_policy is not None and num_policy_rollouts > 0:
             with record_function("policy_rollout"):
                 state_seq[:,num_open_loop_rollouts:], info = \
-                    self.rollout_policy(
-                        curr_state, sampling_policy, 
-                        state_seq[:,num_open_loop_rollouts:], 
+                    self.rollout_closed_loop(
+                        curr_robot_state, sampling_policy, 
+                        state_seq[:, num_open_loop_rollouts:], 
                         num_policy_rollouts, self.num_traj_points)
-            
-        state_dict = self.compute_full_state(state_seq)
 
-        self.prev_state_buffer = self.prev_state_buffer.roll(-1, dims=1)
-        self.prev_state_buffer[:,-1,:] = curr_robot_state
+
+        state_dict = self.compute_full_state(state_seq)
 
         return state_dict, info
 
@@ -422,18 +369,17 @@ class URDFKinematicModel(nn.Module):
         curr_batch_size = state_seq.shape[1]
 
         #Compute jerk sequence
-        prev_acc = self.prev_state_buffer[:, -1, 2*self.n_dofs:3*self.n_dofs].unsqueeze(1).unsqueeze(1)
+        prev_acc = self.prev_state_buffer[:, -1:, 2*self.n_dofs:3*self.n_dofs].unsqueeze(1)
         # # prev_acc = self.prev_state_buffer[:,-1, 2*self.n_dofs:3*self.n_dofs].unsqueeze(0).unsqueeze(0).expand(q_acc_seq.shape[0],-1,-1)
-        prev_acc = prev_acc.expand(self.state_batch_size, self.batch_size, 1, -1)
+        prev_acc = prev_acc.expand(curr_state_batch_size, curr_batch_size, -1, -1)
         q_jerk_seq = torch.cat((prev_acc, q_acc_seq), dim=-2)
         q_jerk_seq = torch.einsum('bijk, lj->bilk', q_jerk_seq, self._fd_matrix_jerk)
         # # q_jerk_seq = torch.einsum('bij, li->blj', q_jerk_seq, self._fd_matrix_jerk)
         q_jerk_seq = torch.div(q_jerk_seq, self.traj_dt[:, None])
 
-        shape_tup = (self.state_batch_size * curr_batch_size * num_traj_points, self.n_dofs)
         with record_function("fk + jacobian"):
             ee_pos_seq, ee_rot_seq, lin_jac_seq, ang_jac_seq = self.robot_model.compute_fk_and_jacobian(
-                state_seq[..., :self.n_dofs].view(shape_tup),
+                q_pos_seq.view(-1, self.n_dofs),
                 link_name=self.ee_link_name)
 
         # get link poses:
@@ -464,7 +410,7 @@ class URDFKinematicModel(nn.Module):
             'q_pos_seq': q_pos_seq,
             'q_vel_seq': q_vel_seq,
             'q_acc_seq': q_acc_seq,
-            # 'q_jerk_seq': q_jerk_seq,
+            'q_jerk_seq': q_jerk_seq,
             'ee_pos_seq': ee_pos_seq,
             'ee_rot_seq': ee_rot_seq,
             'ee_jacobian_seq': ee_jacobian_seq,
@@ -476,7 +422,6 @@ class URDFKinematicModel(nn.Module):
             'tstep_seq': tstep_seq}
         
         return state_dict
-
 
     def enforce_bounds(self, state_batch: torch.Tensor)->torch.Tensor:
         """
@@ -518,10 +463,66 @@ class URDFKinematicModel(nn.Module):
     def reset(self, reset_data=None):
         # self.prev_state_buffer = torch.zeros((self.num_instances, 10, self.d_state), device=self.device, dtype=self.dtype) 
         # self.prev_state_buffer = torch.zeros((10, self.d_state), device=self.device, dtype=self.dtype) 
-        # self.initial_step = True
+        self.initial_step = True
         self.allocate_buffers(self.state_batch_size, self.batch_size)
-        #TODO: Add current robot state to prev_state_buffer
-    
+
+
+
+
+        # q_pos_seq = state_seq[..., 0:self.n_dofs]
+        # q_vel_seq = state_seq[..., self.n_dofs:2*self.n_dofs]
+        # q_acc_seq = state_seq[..., 2*self.n_dofs:3*self.n_dofs]
+        # tstep_seq = state_seq[..., -1]
+
+        # #Compute jerk sequence
+        # prev_acc = self.prev_state_buffer[:,-1, 2*self.n_dofs:3*self.n_dofs].unsqueeze(1).unsqueeze(1)
+        # prev_acc = prev_acc.expand(self.state_batch_size, self.batch_size, 1, -1)
+        # q_jerk_seq = torch.cat((prev_acc, q_acc_seq), dim=-2)
+        # q_jerk_seq = torch.einsum('bijk, lj->bilk', q_jerk_seq, self._fd_matrix_jerk)
+        # q_jerk_seq = torch.div(q_jerk_seq, self.traj_dt[:, None])
+
+        # shape_tup = (self.state_batch_size * curr_batch_size * num_traj_points, self.n_dofs)
+        # with record_function("fk + jacobian"):
+        #     ee_pos_seq, ee_rot_seq, lin_jac_seq, ang_jac_seq = self.robot_model.compute_fk_and_jacobian(
+        #         state_seq[:,:,:,:self.n_dofs].view(shape_tup),
+        #         link_name=self.ee_link_name)
+
+        # # get link poses:
+        # for ki,k in enumerate(self.link_names):
+        #     link_pos, link_rot = self.robot_model.get_link_pose(k)
+        #     link_pos_seq[:,:,:,ki,:] = link_pos.view((self.state_batch_size, curr_batch_size, num_traj_points, 3))
+        #     link_rot_seq[:,:,:,ki,:,:] = link_rot.view((self.state_batch_size, curr_batch_size, num_traj_points, 3, 3))
+            
+        
+        # ee_pos_seq = ee_pos_seq.view((self.state_batch_size, curr_batch_size, num_traj_points, 3))
+        # ee_rot_seq = ee_rot_seq.view((self.state_batch_size, curr_batch_size, num_traj_points, 3, 3))
+        # lin_jac_seq = lin_jac_seq.view((self.state_batch_size, curr_batch_size, num_traj_points, 3, self.n_dofs))
+        # ang_jac_seq = ang_jac_seq.view((self.state_batch_size, curr_batch_size, num_traj_points, 3, self.n_dofs))
+        # ee_jacobian_seq = torch.cat((ang_jac_seq, lin_jac_seq), dim=-2)
+
+        # ee_vel_twist_seq = torch.matmul(ee_jacobian_seq, q_vel_seq.unsqueeze(-1)).squeeze(-1)
+        # # this is a first order approximation of ee acceleation i.e ignoreing \dot{J}
+        # # TODO: Test this against finite differencing and/or RNE
+        # ee_acc_twist_seq = torch.matmul(ee_jacobian_seq, q_acc_seq.unsqueeze(-1)).squeeze(-1) 
+
+        # state_dict = {'state_seq': state_seq.to(inp_device),
+        #               'q_pos_seq': q_pos_seq.to(inp_device),
+        #               'q_vel_seq': q_vel_seq.to(inp_device),
+        #               'q_acc_seq': q_acc_seq.to(inp_device),
+        #               'q_jerk_seq': q_jerk_seq.to(inp_device),
+        #               'ee_pos_seq': ee_pos_seq.to(inp_device),
+        #               'ee_rot_seq': ee_rot_seq.to(inp_device),
+        #               'ee_jacobian_seq': ee_jacobian_seq.to(inp_device),
+        #               'ee_vel_twist_seq': ee_vel_twist_seq.to(inp_device),
+        #               'ee_acc_twist_seq': ee_acc_twist_seq.to(inp_device),
+        #               'link_pos_seq': link_pos_seq.to(inp_device),
+        #               'link_rot_seq': link_rot_seq.to(inp_device),
+        #               'prev_state_seq': self.prev_state_buffer.to(inp_device),
+        #               'tstep_seq': tstep_seq.to(inp_device)}
+
+        # return state_dict
+            
+
     # def reset_idx(self, env_ids):
     #     self.prev_state_buffer[env_ids] = torch.zeros_like(self.prev_state_buffer[env_ids])
 

@@ -11,11 +11,11 @@ import os
 
 import torch
 
-from .rigid_body import (
+from storm_kit.differentiable_robot_model.rigid_body import (
     DifferentiableRigidBody,
 )
-from .spatial_vector_algebra import SpatialMotionVec, SpatialForceVec
-from .urdf_utils import URDFRobotModel
+from storm_kit.differentiable_robot_model.spatial_vector_algebra import SpatialMotionVec, SpatialForceVec
+from storm_kit.differentiable_robot_model.urdf_utils import URDFRobotModel
 from torch.profiler import record_function
 
 # import diff_robot_data
@@ -89,8 +89,15 @@ class DifferentiableRobotModel(torch.nn.Module):
     """
     Differentiable Robot Model
     ====================================
-    TODO
     """
+    _name_to_idx_map: Dict[str, int]
+    _body_idx_to_controlled_joint_idx_map: Dict[int, int]
+    _name_to_parent_map: Dict[str, str]
+    _body_to_joint_idx_map: Dict[str, int]
+    _bodies: List[DifferentiableRigidBody]
+    _joint_limits: List[Dict[str, float]]
+    _link_names: List[str]
+
 
     def __init__(self, urdf_path: str, name:str="", device:torch.device=torch.device('cpu')):
 
@@ -108,17 +115,19 @@ class DifferentiableRobotModel(torch.nn.Module):
         self._n_dofs = 0
         self._controlled_joints = []
 
-        self._batch_size = 1
-        self._base_lin_vel = torch.zeros((self._batch_size, 3), device=self._device) #, dtype=self.dtype)
-        self._base_ang_vel = torch.zeros((self._batch_size, 3), device=self._device) #, dtype=self.dtype)
-        self._base_pose_trans = torch.zeros((self._batch_size, 3), device=self._device) #, dtype=self.dtype)
-        self._base_pose_rot = torch.eye(3, device=self._device).expand(self._batch_size,3,3) #, dtype=self.dtype)
+        self._batch_size:int = 1
+        self._base_lin_vel:torch.Tensor = torch.zeros((self._batch_size, 3), device=self._device) #, dtype=self.dtype)
+        self._base_ang_vel:torch.Tensor = torch.zeros((self._batch_size, 3), device=self._device) #, dtype=self.dtype)
+        self._base_pose_trans:torch.Tensor = torch.zeros((self._batch_size, 3), device=self._device) #, dtype=self.dtype)
+        self._base_pose_rot:torch.Tensor = torch.eye(3, device=self._device).expand(self._batch_size,3,3) #, dtype=self.dtype)
 
         # here we're making the joint a part of the rigid body
         # while urdfs model joints and rigid bodies separately
         # joint is at the beginning of a link
         self._name_to_idx_map = dict()
         self._body_idx_to_controlled_joint_idx_map = dict()
+        self._name_to_parent_map = dict()
+        self._body_to_joint_idx_map = dict()
         controlled_jnt_idx = 0
 
 
@@ -141,6 +150,9 @@ class DifferentiableRobotModel(torch.nn.Module):
             # Add to data structures
             self._bodies.append(body)
             self._name_to_idx_map[body.name] = i
+            self._name_to_parent_map[body.name] = self._urdf_model.get_name_of_parent_body(body.name)
+            self._body_to_joint_idx_map[body.name] = self._urdf_model.find_joint_of_body(body.name)
+   
 
         # Once all bodies are loaded, connect each body to its parent
         for body in self._bodies[1:]:
@@ -154,6 +166,16 @@ class DifferentiableRobotModel(torch.nn.Module):
             torch.zeros([self._batch_size, 3, self._n_dofs], device=self._device),
         )
 
+    def delete_lxml_objects(self):
+        self._urdf_model = None
+    
+    def load_lxml_objects(self):
+        self._urdf_model = URDFRobotModel(
+            urdf_path=self.urdf_path, device=self.device) #, dtype=self.dtype
+        # )
+
+    def allocate_buffers(self, batch_size:int):
+        pass
 
     # @tensor_check
     @torch.jit.export
@@ -290,7 +312,6 @@ class DifferentiableRobotModel(torch.nn.Module):
         pos = pose.translation() #.to(inp_device)
         rot = pose.rotation() #.to(inp_device)#get_quaternion()
         return pos, rot
-
 
     # @tensor_check
     def iterative_newton_euler(self, base_acc: SpatialMotionVec) -> None:
@@ -836,6 +857,27 @@ class DifferentiableRobotModel(torch.nn.Module):
         """
         for name, param in self.named_parameters():
             print(f"{name}: {param}")
+
+
+
+if __name__ == "__main__":
+    import os
+    from storm_kit.util_file import get_assets_path
+    import time 
+    urdf_path = os.path.abspath(os.path.join(get_assets_path(), 'urdf/franka_description/franka_panda_no_gripper.urdf'))
+    device = torch.device('cuda:0')
+    robot_model = torch.jit.script(DifferentiableRobotModel(urdf_path, device=device))
+
+    #generate fake data
+    batch_size = 100000
+    q_pos = torch.randn(batch_size, 7, device=device)
+    q_vel = torch.randn(batch_size, 7, device=device)
+    q_acc = torch.randn(batch_size, 7, device=device)
+    
+    st = time.time()
+    robot_model.compute_fk_and_jacobian(q_pos, link_name='ee_link')
+    print(time.time()-st)
+
 
 
 # class DifferentiableKUKAiiwa(DifferentiableRobotModel):

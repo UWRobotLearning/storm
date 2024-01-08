@@ -15,10 +15,6 @@ policy:
   std_type: 'heteroscedastic'
   learn_logvar_bounds: false
   use_tanh: false
-  #check if needed
-  world: ${task.world}
-  #check if needed
-  rollout: ${task.rollout}
 
 critic:
   mlp_params:
@@ -66,11 +62,12 @@ agent:
   target_update_interval: 1
   backup_entropy: false
   relabel_data: true
-  # load_pretrained: true
   load_init_data: true
   train_from_scratch: false
-
+  grad_norm_clip_val: 0.5
   #Pretraining related
   num_pretrain_steps: 500
   policy_use_tanh: ${train.policy.use_tanh}
   policy_loss_type: nll
+  pretrain_critic: false
+

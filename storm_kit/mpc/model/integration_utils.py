@@ -82,7 +82,17 @@ def euler_integrate(
     u:torch.Tensor, 
     diag_dt:torch.Tensor, 
     integrate_matrix:torch.Tensor) -> torch.Tensor:
+    # print(u.shape, integrate_matrix.shape, diag_dt.shape)
+    # print(torch.matmul(integrate_matrix, torch.matmul(diag_dt, u)).shape)
+    # input('....')
     q_new = q_0 + torch.matmul(integrate_matrix, torch.matmul(diag_dt, u))
+    # q_new = q_0 + torch.matmul(torch.matmul(integrate_matrix, diag_dt), u)
+    # integrate_matrix_dt = torch.matmul(integrate_matrix, diag_dt)
+    # q_new_2 = q_0 + torch.einsum('hh, nbhd -> nbhd', integrate_matrix_dt, u)
+    # u_int = u.transpose(-1,-2) @ integrate_matrix_dt
+    # u_int = torch.einsum('nbhd, hh -> nbhd', u, integrate_matrix_dt)
+    # q_new = torch.add(q_0.unsqueeze(1).unsqueeze(1), u_int)
+    # assert torch.allclose(q_new, q_new_2)
     return q_new
 
 #@torch.jit.script
@@ -123,6 +133,12 @@ def tensor_step_acc(
     # This is batch,n_dof
     q = state[..., :n_dofs]
     qd = state[..., n_dofs:2*n_dofs]
+    # qdd_new = act
+    # diag_dt = torch.diag(dt_h)
+    # qd_new = euler_integrate(qd, qdd_new, diag_dt, integrate_matrix) #.view(state_batch_size, batch_size, horizon, -1)
+    # q_new = euler_integrate(q, qd_new, diag_dt, integrate_matrix) #.view(state_batch_size, batch_size, horizon, -1)
+
+    ######################################
     qdd_new = act.view(state_batch_size*batch_size, horizon, -1) #num_instances*
     diag_dt = torch.diag(dt_h)
 
@@ -135,14 +151,13 @@ def tensor_step_acc(
         torch.matmul(diag_dt, qd_new.view(state_batch_size*batch_size, horizon, -1))) #num_instances*
     q_new = q_new.view(state_batch_size, batch_size, horizon, -1) #num_instances, 
     q_new += q.unsqueeze(1).unsqueeze(1)
+    qdd_new = qdd_new.view(state_batch_size, batch_size, horizon, -1) #num_instances, 
 
-    # qd_new = euler_integrate(qd, qdd_new, diag_dt, integrate_matrix).view(state_batch_size, batch_size, horizon, -1)
-    # q_new = euler_integrate(q, qd_new, diag_dt, integrate_matrix).view(state_batch_size, batch_size, horizon, -1)
+    ##############################################
     # qddd_new = torch.matmul(diag_dt, torch.matmul(fd_matrix, qdd_new))
     # qddd_new = qddd_new.view(num_instances, batch_size, horizon, -1)
     # qddd_new = qddd_new.view(num_instances, batch_size, horizon, -1)
 
-    qdd_new = qdd_new.view(state_batch_size, batch_size, horizon, -1) #num_instances, 
 
     state_seq[..., :n_dofs] = q_new
     state_seq[..., n_dofs:2*n_dofs] = qd_new

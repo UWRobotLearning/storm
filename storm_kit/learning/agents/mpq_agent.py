@@ -8,7 +8,7 @@ from torch.profiler import record_function
 import torch.nn as nn
 from tqdm import tqdm
 from storm_kit.learning.agents import Agent
-from storm_kit.learning.learning_utils import dict_to_device
+from storm_kit.learning.learning_utils import dict_to_device, plot_episode
 
 
 class MPQAgent(Agent):
@@ -47,14 +47,16 @@ class MPQAgent(Agent):
         if self.init_buffer is not None:
             self.buffer.concatenate(self.init_buffer.qlearning_dataset())
         self.critic = critic
+        # self.old_policy = copy.deepcopy(self.policy)
         self.target_critic = target_critic
         self.mpc_policy = mpc_policy
         self.target_mpc_policy = target_mpc_policy
         self.target_critic = target_critic
         self.policy_optimizer = optim.Adam(self.policy.parameters(), 
                                     lr=float(self.cfg['policy_optimizer']['lr']))
-        self.critic_optimizer =  optim.Adam(self.critic.parameters(), 
-                                    lr=float(self.cfg['critic_optimizer']['lr']))
+        if self.critic is not None:
+            self.critic_optimizer =  optim.Adam(self.critic.parameters(), 
+                                        lr=float(self.cfg['critic_optimizer']['lr']))
 
         self.polyak_tau = float(self.cfg['polyak_tau'])
         self.discount = self.cfg['discount']
@@ -72,7 +74,7 @@ class MPQAgent(Agent):
         self.use_mpc_value_targets = self.cfg.get('use_mpc_value_targets', False)
         self.learn_policy = self.cfg.get('learn_policy', True)
         self.policy_use_tanh = self.cfg.get('policy_use_tanh', False)
-
+        self.grad_norm_clip_val = self.cfg.get('grad_norm_clip_val', 0.0)
 
     def train(self, debug:bool=False, model_dir=None):
         num_epochs = int(self.cfg['num_epochs'])
@@ -103,9 +105,8 @@ class MPQAgent(Agent):
                 [episode_metrics[k].append(l[k]) for l in episode_metric_list]
             for k,v in episode_metrics.items():
                 log_metrics['train/episode/{}'.format(k)].extend(v)
-            
+                        
             self.buffer.concatenate(new_buffer.qlearning_dataset())
-            print(play_metrics, 'Buffer len = {}'.format(len(self.buffer)))
 
             #update agent
             if len(self.buffer) >= self.min_buffer_size:
@@ -120,14 +121,14 @@ class MPQAgent(Agent):
                 for k in range(num_update_steps):
                     with record_function('sample_batch'):
                         # qlearning_dataset = self.buffer.qlearning_dataset()
-                        batch = self.buffer.sample(self.cfg['train_batch_size'], sample_next_state=True)
+                        batch = self.buffer.sample(self.cfg['train_batch_size']) #, sample_next_state=True)
                         batch = dict_to_device(batch, self.device)
 
                     if self.relabel_data:
                         with record_function('relabel_data'):
                             batch = self.preprocess_batch(batch, compute_cost_and_terminals=True)
 
-                    train_metrics = self.update(batch, k, num_update_steps)
+                    train_metrics = self.update(batch)
                     pbar.set_postfix(train_metrics)
                 
                 for k,v in train_metrics.items():
@@ -144,9 +145,12 @@ class MPQAgent(Agent):
 
         return log_metrics
 
-    def update(self, batch_dict, step_num, num_update_steps):
+    def update(self, batch_dict):
         batch_dict = dict_to_device(batch_dict, self.device)
+        policy_info_dict, critic_info_dict = {}, {}
         train_metrics = {}
+
+        batch_dict = self.run_mpc(batch_dict)
 
         # #Update critic
         # for p1, p2, p3 in zip(self.mpc_policy.policy.controller.value_function.parameters(), self.target_mpc_policy.controller.value_function.parameters(), self.critic.parameters()):
@@ -154,14 +158,18 @@ class MPQAgent(Agent):
         #     assert torch.allclose(p2, p3) 
         # print([p for p in self.mpc_policy.policy.controller.value_function.parameters()])
         # input('...')
-        self.critic_optimizer.zero_grad()
-        critic_loss, avg_q_value, avg_q_target, max_q_target= self.compute_critic_loss(batch_dict)
-        critic_loss.backward()
-        self.critic_optimizer.step()
-        train_metrics['critic_loss'] = critic_loss.item()
-        train_metrics['avg_q_value'] = avg_q_value.item()
-        train_metrics['avg_q_target'] = avg_q_target.item()
-        train_metrics['max_q_target'] = max_q_target.item()
+        if self.critic is not None:
+            self.critic_optimizer.zero_grad()
+            # critic_loss, avg_q_value, avg_q_target, max_q_target= self.compute_critic_loss(batch_dict)
+            critic_loss, critic_info_dict = self.compute_critic_loss(batch_dict)
+            critic_loss.backward()
+            if self.grad_norm_clip_val > 0.0:
+                torch.nn.utils.clip_grad_norm_(self.critic.parameters(), self.grad_norm_clip_val)
+            self.critic_optimizer.step()
+        # train_metrics['critic_loss'] = critic_loss.item()
+        # train_metrics['avg_q_value'] = avg_q_value.item()
+        # train_metrics['avg_q_target'] = avg_q_target.item()
+        # train_metrics['max_q_target'] = max_q_target.item()
 
         # for p1, p2, p3 in zip(self.mpc_policy.policy.controller.value_function.parameters(), self.target_mpc_policy.controller.value_function.parameters(), self.critic.parameters()):
         #     assert torch.allclose(p1, p2) 
@@ -172,11 +180,13 @@ class MPQAgent(Agent):
         #Update policy
         if self.learn_policy:
             self.policy_optimizer.zero_grad()
-            policy_loss, log_pi_new_actions = self.compute_policy_loss(batch_dict)
+            policy_loss, policy_info_dict = self.compute_policy_loss(batch_dict)
             policy_loss.backward()
+            if self.grad_norm_clip_val > 0.0:
+                torch.nn.utils.clip_grad_norm_(self.policy.parameters(), self.grad_norm_clip_val)
             self.policy_optimizer.step()
-            train_metrics['policy_loss'] = policy_loss.item()
-            train_metrics['policy_entropy'] = log_pi_new_actions.item()
+
+        train_metrics = {**critic_info_dict, **policy_info_dict}
 
         # for p1, p2, p3 in zip(self.mpc_policy.policy.controller.sampling_policy.parameters(), self.target_mpc_policy.controller.sampling_policy.parameters(), self.policy.parameters()):
         #     assert torch.allclose(p1, p2) 
@@ -184,35 +194,63 @@ class MPQAgent(Agent):
         # input('...')
 
         #Update target critic using exponential moving average
-        for (param1, param2) in zip(self.target_critic.parameters(), self.critic.parameters()):
-            param1.data.mul_(1. - self.polyak_tau).add_(param2.data, alpha=self.polyak_tau)
+        if self.critic is not None and self.target_critic is not None:
+            for (param1, param2) in zip(self.target_critic.parameters(), self.critic.parameters()):
+                param1.data.mul_(1. - self.polyak_tau).add_(param2.data, alpha=self.polyak_tau)
 
         return train_metrics
     
     def compute_policy_loss(self, batch_dict):
-        obs_batch = batch_dict['obs']
-        state_batch = batch_dict['state_dict']
+        obs = batch_dict['obs']
+        state = batch_dict['state_dict']
+        next_state = batch_dict['next_state_dict']
+        next_obs = batch_dict['next_obs']
         goal_dict = batch_dict['goal_dict']
 
-        policy_input = {
-            'states': state_batch,
-            'obs': obs_batch}
+        policy_input = {'states': state, 'obs': obs}
+        next_policy_input = {'states': next_state, 'obs': next_obs}
+    
 
-        #run mpc to get optimal policy samples
+        # #run mpc to get optimal policy samples
         with torch.no_grad():
-            reset_data = {}
-            reset_data['goal_dict'] = copy.deepcopy(goal_dict)
-            self.target_mpc_policy.reset(reset_data)
-            optimal_dist, value, info = self.target_mpc_policy(policy_input)
-            act_batch = optimal_dist.sample()
+        #     reset_data = {}
+        #     reset_data['goal_dict'] = copy.deepcopy(goal_dict)
+        #     self.target_mpc_policy.reset(reset_data)
+        #     optimal_dist, value, info = self.target_mpc_policy(policy_input)
+            optimal_dist = batch_dict['optimal_dist']
+            act_batch = optimal_dist.sample(torch.Size([self.num_action_samples]))
+            next_optimal_dist = batch_dict['next_optimal_dist']
+            next_act_batch = next_optimal_dist.sample(torch.Size([self.num_action_samples]))
         
         if self.policy_use_tanh:
             act_batch = torch.tanh(act_batch)
         
-        policy_loss = -1.0 * self.policy.log_prob(policy_input, act_batch).mean()
-        new_actions, log_pi_new_actions = self.policy.entropy(policy_input)
+        dist = self.policy(policy_input)
+        policy_loss_1 = -1.0 * dist.log_prob(act_batch)
+        next_dist = self.policy(next_policy_input)
+        policy_loss_2 = -1.0 * next_dist.log_prob(next_act_batch)
+        policy_loss = torch.cat((policy_loss_1, policy_loss_2), dim=1).mean()
+        
+        new_actions_1 = dist.sample(torch.Size([self.num_action_samples]))
+        log_pi_new_actions_1 = dist.log_prob(new_actions_1) #.mean()
+        new_actions_2 = next_dist.sample(torch.Size([self.num_action_samples]))
+        log_pi_new_actions_2 = next_dist.log_prob(new_actions_2) #.mean()
+        log_pi_new_actions = torch.cat((log_pi_new_actions_1, log_pi_new_actions_2), dim=1).mean()
+        action_diff_1 = torch.norm(new_actions_1 - act_batch, dim=-1) #.mean()
+        action_diff_2 = torch.norm(new_actions_2 - next_act_batch, dim=-1) #.mean()
+        action_diff = torch.cat((action_diff_1, action_diff_2), dim=1).mean()
 
-        return policy_loss, log_pi_new_actions.mean()
+        policy_info_dict = {
+            'policy_loss': policy_loss.item(),
+            'action_difference': action_diff.item(),
+            'policy_entropy': log_pi_new_actions.item()
+        }
+
+
+        # policy_loss = -1.0 * self.policy.log_prob(policy_input, act_batch).mean()
+        # new_actions, log_pi_new_actions = self.policy.entropy(policy_input)
+
+        return policy_loss, policy_info_dict #log_pi_new_actions.mean()
 
 
     def compute_critic_loss(self, batch_dict):
@@ -221,8 +259,7 @@ class MPQAgent(Agent):
         act_batch = batch_dict['actions']
         next_obs_batch = batch_dict['next_obs']
         next_state_batch = batch_dict['next_state_dict']
-        done_batch = batch_dict['terminals'].squeeze(-1).float()
-        goal_dict = batch_dict['goal_dict']
+        done_batch = batch_dict['terminals']
 
         with torch.no_grad():
             policy_input = {
@@ -234,27 +271,29 @@ class MPQAgent(Agent):
                 if self.learn_policy:
                     next_actions_dist = self.policy(policy_input)
                 else:
-                    self.target_mpc_policy.reset(dict(goal_dict=goal_dict))
-                    next_actions_dist, _, _ = self.target_mpc_policy(policy_input)
-                next_actions = next_actions_dist.sample()
+                    # self.target_mpc_policy.reset(dict(goal_dict=goal_dict))
+                    # next_actions_dist, _, _ = self.target_mpc_policy(policy_input)
+                    next_actions_dist = batch_dict['next_optimal_dist']
+                
+                next_actions = next_actions_dist.sample(torch.Size([self.num_action_samples]))
                 next_actions_log_prob = next_actions_dist.log_prob(next_actions)
                 next_actions_log_prob = next_actions_log_prob.mean(-1) #mean along action dimension
 
                 q_pred_next = self.target_critic(
-                    {'obs': next_obs_batch}, #.unsqueeze(0).repeat(self.num_action_samples, 1, 1)}, 
-                    next_actions) #.mean()
+                    {'obs': next_obs_batch.unsqueeze(0).repeat(self.num_action_samples, 1, 1)}, 
+                    next_actions).mean(0)
                 # q_pred_next = target_pred.mean(0) #mean across num action samples
 
             else:
-                self.target_mpc_policy.reset(dict(goal_dict=goal_dict))
-                next_actions_dist, q_pred_next, aux_info = self.target_mpc_policy(policy_input)
+                q_pred_next = batch_dict['next_mpc_value_targets']
+                # self.target_mpc_policy.reset(dict(goal_dict=goal_dict))
+                # next_actions_dist, q_pred_next, aux_info = self.target_mpc_policy(policy_input)
 
             # if self.backup_entropy:
             #     alpha = self.log_alpha.exp()
             #     q_pred_next =  target_pred + alpha * next_actions_log_prob # sign is flipped in entropy since we are minimizing costs
             # else:
             #     q_pred_next = target_pred
-
 
             q_target = self.reward_scale * cost_batch +  (1. - done_batch) * self.discount * q_pred_next
 
@@ -268,5 +307,51 @@ class MPQAgent(Agent):
         avg_target_value = q_target.mean()
         max_target_value = q_target.max()
 
+        qf_info_dict = {
+            'qf_loss': qf_loss.item(),
+            'avg_q_value': avg_q_value.item(),
+            'avg_target_value': avg_target_value.item(),
+            'max_target_value': max_target_value.item(),
 
-        return qf_loss, avg_q_value, avg_target_value, max_target_value
+        }
+
+        return qf_loss, qf_info_dict
+
+
+    def run_mpc(self, batch_dict):
+        obs = batch_dict['obs']
+        state = batch_dict['state_dict']
+        goal_dict = batch_dict['goal_dict']
+        next_state = batch_dict['next_state_dict']
+        next_obs = batch_dict['next_obs']
+
+        #run mpc to get optimal policy samples
+        with torch.no_grad():
+            state.pop("prev_action", None)
+            policy_input = {
+                'states': state,
+                'obs': obs}
+
+
+            reset_data = {}
+            reset_data['goal_dict'] = copy.deepcopy(goal_dict)
+            self.target_mpc_policy.reset(reset_data)
+            optimal_dist, value_preds, info = self.target_mpc_policy(policy_input)
+
+            #also run for next state
+            next_state.pop("prev_action", None)
+            policy_input = {
+                'states': next_state,
+                'obs': next_obs}
+
+            reset_data = {}
+            reset_data['goal_dict'] = copy.deepcopy(goal_dict)
+            self.target_mpc_policy.reset(reset_data)
+            next_optimal_dist, next_value_preds, info = self.target_mpc_policy(policy_input)
+
+        batch_dict['optimal_dist'] = optimal_dist
+        batch_dict['mpc_value_targets'] = value_preds
+        batch_dict['next_optimal_dist'] = next_optimal_dist 
+        batch_dict['next_mpc_value_targets'] = next_value_preds 
+
+        return batch_dict

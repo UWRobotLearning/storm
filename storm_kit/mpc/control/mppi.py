@@ -25,7 +25,7 @@
 import copy
 
 import numpy as np
-# import scipy.special
+import scipy.special
 import torch
 # from torch.nn.functional import normalize as f_norm
 from torch.profiler import record_function
@@ -64,8 +64,9 @@ class MPPI(GaussianMPC):
                  n_iters,
                  action_lows,
                  action_highs,
-                 null_act_frac=0.,
-                 cl_act_frac=0.,
+                 null_act_frac:float=0.,
+                 cl_act_frac:float=0.,
+                 use_cl_std:bool = False,
                 #  rollout_fn=None,
                  task=None,
                  dynamics_model=None,
@@ -98,6 +99,7 @@ class MPPI(GaussianMPC):
                                    step_size_cov, 
                                    null_act_frac,
                                    cl_act_frac,
+                                   use_cl_std,
                                 #    rollout_fn,
                                    task,
                                    dynamics_model,
@@ -311,19 +313,21 @@ class MPPI(GaussianMPC):
         # returns_weight = normalized_traj_returns if self.normalize_returns else traj_returns
         w = torch.softmax((-1.0/self.beta) * normalized_traj_returns, dim=1) 
         # calculate soft optimal value (using non-normalized returns)
-        val = -1.0 * self.beta * torch.logsumexp((-1.0/self.beta) * traj_returns, dim=1)
+        val = -1.0 * self.beta * (torch.logsumexp((-1.0/self.beta) * traj_returns, dim=1) - torch.log(torch.tensor([traj_returns.shape[1]], device=self.device)))
+        val2 = -1.0 * self.beta * scipy.special.logsumexp((-1.0/self.beta) * traj_returns.cpu().numpy(), axis=1, b=(1.0/traj_returns.shape[1]))
+        import pdb; pdb.set_trace()
         self.total_costs = traj_returns
         return w, val
 
 
     def _compute_traj_returns(self, trajectories)->torch.Tensor:
         costs = trajectories["costs"]#.to(**self.tensor_args)
-        actions = trajectories["actions"]#.to(**self.tensor_args)
         value_preds = trajectories['value_preds']
         terminals = trajectories['terminals']
         term_cost = trajectories['term_cost']
 
-        costs += term_cost #* terminals
+        # costs = costs * (1 - terminals) + term_cost * terminals
+        costs = costs + term_cost
         # if terminals.nonzero().numel() > 0:
         #     import pdb; pdb.set_trace()
             # print(costs)
@@ -334,7 +338,7 @@ class MPPI(GaussianMPC):
             # input('...')
 
         if value_preds is not None:
-            # value_preds = value_preds * (1. - terminals) + costs * terminals
+            value_preds = value_preds * (1. - terminals) + costs * terminals
             costs[..., -1] = value_preds[..., -1]
         
         traj_returns = cost_to_go(costs, self.gammalam_seq)

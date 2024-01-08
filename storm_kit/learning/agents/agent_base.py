@@ -3,6 +3,7 @@ import copy
 import os
 import torch
 import torch.nn as nn
+from storm_kit.learning.learning_utils import plot_episode
 
 
 class Agent(nn.Module):
@@ -80,10 +81,6 @@ class Agent(nn.Module):
         
         # if self.train_rng is not None:
         #     train_rng_state_before = self.train_rng.get_state()
-
-        # buff = None
-        # if update_buffer:
-        #     buff = self.buffer
         
         buff, metrics = self.runner_fn(
             envs = self.envs,
@@ -98,6 +95,10 @@ class Agent(nn.Module):
             rng=self.train_rng
         )
 
+        if debug:
+            for episode in buff.episode_iterator():
+                plot_episode(episode, block=False)
+
         # if self.eval_rng is not None:
         #     self.eval_rng.set_state(eval_rng_state_before)
 
@@ -109,13 +110,12 @@ class Agent(nn.Module):
         if self.eval_rng is not None:
             eval_rng_state_before = self.eval_rng.get_state()
         
-        _, play_metrics = self.runner_fn(
+        eval_buffer, eval_metrics = self.runner_fn(
             envs=self.envs,
             num_episodes=num_eval_episodes,
             policy=policy,
             task=self.task,
-            # buffer=None,
-            collect_data=False,
+            collect_data=debug,
             deterministic=deterministic,
             debug=debug,
             device=self.device,
@@ -125,7 +125,11 @@ class Agent(nn.Module):
         if self.eval_rng is not None:
             self.eval_rng.set_state(eval_rng_state_before)
         
-        return play_metrics
+        if debug:
+            for episode in eval_buffer.episode_iterator():
+                plot_episode(episode, block=False)
+        
+        return eval_metrics
 
     def preprocess_batch(self, batch_dict:Dict[str, torch.Tensor], compute_cost_and_terminals:bool=False):
 
@@ -165,13 +169,12 @@ class Agent(nn.Module):
             if k.startswith('filtered'):
                 next_state_dict_filt[k[len('filtered/'):]] = next_state_dict[k]
 
-        # new_batch_dict['state_dict'] = state_dict_filt if len(state_dict_filt.keys()) > 0 else state_dict        
-        # new_batch_dict['next_state_dict'] = next_state_dict_filt if len(next_state_dict_filt.keys()) > 0 else next_state_dict
-        new_batch_dict['state_dict'] =  copy.deepcopy(state_dict)        
-        new_batch_dict['next_state_dict'] = copy.deepcopy(next_state_dict)
+        new_batch_dict['state_dict'] = state_dict_filt if len(state_dict_filt.keys()) > 0 else state_dict        
+        new_batch_dict['next_state_dict'] = next_state_dict_filt if len(next_state_dict_filt.keys()) > 0 else next_state_dict
+        # new_batch_dict['state_dict'] =  copy.deepcopy(state_dict)        
+        # new_batch_dict['next_state_dict'] = copy.deepcopy(next_state_dict)
         new_batch_dict['goal_dict'] = copy.deepcopy(goal_dict)
 
-        #TODO: Call task.update_params here to make sure goal is updated
         self.task.update_params(dict(goal_dict=new_batch_dict['goal_dict']))
         with torch.no_grad():
             full_state_dict = self.task._compute_full_state(new_batch_dict['state_dict'])
@@ -180,20 +183,18 @@ class Agent(nn.Module):
             new_batch_dict['obs'] = obs.clone()
 
             if compute_cost_and_terminals:
-                #note:cost is based on current state
                 cost, _ = self.task.compute_cost(full_state_dict)
-                # #note:termination is based on next_state
                 # term, term_cost, term_info = self.task.compute_termination(
                 #     new_batch_dict['next_state_dict'], compute_full_state=True)
                 terminals, term_cost, term_info = self.task.compute_termination(
-                    full_state_dict
+                    state_dict, compute_full_state=True,
                 )
                 cost += term_cost 
                 new_batch_dict['cost'] = cost.clone()
                 # print(new_batch_dict['terminals'])
-                # print(term)
+                # print(terminals)
                 # print(term_cost)
-                # assert torch.allclose(term, new_batch_dict['terminals'])
+                # assert torch.allclose(terminals, new_batch_dict['terminals'])
                 # input('...........................====')
 
 

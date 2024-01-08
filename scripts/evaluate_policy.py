@@ -1,7 +1,7 @@
 
 from pathlib import Path
 import isaacgym 
-from omegaconf import DictConfig, OmegaConf
+from omegaconf import DictConfig
 import numpy as np
 import os
 import hydra
@@ -9,8 +9,7 @@ import torch
 from torch.profiler import profile, record_function, ProfilerActivity
 import time
 from storm_kit.learning.policies import MPCPolicy, GaussianPolicy, JointControlWrapper
-from storm_kit.learning.replay_buffers import RobotBuffer
-from storm_kit.learning.learning_utils import episode_runner
+from storm_kit.learning.learning_utils import episode_runner, plot_episode
 from task_map import task_map
 
 
@@ -55,6 +54,7 @@ def main(cfg: DictConfig):
     obs_dim = task.obs_dim
     act_dim = task.action_dim
     act_lows, act_highs = task.action_lims
+    state_bounds = task.state_bounds
 
     # buffer = RobotBuffer(capacity=int(1e6), device=cfg.rl_device)  
     
@@ -97,7 +97,11 @@ def main(cfg: DictConfig):
             sampling_policy=pretrained_policy, device=cfg.rl_device)
         policy_task = None
 
-    policy = JointControlWrapper(config=cfg.task.joint_control, policy=policy, device=cfg.rl_device)
+    policy = JointControlWrapper(
+        config=cfg.task.joint_control, 
+        policy=policy, 
+        state_bounds=state_bounds,
+        device=cfg.rl_device)
 
     st=time.time()
     num_episodes = cfg.eval.num_episodes
@@ -108,7 +112,6 @@ def main(cfg: DictConfig):
         num_episodes = num_episodes, 
         policy = policy,
         task = task,
-        # buffer = buffer,
         collect_data = True,
         deterministic = deterministic_eval,
         debug = False,
@@ -118,6 +121,8 @@ def main(cfg: DictConfig):
 
     for episode in buffer.episode_iterator():
         episode_metrics = task.compute_metrics(episode)
+        if cfg.debug:
+            plot_episode(episode, block=False)
         print(episode_metrics)
 
     print('Time taken = {}'.format(time.time() - st))
