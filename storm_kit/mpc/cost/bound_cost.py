@@ -56,10 +56,11 @@ class BoundCost(nn.Module):
             state_batch < self.scaled_bounds[:,1],
             state_batch > self.scaled_bounds[:,0])
         
-        cost = torch.minimum(
+        bound_dist = torch.minimum(
             torch.square(state_batch - self.scaled_bounds[:,0]), 
             torch.square(self.scaled_bounds[:,1] - state_batch))
         
+        cost = bound_dist.clone()
         cost[bound_mask_scaled] = 0.0
         cost = torch.sum(cost, dim=-1)
         cost = self.weight * torch.sqrt(cost)
@@ -67,4 +68,5 @@ class BoundCost(nn.Module):
         info = {}
         info['in_bounds'] = bound_mask
         info['in_bounds_scaled'] = bound_mask_scaled
+        info['bound_dist'] = bound_dist
         return cost.to(inp_device), info

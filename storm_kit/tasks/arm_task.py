@@ -273,10 +273,12 @@ class ArmTask(nn.Module):
 
     def compute_observations(
             self, 
-            state_dict: Dict[str,torch.Tensor]):
+            state_dict: Dict[str,torch.Tensor],
+            cost_terms: Optional[Dict[str, torch.Tensor]]=None):
                 
         q_pos_batch = state_dict['q_pos_seq']
         q_vel_batch = state_dict['q_vel_seq']
+        q_acc_batch = state_dict['q_acc_seq']
         ee_pos_batch = state_dict['ee_pos_seq']
         ee_vel_twist = state_dict['ee_vel_twist_seq']
 
@@ -290,10 +292,17 @@ class ArmTask(nn.Module):
         else:
             ee_quat_batch = state_dict['ee_quat_seq']
         
+        if cost_terms is None:
+            state_batch = torch.cat((q_pos_batch, q_vel_batch, q_acc_batch), dim=-1).view(new_size, -1)
+            _, bound_cost_info = self.bound_cost.forward(state_batch)
+            bound_dist = bound_cost_info['bound_dist'].view(*orig_size,-1)
+        else:
+            bound_dist = cost_terms['bound_dist']
+        
         obs = torch.cat(
             (q_pos_batch, q_vel_batch,
              ee_pos_batch, ee_quat_batch,
-             ee_vel_twist), dim=-1)
+             ee_vel_twist, bound_dist), dim=-1)
 
         return obs
 
@@ -352,6 +361,7 @@ class ArmTask(nn.Module):
         termination = termination.float().view(orig_size)
         info = coll_cost_info
         info['in_bounds'] = bound_cost_info['in_bounds'].view(*orig_size, -1)
+        info['bound_dist'] = bound_cost_info['bound_dist'].view(*orig_size, -1)
 
         return termination, termination_cost, info
 
@@ -510,7 +520,7 @@ class ArmTask(nn.Module):
 
     @property
     def obs_dim(self)->int:
-        return 2*self.n_dofs + 13
+        return 2*self.n_dofs + 34
 
     @property
     def action_dim(self)->int:

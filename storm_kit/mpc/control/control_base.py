@@ -193,11 +193,11 @@ class Controller(nn.Module):
     def sample(self, state, shift_steps:int=1, n_iters=None, deterministic:bool=False): #calc_val:bool=False , num_samples:int=1
         pass
 
-    def forward(self, state, shift_steps:int=1, n_iters=None): #calc_val:bool=False
-        distrib_info, value, aux_info =  self.optimize(state, shift_steps, n_iters) #calc_val
-        return distrib_info, value, aux_info
+    def forward(self, state, shift_steps:int=1, n_iters=None, calc_val:bool=False):
+        distrib_info, aux_info =  self.optimize(state, shift_steps, n_iters, calc_val)
+        return distrib_info, aux_info
 
-    def optimize(self, state, shift_steps:int=1, n_iters:int=None): #calc_val:bool=False
+    def optimize(self, state, shift_steps:int=1, n_iters:int=None, calc_val:bool = False):
         """
         Optimize for best action at current state
 
@@ -250,15 +250,17 @@ class Controller(nn.Module):
         self.trajectories = trajectory
 
         # #calculate optimal value estimate if required
-        # value = 0.0
-        # if calc_val:
-        #     value = self.compute_optimal_value(state, trajectory)
+        value = 0.0
+        if calc_val:
+            value = self.compute_value(state)
+
         self.num_steps += 1
 
-        return distrib_info, aux_info #value
+        distrib_info['optimal_value'] = value
+        return distrib_info, aux_info
     
     @abstractmethod
-    def compute_optimal_value(self, state, trajectories=None):
+    def compute_value(self, state): #, trajectories=None):
         """
         Calculate optimal value of a state, i.e 
         value under optimal policy. 

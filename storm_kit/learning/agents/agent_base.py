@@ -169,10 +169,10 @@ class Agent(nn.Module):
             if k.startswith('filtered'):
                 next_state_dict_filt[k[len('filtered/'):]] = next_state_dict[k]
 
-        new_batch_dict['state_dict'] = state_dict_filt if len(state_dict_filt.keys()) > 0 else state_dict        
-        new_batch_dict['next_state_dict'] = next_state_dict_filt if len(next_state_dict_filt.keys()) > 0 else next_state_dict
-        # new_batch_dict['state_dict'] =  copy.deepcopy(state_dict)        
-        # new_batch_dict['next_state_dict'] = copy.deepcopy(next_state_dict)
+        # new_batch_dict['state_dict'] = state_dict_filt if len(state_dict_filt.keys()) > 0 else state_dict        
+        # new_batch_dict['next_state_dict'] = next_state_dict_filt if len(next_state_dict_filt.keys()) > 0 else next_state_dict
+        new_batch_dict['state_dict'] =  copy.deepcopy(state_dict)        
+        new_batch_dict['next_state_dict'] = copy.deepcopy(next_state_dict)
         new_batch_dict['goal_dict'] = copy.deepcopy(goal_dict)
 
         self.task.update_params(dict(goal_dict=new_batch_dict['goal_dict']))

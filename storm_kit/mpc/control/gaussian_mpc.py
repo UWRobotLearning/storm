@@ -205,7 +205,7 @@ class GaussianMPC(Controller):
             if self.cov_type == 'full_HAxHA':
                 # delta: N * H * A -> N * HA
                 raise NotImplementedError('cov_type full_HAxHA needs to be debugged')
-                delta = delta.view(delta.shape[0], delta.shape[1], self.horizon * self.d_action)
+                delta_ol = delta_ol.view(delta.shape[0], delta.shape[1], self.horizon * self.d_action)
             
             scaled_delta_ol = torch.matmul(delta_ol, self.full_scale_tril.unsqueeze(1)).view(
                 self.state_batch_size, delta_ol.shape[1],
@@ -281,14 +281,15 @@ class GaussianMPC(Controller):
         with record_function("compute_termination"):
             term_seq, term_cost, term_info = self.task.compute_termination(state_dict, act_seq)
 
+        cost_terms = {**cost_terms, **term_info}
+
         # if term_cost is not None:
         #     cost_seq += term_cost
-
         value_preds = None
         if self.value_function is not None:
             with record_function("value_fn_inference"):
-                obs = self.task.compute_observations(state_dict, compute_full_state=False)
-                value_preds = self.value_function({'obs':obs}, act_seq)
+                obs = self.task.compute_observations(state_dict, compute_full_state=False, cost_terms=cost_terms)
+                value_preds = self.value_function({'obs': obs}, act_seq)
 
         sim_trajs = dict(
             actions=act_seq,
@@ -403,9 +404,9 @@ class GaussianMPC(Controller):
             self.sampling_policy.reset(reset_data)
         self.dynamics_model.reset(reset_data)
     
-    def compute_optimal_value(self, state, trajectories=None):
-        if trajectories is None:
-            trajectories = self.generate_rollouts(state)
+    def compute_value(self, state): #, trajectories=None):
+        # if trajectories is None:
+        trajectories = self.generate_rollouts(state)
         return self._calc_val(trajectories)
     
     def initialize_sample_lib(self, sample_params):

@@ -119,7 +119,7 @@ class MPPI(GaussianMPC):
         self.kappa = kappa
         self.visual_traj = visual_traj
         self.normalize_returns = normalize_returns
-        self.log_B = torch.log(torch.tensor([self.num_particles], device=self.device))
+        self.log_B = torch.log(torch.tensor([self.num_particles], device=self.device)).item()
 
     def _update_distribution(self, trajectories):
         """
@@ -134,8 +134,7 @@ class MPPI(GaussianMPC):
         # value_preds = trajectories['value_preds']
 
         with record_function('mppi:exp_util'):
-            # w, v_opt = self._exp_util(costs, actions, value_preds)
-            w, v_opt = self._exp_util(trajectories)
+            w = self._exp_util(trajectories)
 
         #Update best action
         best_idx = torch.argmax(w, dim=1)
@@ -235,7 +234,7 @@ class MPPI(GaussianMPC):
                 
         return dict(
             mean=self.mean_action, cov=self.full_cov, 
-            scale_tril=self.full_scale_tril, optimal_value=v_opt)
+            scale_tril=self.full_scale_tril)
 
         
     def _shift(self, shift_steps):
@@ -301,53 +300,79 @@ class MPPI(GaussianMPC):
         # traj_returns = cost_to_go(costs, self.gammalam_seq)
         # # if not self.time_based_weights: traj_returns = traj_returns[:,0]
         # traj_returns = traj_returns[...,0]
-        traj_returns = self._compute_traj_returns(trajectories)
+        traj_returns = self._compute_traj_returns(trajectories, normalize=self.normalize_returns)
         #control_costs = self._control_costs(actions)
         # total_returns = traj_returns #+ self.beta * control_costs
-        normalized_traj_returns = traj_returns
-        if self.normalize_returns:
-            max_return = torch.max(traj_returns, dim=-1)[0][:,None]
-            min_return = torch.min(traj_returns, dim=-1)[0][:,None]
-            normalized_traj_returns = (traj_returns - min_return) / (max_return - min_return)
+        # normalized_traj_returns = traj_returns
+        # if self.normalize_returns:
+        #     max_return = torch.max(traj_returns, dim=-1)[0][:,None]
+        #     min_return = torch.min(traj_returns, dim=-1)[0][:,None]
+        #     normalized_traj_returns = (traj_returns - min_return) / (max_return - min_return)
         
         # calculate soft-max for weights
         # returns_weight = normalized_traj_returns if self.normalize_returns else traj_returns
-        w = torch.softmax((-1.0/self.beta) * normalized_traj_returns, dim=1) 
+        w = torch.softmax((-1.0/self.beta) * traj_returns, dim=1) 
         # calculate soft optimal value (using non-normalized returns)
-        val = -1.0 * self.beta * (torch.logsumexp((-1.0/self.beta) * traj_returns, dim=1) - self.log_B)
+        # val = -1.0 * self.beta * (torch.logsumexp((-1.0/self.beta) * traj_returns, dim=1) - self.log_B)
+        # val = traj_returns.mean(dim=1)
         # print(self.log_B, torch.log(torch.tensor([traj_returns.shape[1]], device=self.device)))
+        # val1 = -1.0 * self.beta * (torch.logsumexp((-1.0/self.beta) * traj_returns, dim=1))
         # val2 = -1.0 * self.beta * scipy.special.logsumexp((-1.0/self.beta) * traj_returns.cpu().numpy(), axis=1, b=(1.0/traj_returns.shape[1]))
         # import pdb; pdb.set_trace()
         self.total_costs = traj_returns
-        return w, val
+        return w #, val
 
 
-    def _compute_traj_returns(self, trajectories)->torch.Tensor:
-        costs = trajectories["costs"]#.to(**self.tensor_args)
+    def _compute_traj_returns(self, trajectories, normalize:bool=False)->torch.Tensor:
+        costs = trajectories["costs"]
         value_preds = trajectories['value_preds']
         terminals = trajectories['terminals']
         term_cost = trajectories['term_cost']
 
-        # costs = costs * (1 - terminals) + term_cost * terminals
         costs = costs + term_cost
-        # if terminals.nonzero().numel() > 0:
-        #     import pdb; pdb.set_trace()
-            # print(costs)
-            # input('....')
-            # print(terminals.nonzero(as_tuple=True))
-            # print(costs[terminals.nonzero(as_tuple=True)])
-
-            # input('...')
 
         if value_preds is not None:
             value_preds = value_preds * (1. - terminals) + costs * terminals
             costs[..., -1] = value_preds[..., -1]
-        
         traj_returns = cost_to_go(costs, self.gammalam_seq)
+
         # if not self.time_based_weights: traj_returns = traj_returns[:,0]
         traj_returns = traj_returns[...,0]
+        if normalize:
+            max_return = torch.max(traj_returns, dim=-1)[0][:,None]
+            min_return = torch.min(traj_returns, dim=-1)[0][:,None]
+            traj_returns = (traj_returns - min_return) / (max_return - min_return)
+
         return traj_returns
-   
+       
+    def _calc_val(self, trajectories):
+        traj_returns = self._compute_traj_returns(trajectories, normalize=False)
+        # if value_preds is not None:
+        #     costs[...,-1] = value_preds[...,-1] 
+
+        # traj_returns = cost_to_go(costs, self.gammalam_seq)[..., 0]
+        # traj_returns = self.normalize_traj_returns(costs)
+
+        # calculate log-sum-exp
+        # c = (-1.0/self.beta) * total_costs.copy()
+        # cmax = np.max(c)
+        # c -= cmax
+        # c = np.exp(c)
+        # val1 = cmax + np.log(np.sum(c)) - np.log(c.shape[0])
+        # val1 = -self.beta * val1
+
+        # val = -self.beta * scipy.special.logsumexp((-1.0/self.beta) * total_costs, b=(1.0/total_costs.shape[0]))
+        # val = -self.beta * (torch.logsumexp((-1.0/self.beta) * traj_returns, dim=1) - self.log_B)
+        # val = -1.0 * self.beta * (torch.logsumexp((-1.0/self.beta) * traj_returns, dim=1) - self.log_B)
+
+        val = traj_returns.mean(1)
+        return val
+
+    
+    # def get_optimal_value(self, state):
+    #     trajectories = self.generate_rollouts(state)
+    #     return self._calc_val(trajectories)
+
 
     def _control_costs(self, actions):
         if self.alpha == 1:
@@ -367,36 +392,7 @@ class MPPI(GaussianMPC):
             control_costs = cost_to_go(control_costs, self.gamma_seq)
             control_costs = control_costs[:,0]
         return control_costs
-    
-    def _calc_val(self, trajectories):
-        costs = trajectories["costs"]
-        value_preds = trajectories["value_preds"]
 
-        if value_preds is not None:
-            costs[...,-1] = value_preds[...,-1] 
 
-        traj_returns = cost_to_go(costs, self.gammalam_seq)[..., 0]
-        traj_returns = self.normalize_traj_returns(costs)
 
-        # calculate log-sum-exp
-        # c = (-1.0/self.beta) * total_costs.copy()
-        # cmax = np.max(c)
-        # c -= cmax
-        # c = np.exp(c)
-        # val1 = cmax + np.log(np.sum(c)) - np.log(c.shape[0])
-        # val1 = -self.beta * val1
-
-        # val = -self.beta * scipy.special.logsumexp((-1.0/self.beta) * total_costs, b=(1.0/total_costs.shape[0]))
-        val = -self.beta * torch.logsumexp((-1.0/self.beta) * traj_returns, dim=1)
-        return val
-
-    def normalize_traj_returns(self, traj_returns):
-        max_return = torch.max(traj_returns, dim=-1)[0][:,None]
-        min_return = torch.min(traj_returns, dim=-1)[0][:,None]
-        normalized_traj_returns = (traj_returns - min_return) / (max_return - min_return)
-        return normalized_traj_returns       
-
-    def get_optimal_value(self, state):
-        trajectories = self.generate_rollouts(state)
-        return self._calc_val(trajectories)
 

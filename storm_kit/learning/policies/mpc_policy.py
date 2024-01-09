@@ -32,15 +32,16 @@ class MPCPolicy(Policy):
         self.prev_command_time = time.time()
         # self.dt = self.cfg.rollout.control_dt
         
-    def forward(self, obs_dict): #calc_val:bool=False
+    def forward(self, obs_dict, calc_val:bool=False): #calc_val:bool=False
         states = obs_dict['states']
         distrib_info, aux_info =  self.controller.optimize(
-            states, shift_steps=1) #value #calc_val=calc_val, 
+            states, shift_steps=1, calc_val=calc_val) #value #calc_val=calc_val, 
         
         mean = distrib_info['mean'][:, 0]
         scale_tril = distrib_info['scale_tril']
         dist = MultivariateNormal(loc=mean, scale_tril=scale_tril)
         value = distrib_info['optimal_value'] if 'optimal_value' in distrib_info else 0.
+        aux_info['base_policy_value'] = distrib_info['base_policy_value'] if 'base_policy_value' in distrib_info else 0.
         
         return dist, value, aux_info
 

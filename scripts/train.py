@@ -96,7 +96,7 @@ def main(cfg: DictConfig):
     init_buffer = None
     if load_init_data:
         try:
-            base_dir = os.path.abspath('./tmp_results2/{}'.format(cfg.task_name))
+            base_dir = os.path.abspath('./tmp_results/{}'.format(cfg.task_name))
             data_path = os.path.join(base_dir, cfg.train.dataset_path)
             init_buffer, _ = buffer_from_file(data_path)
             init_data_loaded = True
@@ -188,9 +188,10 @@ def main(cfg: DictConfig):
         # target_mpc_cfg['mppi']['cl_act_frac'] = 0.0
         target_mpc_policy = MPCPolicy(
             obs_dim=obs_dim, act_dim=act_dim, config=target_mpc_cfg, 
-            sampling_policy=None, value_function=None, 
+            sampling_policy=None, value_function=critic, 
             task_cls=task_cls, dynamics_model_cls=dyn_model_cls,
             device=cfg.rl_device) 
+        
         agent = MPQAgent(
             cfg.train.agent, envs=envs, task=task, obs_dim=obs_dim, action_dim=act_dim,
             buffer=buffer, policy=policy, mpc_policy=mpc_policy, target_mpc_policy=target_mpc_policy,

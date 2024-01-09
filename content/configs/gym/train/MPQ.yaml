@@ -23,7 +23,7 @@ critic:
     output_activation: null
     dropout_prob: 0.0 
     layer_norm: false
-  ensemble_size: 1
+  ensemble_size: 1 
   prediction_size: 2
 
 agent:
@@ -43,7 +43,7 @@ agent:
   eval_freq: 1000
   eval_first_policy: false
   num_eval_episodes: 1
-  learn_policy: true
+  learn_policy: false
   use_mpc_value_targets: true
   # fixed_alpha: 0.2
   # init_log_alpha: 0.0
@@ -64,7 +64,8 @@ agent:
   relabel_data: true
   load_init_data: true
   train_from_scratch: false
-  grad_norm_clip_val: 0.5
+  grad_norm_clip_val: 0.0
+  deterministic_data_collection: false
   #Pretraining related
   num_pretrain_steps: 500
   policy_use_tanh: ${train.policy.use_tanh}

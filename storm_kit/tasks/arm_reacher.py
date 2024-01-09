@@ -40,12 +40,15 @@ class ArmReacher(ArmTask):
     def forward(self, state_dict: Dict[str, torch.Tensor], act_batch:Optional[torch.Tensor]=None):
         return super().forward(state_dict, act_batch)
 
-    def compute_observations(self, state_dict: Dict[str, torch.Tensor], compute_full_state:bool = False, debug=False):
+    def compute_observations(
+            self, state_dict: Dict[str, torch.Tensor], 
+            compute_full_state:bool = False, debug=False,
+            cost_terms: Optional[Dict[str, torch.Tensor]]=None):
 
         if compute_full_state:
             state_dict = self._compute_full_state(state_dict, debug)
         
-        obs =  super().compute_observations(state_dict)
+        obs =  super().compute_observations(state_dict, cost_terms)
 
         orig_size = state_dict['q_pos_seq'].size()[0:-1]
         # new_size = reduce(mul, list(orig_size))  
@@ -72,15 +75,21 @@ class ArmReacher(ArmTask):
             # ee_goal_pos = ee_goal_pos.view(ee_goal_pos.shape[0], *(1,)*(len(target_shape)-ee_goal_pos.ndim), ee_goal_pos.shape[-1]).expand(target_shape)
             # ee_goal_quat = ee_goal_quat.view(ee_goal_quat.shape[0], *(1,)*(len(target_shape)-ee_goal_quat.ndim), ee_goal_quat.shape[-1]).expand(target_shape)
         
-        _, pose_cost_info = self.goal_cost.forward(
-            ee_pos.view(-1, 3), ee_rot.view(-1,3,3), 
-            ee_goal_pos.view(-1,3), ee_goal_rot.view(-1,3,3)
-        )
-        translation_res = pose_cost_info['translation_residual'].view(*orig_size,-1)
-        rotation_res = pose_cost_info['rotation_residual'].view(*orig_size,-1)
-        
+        if cost_terms is None:
+
+            _, pose_cost_info = self.goal_cost.forward(
+                ee_pos.view(-1, 3), ee_rot.view(-1,3,3), 
+                ee_goal_pos.view(-1,3), ee_goal_rot.view(-1,3,3)
+            )
+
+            translation_res = pose_cost_info['translation_residual'].view(*orig_size,-1)
+            rotation_res = pose_cost_info['rotation_residual'].view(*orig_size,-1)
+        else:
+            translation_res = cost_terms['translation_residual']
+            rotation_res = cost_terms['rotation_residual']
+        # ee_goal_pos, ee_goal_quat
         obs = torch.cat(
-            (obs, ee_goal_pos, ee_goal_quat,
+            (obs,
             translation_res, rotation_res), dim=-1)
 
         return obs
@@ -125,6 +134,8 @@ class ArmReacher(ArmTask):
                 cost_terms['goal_pose_cost'] = goal_cost
                 cost_terms['rotation_err'] = goal_cost_info['rotation_err'].view(orig_size)
                 cost_terms['translation_err'] = goal_cost_info['translation_err'].view(orig_size)
+                cost_terms['translation_residual'] = goal_cost_info['translation_residual'].view(*orig_size,-1)
+                cost_terms['rotation_residual'] = goal_cost_info['rotation_residual'].view(*orig_size,-1)
                 # goal_cost[:,:,0:-1] = 0.
                 cost += goal_cost
         
@@ -225,7 +236,6 @@ class ArmReacher(ArmTask):
             'world_collision': world_collision_violation.nonzero().numel(),
             'self_collision': self_collision_violation.nonzero().numel(),
             'bounds_violation': bounds_violation.nonzero().numel()}
-            # 'final_goal_rot_err_rel': final_goal_rot_err_rel,
             # 'last_10_dist_err': last_n_dist_err,
             # 'last_10_dist_err_rel': last_n_dist_err_rel,
             # 'max_q_vel': max_q_vel,
@@ -324,7 +334,7 @@ class ArmReacher(ArmTask):
     
     @property
     def obs_dim(self)->int:
-        return super().obs_dim + 13 
+        return super().obs_dim + 6 
 
     @property
     def action_lims(self)->Tuple[torch.Tensor, torch.Tensor]:

@@ -343,7 +343,7 @@ def episode_runner(
         # transition_dict_list = []
         # episode_metrics_list = []
         # episode_cost_buffer = []
-        print('Collecting {} episodes'.format(num_episodes))
+        print('Collecting {0} episodes, determinsitic={1}'.format(num_episodes, deterministic))
         while num_episodes_done < num_episodes:
             with torch.no_grad():
 
