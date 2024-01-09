@@ -68,5 +68,5 @@ class BoundCost(nn.Module):
         info = {}
         info['in_bounds'] = bound_mask
         info['in_bounds_scaled'] = bound_mask_scaled
-        info['bound_dist'] = bound_dist
+        info['bound_dist'] = torch.sqrt(bound_dist)
         return cost.to(inp_device), info

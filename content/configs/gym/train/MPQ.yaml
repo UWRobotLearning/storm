@@ -23,7 +23,7 @@ critic:
     output_activation: null
     dropout_prob: 0.0 
     layer_norm: false
-  ensemble_size: 1 
+  ensemble_size: 2 
   prediction_size: 2
 
 agent:
@@ -35,7 +35,7 @@ agent:
   update_to_data_ratio: 2
   policy_update_delay: 1
   discount: 0.99
-  train_batch_size: 128 #256
+  train_batch_size: 128
   max_buffer_size: 1e6
   min_buffer_size: 0
   num_action_samples: 1
@@ -44,7 +44,7 @@ agent:
   eval_first_policy: false
   num_eval_episodes: 1
   learn_policy: false
-  use_mpc_value_targets: true
+  use_mpc_value_targets: false
   # fixed_alpha: 0.2
   # init_log_alpha: 0.0
   random_ensemble_q: false

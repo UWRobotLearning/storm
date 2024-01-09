@@ -312,7 +312,7 @@ class MPQAgent(Agent):
             # else:
             #     q_pred_next = target_pred
 
-            q_target = self.reward_scale * cost_batch +  self.discount * q_pred_next #(1. - done_batch) * 
+            q_target = self.reward_scale * cost_batch +  self.discount * (1. - done_batch) * q_pred_next #(1. - done_batch) * 
 
         qf_all = self.critic.all({'obs': obs_batch}, act_batch)
         q_target = q_target.unsqueeze(-1).repeat(1, qf_all.shape[-1])
@@ -352,7 +352,7 @@ class MPQAgent(Agent):
             reset_data = {}
             reset_data['goal_dict'] = copy.deepcopy(goal_dict)
             self.target_mpc_policy.reset(reset_data)
-            optimal_dist, value_preds, info = self.target_mpc_policy(policy_input, calc_val=True)
+            optimal_dist, value_preds, info = self.target_mpc_policy(policy_input, calc_val=self.use_mpc_value_targets)
 
             #also run for next state
             next_state.pop("prev_action", None)
@@ -361,7 +361,7 @@ class MPQAgent(Agent):
                 'obs': next_obs}
 
             self.target_mpc_policy.reset(reset_data)
-            next_optimal_dist, next_value_preds, info = self.target_mpc_policy(policy_input, calc_val=True)
+            next_optimal_dist, next_value_preds, info = self.target_mpc_policy(policy_input, calc_val=self.use_mpc_value_targets)
 
         batch_dict['optimal_dist'] = optimal_dist
         batch_dict['mpc_value_targets'] = value_preds

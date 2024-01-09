@@ -341,6 +341,7 @@ class ArmTask(nn.Module):
             bounds_violation = torch.logical_not(in_bounds).sum(-1)
         
         termination = torch.logical_or(collision_violation, bounds_violation)
+        
         termination_cost = coll_cost +  bound_cost
 
         # if termination.nonzero().numel() > 0:
