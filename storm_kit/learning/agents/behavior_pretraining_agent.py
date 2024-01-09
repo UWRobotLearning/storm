@@ -1,3 +1,4 @@
+import copy
 from typing import Optional
 import torch
 import torch.optim as optim
@@ -19,10 +20,15 @@ class BPAgent(Agent):
         obs_dim,
         action_dim,
         buffer,
-        policy,
         runner_fn,
-        critic=None,
-        target_critic=None,
+        mpc_policy,
+        policy=None,
+        qf=None,
+        vf=None,
+        target_qf=None,
+        target_vf=None,
+        # target_q_func=None,
+        # target_critic=None,
         logger=None,
         tb_writer=None,
         device=torch.device('cpu'), 
@@ -35,14 +41,32 @@ class BPAgent(Agent):
             logger=logger, tb_writer=tb_writer,
             device=device, eval_rng=eval_rng
         )
+
         self.buffer = self.preprocess_dataset(self.buffer)
-        self.critic = critic
-        self.target_critic = target_critic
-        self.policy_optimizer = optim.Adam(self.policy.parameters(), 
-                                    lr=self.cfg['policy_optimizer']['lr'])
-        if self.critic is not None:
-            self.critic_optimizer = optim.Adam(self.critic.parameters(), 
-                                        lr=self.cfg['critic_optimizer']['lr'])
+        self.mpc_policy = mpc_policy
+        self.qf = qf
+        self.vf = vf        
+        if self.qf is not None:
+            assert self.policy is not None, 'Learning a q network requires a policy network.'
+            self.target_qf = copy.deepcopy(self.qf).requires_grad_(False) if target_qf is None else target_qf
+
+        if self.vf is not None:
+            self.target_vf = copy.deepcopy(self.vf).requires_grad_(False) if target_vf is None else target_vf
+
+        #get full list of parameters
+        params = []
+        for net in (self.policy, self.qf, self.vf):
+            if net is not None:
+                params += list(net.parameters())
+
+        self.optimizer = optim.Adam(params, lr=self.cfg['optimizer']['lr'])
+
+        # if self.policy is not None:
+        #     self.policy_optimizer = optim.Adam(self.policy.parameters(), 
+        #                                 lr=self.cfg['policy_optimizer']['lr'])
+        # if self.critic is not None:
+        #     self.critic_optimizer = optim.Adam(self.critic.parameters(), 
+        #                                 lr=self.cfg['critic_optimizer']['lr'])
  
         self.policy_loss_type = self.cfg['policy_loss_type']
         self.num_action_samples = self.cfg['num_action_samples']
@@ -56,7 +80,6 @@ class BPAgent(Agent):
         self.polyak_tau = float(self.cfg['polyak_tau'])
         # self.best_policy = copy.deepcopy(self.policy)
 
-    
     def train(self, model_dir=None, data_dir=None, debug:bool=False):
         num_train_steps = self.cfg['num_pretrain_steps']
         # self.best_policy = copy.deepcopy(self.policy)
@@ -71,7 +94,7 @@ class BPAgent(Agent):
                 print('[BehaviorPretraining]: Evaluating policy')
                 self.policy.eval()
                 eval_metrics = self.evaluate_policy(
-                    self.policy, 
+                    self.mpc_policy, 
                     num_eval_episodes=self.num_eval_episodes, 
                     deterministic=True, 
                     debug=False)
@@ -104,7 +127,6 @@ class BPAgent(Agent):
             
             pbar.set_postfix(train_metrics)
 
-            # if (i % self.log_freq == 0) or (i == num_train_steps -1):
             if self.tb_writer is not None:
                 for k, v in train_metrics.items():
                     self.tb_writer.add_scalar('Train/' + k, v, i)
@@ -113,28 +135,44 @@ class BPAgent(Agent):
                 print(f'Iter {i}: Saving current policy')
                 self.save(model_dir, data_dir, iter=0)
             
-            # step_time = time.time() - step_start_time
-            # print(f'Iter {i}, update_time = {update_time}, step_time = {step_time}')
 
     def update(self, batch_dict, step_num):
 
         policy_info_dict, qf_info_dict = {}, {}
         # self.policy.reset(batch_dict)
-        policy_loss, policy_info_dict = self.compute_policy_loss(batch_dict)
-        
-        self.policy_optimizer.zero_grad()
-        policy_loss.backward()
-        self.policy_optimizer.step()
+        total_loss = torch.tensor(0., device=self.device)
+        if self.policy is not None:
+            policy_loss, policy_info_dict = self.compute_policy_loss(batch_dict)
+            total_loss += policy_loss
 
-        if self.critic is not None:
+        # self.policy_optimizer.zero_grad()
+        # policy_loss.backward()
+        # self.policy_optimizer.step()
+
+        if self.qf is not None:
             qf_loss, qf_info_dict = self.compute_critic_loss(batch_dict)
-            self.critic_optimizer.zero_grad()
-            qf_loss.backward()
-            self.critic_optimizer.step()
+            total_loss += qf_loss
+            # self.critic_optimizer.zero_grad()
+            # qf_loss.backward()
+            # self.critic_optimizer.step()
+
+
+        #TODO: Add value function learning
+        self.optimizer.zero_grad()
+        total_loss.backward()
+        self.optimizer.step()
+
+        # for p1, p2 in zip(self.mpc_policy.policy.controller.sampling_policy.parameters(), self.policy.parameters()):
+        #     assert torch.allclose(p2, p2)
+        # print([p for p in self.mpc_policy.policy.controller.sampling_policy.parameters()])
+        # input('...')
+        # for p1, p2 in zip(self.mpc_policy.policy.controller.value_function.parameters(), self.qf.parameters()):
+        #     assert torch.allclose(p1, p2)
+        # print([p for p in self.mpc_policy.policy.controller.value_function.parameters()])
+        # input('...')
+
 
         info_dict = {**policy_info_dict, **qf_info_dict}
-        # train_metrics['policy_loss'] = policy_loss.item()
-        # train_metrics['policy_entropy'] = log_pi_new_actions.item()
         
         return info_dict
 
@@ -185,15 +223,16 @@ class BPAgent(Agent):
         return policy_loss, policy_info_dict
     
     def compute_critic_loss(self, batch_dict):
-        cost_batch = batch_dict['cost'].squeeze(-1)
+        assert self.policy is not None, "Q-function learning requires policy"
+        cost_batch = batch_dict['cost']
         obs_batch = batch_dict['obs']
         act_batch = batch_dict['actions']
         next_obs_batch = batch_dict['next_obs']
         next_state_batch = batch_dict['next_state_dict']
-        done_batch = batch_dict['terminals'].squeeze(-1).float()
+        done_batch = batch_dict['terminals'].float()
 
         #Update target critic using exponential moving average
-        for (param1, param2) in zip(self.target_critic.parameters(), self.critic.parameters()):
+        for (param1, param2) in zip(self.target_qf.parameters(), self.qf.parameters()):
             param1.data.mul_(1. - self.polyak_tau).add_(param2.data, alpha=self.polyak_tau)
 
         with torch.no_grad():
@@ -205,13 +244,13 @@ class BPAgent(Agent):
             next_actions = next_actions_dist.sample(torch.Size([self.num_action_samples]))
             # next_actions_log_prob = next_actions_dist.log_prob(next_actions).mean()
 
-            q_pred_next = self.target_critic(
+            q_pred_next = self.target_qf(
                 {'obs': next_obs_batch.unsqueeze(0).repeat(self.num_action_samples, 1, 1)}, 
                 next_actions).mean(0)
             
             q_target = cost_batch +  (1. - done_batch) * self.discount * q_pred_next
 
-        qf_all = self.critic.all({'obs': obs_batch}, act_batch)
+        qf_all = self.qf.all({'obs': obs_batch}, act_batch)
         q_target = q_target.unsqueeze(-1).repeat(1, qf_all.shape[-1])
 
         qf_loss = F.mse_loss(qf_all, q_target, reduction='none')

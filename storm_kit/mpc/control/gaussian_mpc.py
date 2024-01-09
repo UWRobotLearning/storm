@@ -167,8 +167,8 @@ class GaussianMPC(Controller):
 
     #     return act_seq
 
-    def sample(self, state, shift_steps:int=1, n_iters=None, deterministic:bool=False): # calc_val:bool=False, num_samples:int=1):
-        distrib_info, aux_info =  self.optimize(state, shift_steps, n_iters) #calc_val
+    def sample(self, state, shift_steps:int=1, n_iters=None, deterministic:bool=False, calc_val:bool=False):
+        distrib_info, aux_info =  self.optimize(state, shift_steps, n_iters, calc_val=calc_val)
         
         value = distrib_info['optimal_value'] if 'optimal_value' in distrib_info else 0.0
         if deterministic:

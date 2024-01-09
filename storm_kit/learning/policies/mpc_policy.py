@@ -46,25 +46,11 @@ class MPCPolicy(Policy):
         return dist, value, aux_info
 
     def get_action(self, obs_dict, deterministic=False): #, num_samples=1):
-        # st=time.time()
         state_dict = obs_dict['states']
-        ################
-        # curr_action_seq, value, info = self.controller.forward(
-        #     state_dict, calc_val=False, shift_steps=1, deterministic=deterministic)
-        ####################
         curr_action_seq, _, _ = self.controller.sample(
             state_dict, shift_steps=1, deterministic=deterministic)#, calc_val=False, num_samples=num_samples)
         action = curr_action_seq[:, 0]
         return action
-
-    # def compute_value_estimate(self, obs_dict):
-    #     state_dict = obs_dict['states']
-    #     # state_dict['prev_action'] = self.prev_action
-    #     curr_action_seq, value, info = self.controller.forward(
-    #         state_dict, calc_val=True, shift_steps=1)
-    #     action = curr_action_seq[:, 0]
-    #     # self.prev_action = action.clone()
-    #     return action, value
 
     def log_prob(self, input_dict: Dict[str, torch.Tensor], actions: torch.Tensor):
         dist = self.forward(input_dict)

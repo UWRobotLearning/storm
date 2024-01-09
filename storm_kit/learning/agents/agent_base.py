@@ -178,12 +178,10 @@ class Agent(nn.Module):
         self.task.update_params(dict(goal_dict=new_batch_dict['goal_dict']))
         with torch.no_grad():
             full_state_dict = self.task._compute_full_state(new_batch_dict['state_dict'])
-            obs = self.task.compute_observations(
-               full_state_dict , compute_full_state=False)
-            new_batch_dict['obs'] = obs.clone()
-
+            
+            cost_terms = None
             if compute_cost_and_terminals:
-                cost, _ = self.task.compute_cost(full_state_dict)
+                cost, cost_terms = self.task.compute_cost(full_state_dict)
                 # term, term_cost, term_info = self.task.compute_termination(
                 #     new_batch_dict['next_state_dict'], compute_full_state=True)
                 terminals, term_cost, term_info = self.task.compute_termination(
@@ -191,11 +189,16 @@ class Agent(nn.Module):
                 )
                 cost += term_cost 
                 new_batch_dict['cost'] = cost.clone()
+                cost_terms = {**cost_terms, **term_info}
                 # print(new_batch_dict['terminals'])
                 # print(terminals)
                 # print(term_cost)
                 # assert torch.allclose(terminals, new_batch_dict['terminals'])
                 # input('...........................====')
+
+            obs = self.task.compute_observations(
+               full_state_dict , compute_full_state=False, cost_terms=cost_terms)
+            new_batch_dict['obs'] = obs.clone()
 
 
         if len(new_batch_dict['next_state_dict'].keys()) > 0:
