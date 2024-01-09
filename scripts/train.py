@@ -72,7 +72,8 @@ def main(cfg: DictConfig):
         envs = PandaRealRobotEnv(
             cfg.task,
             device=cfg.rl_device,
-            headless=cfg.headless
+            headless=cfg.headless,
+            safe_mode=False
         )
 
     #Initialize task
@@ -91,7 +92,7 @@ def main(cfg: DictConfig):
 
     train_from_scratch = cfg.train.agent.get('train_from_scratch', True)
     #Load init data
-    load_init_data = cfg.train.agent.get('load_init_data', False) or train_from_scratch
+    load_init_data = cfg.train.agent.get('load_init_data', False) or train_from_scratch or (agent_name == "BP")
     init_data_loaded = False
     init_buffer = None
     if load_init_data:
@@ -137,10 +138,25 @@ def main(cfg: DictConfig):
         critic = TwinQFunction(obs_dim=obs_dim, act_dim=act_dim, config=cfg.train.critic, device=cfg.rl_device)
     else:
         critic = EnsembleQFunction(obs_dim=obs_dim, act_dim=act_dim, config=cfg.train.critic, device=cfg.rl_device) 
+    
     target_critic = copy.deepcopy(critic)
+    #freeze target critic parameters
+    for p in target_critic.parameters(): p.requires_grad = False
+    #create mpc policy
+    dyn_model_cls = task_details['dynamics_model_cls']
+    # policy.policy
+    mpc_policy = MPCPolicy(
+        obs_dim=obs_dim, act_dim=act_dim, config=cfg.mpc, 
+        sampling_policy=None, value_function=critic, 
+        task_cls=task_cls, dynamics_model_cls=dyn_model_cls,
+        device=cfg.rl_device) 
+    
+    mpc_policy = JointControlWrapper(
+        config=cfg.task.joint_control, 
+        policy=mpc_policy, 
+        state_bounds=state_bounds,
+        device=cfg.rl_device)
 
-    # num_pretrain_steps = cfg.train.agent.get('num_pretrain_steps', 0)
-    # if num_pretrain_steps > 0 and init_data_loaded and (not pretrained_loaded):
     agent_name = cfg.train.agent.name
     run_pretraining = (train_from_scratch and init_data_loaded) or (agent_name == "BP")
     run_pretraining = run_pretraining and (cfg.train.agent.num_pretrain_steps > 0)
@@ -150,9 +166,10 @@ def main(cfg: DictConfig):
         pretrain_log_info = init_logging(cfg.task_name, 'BP', cfg)
         pretrain_agent = BPAgent(
             cfg.train.agent, envs=envs, task=task, obs_dim=obs_dim, action_dim=act_dim, 
-            buffer=init_buffer, policy=policy, 
-            critic=critic if pretrain_critic else None, 
-            target_critic=target_critic if pretrain_critic else None, runner_fn=episode_runner, 
+            buffer=init_buffer, runner_fn=episode_runner, 
+            policy=policy, mpc_policy=mpc_policy,
+            qf=critic if pretrain_critic else None, 
+            # target_critic=target_critic if pretrain_critic else None,
             logger=pretrain_log_info['log'], tb_writer=writer, device=cfg.rl_device, eval_rng=eval_rng)
         pretrain_agent.train(model_dir=pretrain_log_info['model_dir'])
         print('Behavior Pretraining done')
@@ -167,19 +184,6 @@ def main(cfg: DictConfig):
                         buffer=buffer, policy=policy, critic=critic, logger=log, tb_writer=writer, device=cfg.rl_device)
     
     elif agent_name == 'MPQ': 
-        dyn_model_cls = task_details['dynamics_model_cls']
-        # policy.policy
-        mpc_policy = MPCPolicy(
-            obs_dim=obs_dim, act_dim=act_dim, config=cfg.mpc, 
-            sampling_policy=None, value_function=critic, 
-            task_cls=task_cls, dynamics_model_cls=dyn_model_cls,
-            device=cfg.rl_device) 
-        
-        mpc_policy = JointControlWrapper(
-            config=cfg.task.joint_control, 
-            policy=mpc_policy, 
-            state_bounds=state_bounds,
-            device=cfg.rl_device)
         #For target mpc policy, we need to set num_instances to the train batch size
         target_mpc_cfg = cfg.mpc
         target_mpc_cfg['mppi']['state_batch_size'] = cfg.train.agent.train_batch_size

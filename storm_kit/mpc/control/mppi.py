@@ -328,7 +328,7 @@ class MPPI(GaussianMPC):
         value_preds = trajectories['value_preds']
         terminals = trajectories['terminals']
         term_cost = trajectories['term_cost']
-
+        
         costs = costs + term_cost
 
         if value_preds is not None:

@@ -33,16 +33,19 @@ agent:
   max_buffer_size: 1e6
   num_pretrain_steps: 100000
   train_batch_size: 256
-  policy_optimizer:
+  # policy_optimizer:
+  #   __target__: torch.optim.Adam
+  #   lr: 3e-4
+  # critic_optimizer:
+  #   __target__: torch.optim.Adam
+  #   lr: 3e-4
+  optimizer:
     __target__: torch.optim.Adam
-    lr: 3e-4
-  critic_optimizer:
-    __target__: torch.optim.Adam
-    lr: 3e-4
+    lr: 1e-3 #3e-4
   polyak_tau: 5e-3
   log_freq: 100
   checkpoint_freq: 5000
-  eval_freq: 5000
+  eval_freq: 1000
   eval_first_policy: false
   num_eval_episodes: 2
   policy_use_tanh: ${train.policy.use_tanh}
