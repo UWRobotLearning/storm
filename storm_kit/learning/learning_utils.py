@@ -105,7 +105,6 @@ def single_buffer_from_folder(data_dir, capacity=None, device=torch.device('cpu'
 def buffer_dict_from_folder(data_dir, capacity=None, device=torch.device('cpu')):
     buffer_dict = {}
     files = sorted(os.listdir(data_dir))
-    print(files)
     total_data_points = 0
     for file in files:
         filepath = os.path.join(data_dir, file)
@@ -113,7 +112,6 @@ def buffer_dict_from_folder(data_dir, capacity=None, device=torch.device('cpu'))
         ep_buff, num_datapoints = buffer_from_file(filepath)
         buffer_dict[file] = ep_buff 
         total_data_points += num_datapoints
-    
     return buffer_dict
 
 
@@ -650,5 +648,10 @@ def plot_episode(episode, block=False):
         plt.waitforbuttonpress(-1)
         plt.close(fig)
 
+
+
+
+def discount_cumsum(x:torch.Tensor, discount:float):
+    pass
 
 

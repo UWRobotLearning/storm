@@ -129,7 +129,7 @@ class Agent(nn.Module):
             for episode in eval_buffer.episode_iterator():
                 plot_episode(episode, block=False)
         
-        return eval_metrics
+        return eval_buffer, eval_metrics
 
     def preprocess_batch(self, batch_dict:Dict[str, torch.Tensor], compute_cost_and_terminals:bool=False):
 
