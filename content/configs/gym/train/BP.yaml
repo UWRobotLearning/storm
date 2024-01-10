@@ -25,7 +25,7 @@ critic:
     output_activation: null
     dropout_prob: 0.0 
     layer_norm: false
-  ensemble_size: 10
+  ensemble_size: 2
   prediction_size: 2
 
 agent:
@@ -51,7 +51,7 @@ agent:
   policy_use_tanh: ${train.policy.use_tanh}
   # learn_deterministic_policy: false
   policy_loss_type: nll
-  num_action_samples: 32 #only used when learning std with mse loss
+  num_action_samples: 1
   fixed_alpha: 0.2
   relabel_data: true
   load_pretrained_policy: false

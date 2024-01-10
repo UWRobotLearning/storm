@@ -6,11 +6,9 @@ import os
 import hydra
 import torch
 from storm_kit.learning.replay_buffers import RobotBuffer
-from storm_kit.learning.learning_utils import buffer_dict_from_folder
+from storm_kit.learning.learning_utils import buffer_dict_from_folder, plot_episode
 from task_map import task_map
 import matplotlib.pyplot as plt
-
-
 
 @hydra.main(config_name="config", config_path="../content/configs/gym")
 def main(cfg: DictConfig):
@@ -23,7 +21,6 @@ def main(cfg: DictConfig):
     base_dir = Path('./tmp_results/{}/{}'.format(cfg.task_name, 'policy_eval'))
     model_dir = os.path.join(base_dir, 'models')
     data_dir = os.path.join(base_dir, 'data')
-    data_dir = os.path.join(data_dir, 'mpc') #TODO: Generalize
 
     #Initialize task
     task = task_cls(
@@ -32,12 +29,13 @@ def main(cfg: DictConfig):
     #Load bufffers from folder
     buffer_dict = buffer_dict_from_folder(data_dir)
 
-    for episode, episode_data in buffer_dict.items():
-        print(episode_data['goal_dict'])
-        plt.plot(episode_data['state_dict']['q_pos'])
-        input('...')
+    for buffer_name, buffer in buffer_dict.items():
+        print('Analyzing buffer {}'.format(buffer_name))
+        for episode in buffer.episode_iterator():
+            episode_metrics = task.compute_metrics(episode)
+            plot_episode(episode, block=False)
+            print(episode_metrics)
 
-    print(episode_data)
 
 
 

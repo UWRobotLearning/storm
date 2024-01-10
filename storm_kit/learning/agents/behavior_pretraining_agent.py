@@ -1,4 +1,5 @@
 import copy
+from collections import defaultdict
 from typing import Optional
 import torch
 import torch.optim as optim
@@ -82,10 +83,7 @@ class BPAgent(Agent):
 
     def train(self, model_dir=None, data_dir=None, debug:bool=False):
         num_train_steps = self.cfg['num_pretrain_steps']
-        # self.best_policy = copy.deepcopy(self.policy)
-        # best_policy_perf = -torch.inf
-        # best_policy_step = 0
-        
+        log_metrics = defaultdict(list)
         pbar = tqdm(range(int(num_train_steps)), desc='train')
 
         for i in pbar:
@@ -93,23 +91,22 @@ class BPAgent(Agent):
             if ((i + (1-self.eval_first_policy)) % self.eval_freq == 0) or (i == num_train_steps -1):
                 print('[BehaviorPretraining]: Evaluating policy')
                 self.policy.eval()
-                eval_metrics = self.evaluate_policy(
+                eval_buffer, eval_metrics = self.evaluate_policy(
                     self.mpc_policy, 
                     num_eval_episodes=self.num_eval_episodes, 
                     deterministic=True, 
                     debug=False)
                
                 print(eval_metrics)
-                if self.logger is not None:
-                    self.logger.row(eval_metrics, nostdout=True)
-                if self.tb_writer is not None:
-                    for k, v in eval_metrics.items():
-                        self.tb_writer.add_scalar('Pretraining/' + k, v, i)
-
-                # if eval_metrics['eval_episode_reward_avg'] >= best_policy_perf:
-                #     self.best_policy = copy.deepcopy(self.policy)
-                #     best_policy_perf = eval_metrics['eval_episode_reward_avg']
-                #     best_policy_step = i
+                for k,v in eval_metrics.items():
+                    log_metrics['eval/episode/{}'.format(k)].append(v)
+                episode_metric_list = [self.task.compute_metrics(episode) for episode in eval_buffer.episode_iterator(
+                    max_episode_length=self.envs.max_episode_length - 1)]
+                episode_metrics = defaultdict(list)
+                for k in episode_metric_list[0].keys():
+                    [episode_metrics[k].append(l[k]) for l in episode_metric_list]
+                for k,v in episode_metrics.items():
+                    log_metrics['eval/episode/{}'.format(k)].extend(v)
 
                 self.policy.train()
                 pbar.set_postfix(eval_metrics)
@@ -124,12 +121,23 @@ class BPAgent(Agent):
             
             with record_function('update'):
                 train_metrics = self.update(batch, i)
-            
             pbar.set_postfix(train_metrics)
 
-            if self.tb_writer is not None:
-                for k, v in train_metrics.items():
-                    self.tb_writer.add_scalar('Train/' + k, v, i)
+            for k,v in train_metrics.items():
+                log_metrics['train/losses/{}'.format(k)].append(v)
+
+            #Log stuff
+            row = {}
+            for k, v in log_metrics.items():
+                row[k.split("/")[-1]] = v[-1]
+                if self.tb_writer is not None:                        
+                    self.tb_writer.add_scalar(k, v[-1], i)
+            if self.logger is not None:
+                self.logger.row(row)
+
+            # if self.tb_writer is not None:
+            #     for k, v in train_metrics.items():
+            #         self.tb_writer.add_scalar('Train/' + k, v, i)
                         
             if (i % self.checkpoint_freq == 0) or (i == num_train_steps -1):
                 print(f'Iter {i}: Saving current policy')
@@ -139,7 +147,6 @@ class BPAgent(Agent):
     def update(self, batch_dict, step_num):
 
         policy_info_dict, qf_info_dict = {}, {}
-        # self.policy.reset(batch_dict)
         total_loss = torch.tensor(0., device=self.device)
         if self.policy is not None:
             policy_loss, policy_info_dict = self.compute_policy_loss(batch_dict)
@@ -270,6 +277,11 @@ class BPAgent(Agent):
 
 
     def preprocess_dataset(self, buffer):
+
+        for episode in buffer.episode_iterator():
+            H = len(episode['actions'])
+            
+
         buffer = buffer.qlearning_dataset()
         return buffer
 
