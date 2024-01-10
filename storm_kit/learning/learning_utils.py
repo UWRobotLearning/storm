@@ -645,6 +645,9 @@ def plot_episode(episode, block=False):
         ax[1].plot(q_vel[:,n])
         ax[2].plot(actions[:,n])
     
+    ax[-1].set_xlabel('Episode Timestep')
+    
+    
     plt.show(block=block)
     if not block:
         plt.waitforbuttonpress(-1)

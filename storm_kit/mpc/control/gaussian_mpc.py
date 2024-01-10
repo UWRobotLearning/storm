@@ -54,7 +54,6 @@ class GaussianMPC(Controller):
                  null_act_frac=0.,
                  cl_act_frac=0.,
                  use_cl_std:bool=False,
-                #  rollout_fn=None,
                  task=None,
                  dynamics_model=None,
                  sampling_policy=None,
