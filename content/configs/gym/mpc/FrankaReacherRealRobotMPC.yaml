@@ -41,7 +41,7 @@ rollout:
   cost:
     goal_pose:
       vec_weight: [1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
-      weight: [5.0, 20.0] #[10.0, 50.0] #[50.0, 100.0]
+      weight: [5.0, 15.0] #[10.0, 50.0] #[50.0, 100.0]
       cost_type: 'se3_twist'
       norm_type: 'l2'
       hinge_val: -1
@@ -54,12 +54,12 @@ rollout:
       # vec_weight: [1.0, 1.0, 1.0] 
 
     ee_acc_twist:
-      weight: 0.0 #1e-4
+      weight: 0.0
       norm_type: 'l2'
       # vec_weight: [1.0, 1.0, 1.0] 
 
     zero_q_vel:
-      weight: 2e-2 #1e-2
+      weight: 1e-2 
       norm_type: 'l2'
       # hinge_val: 0.2 #0.2
 
@@ -69,13 +69,13 @@ rollout:
       # hinge_val: -1.0
 
     zero_q_jerk:
-      weight: 0.0 #1e-3
+      weight: 2e-3
       norm_type: 'l2'
       # hinge_val: -1.0
       
     manipulability:
       weight: 3.0 #0.5 #30.0 #10.0 #100.0 #0.05 #0.5 #1.0
-      thresh: 0.1 #0.1 #0.05 #0.03
+      thresh: 0.2 #0.1 #0.05 #0.03
 
     joint_l2:
       weight: 0.0
@@ -83,7 +83,7 @@ rollout:
 
     stop_cost:
       weight: 2.0 #50.0 #50.0 #10.0 #10.0 
-      max_nlimit: 5.0 #1.5 #0.2
+      max_nlimit: 10.0 #1.5 #0.2
 
     stop_cost_acc:
       weight: 0.0
@@ -115,7 +115,7 @@ viz_rollouts: False
 mppi:
   state_batch_size  : 1
   horizon           : 20
-  init_cov          : 0.01 #0.005 #.5 #.5
+  init_cov          : 0.02 #0.005 #.5 #.5
   gamma             : 0.99 #0.98
   td_lam            : 1.0
   n_iters           : 1

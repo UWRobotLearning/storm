@@ -133,9 +133,9 @@ class GaussianMPC(Controller):
             self.num_particles, self.num_ol_particles, self.num_cl_particles, self.num_null_particles, self.sampling_policy is not None
         ))
 
-        self.sample_shape = torch.Size([self.num_nonzero_particles - 2])
+        self.sample_shape = torch.Size([self.num_nonzero_particles - 1])
         if self.num_cl_particles > 0 and self.num_ol_particles > 0 and not self.use_cl_std:
-            self.sample_shape = torch.Size([self.num_nonzero_particles - 3])
+            self.sample_shape = torch.Size([self.num_nonzero_particles - 2])
 
         self.sample_params = sample_params
         self.sample_type = sample_params['type']
@@ -225,15 +225,16 @@ class GaussianMPC(Controller):
             act_seq.append(act_seq_cl)
 
         # act_seq = scale_ctrl(act_seq, self.action_lows, self.action_highs, squash_fn=self.squash_fn)
-        append_acts = self.best_traj.unsqueeze(1)
+        # append_acts = self.best_traj.unsqueeze(1)
         #append zero actions (for stopping)
         if self.num_null_particles > 0:
             # negative action particles:
             # neg_action = -1.0 * self.mean_action.unsqueeze(1)
             # neg_act_seqs = neg_action.expand(1, self.num_neg_particles,-1,-1)
             # append_acts = torch.cat((append_acts, self.null_act_seqs, neg_act_seqs),dim=1)
-            append_acts = torch.cat((append_acts, self.null_act_seqs), dim=1)
-            act_seq.append(append_acts)
+            # append_acts = torch.cat((append_acts, self.null_act_seqs), dim=1)
+            # act_seq.append(append_acts)
+            act_seq.append(self.null_act_seqs)
 
         # act_seq = torch.cat((act_seq, append_acts), dim=1)
         act_seq = torch.cat(act_seq, dim=1)

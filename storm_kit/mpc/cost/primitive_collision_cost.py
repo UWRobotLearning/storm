@@ -71,8 +71,8 @@ class PrimitiveCollisionCost(nn.Module):
         # world_coll_dist_inflated[world_coll_dist_inflated <= 0.0] = 0.0
         world_coll_dist += self.distance_threshold_world
         world_coll_dist[world_coll_dist <= 0.0] = 0.0
-        world_coll_dist[world_coll_dist > 0.2] = 0.2
-        world_coll_dist = world_coll_dist / 0.25
+        # world_coll_dist[world_coll_dist > 0.2] = 0.2
+        # world_coll_dist = world_coll_dist / 0.25
         
         world_cost = torch.sum(world_coll_dist, dim=-1)
         
@@ -80,7 +80,9 @@ class PrimitiveCollisionCost(nn.Module):
         # self_coll_dist += self.distance_threshold
         self_coll_dist += self.distance_threshold_self
         self_coll_dist[self_coll_dist <= 0.0] = 0.0
-        self_coll_dist[self_coll_dist > 0.2] = 0.2
+        
+        # self_coll_dist[self_coll_dist > 0.2] = 0.2
+
         # self_coll_dist_hinge = self_coll_dist.clone() + self.distance_threshold_self
         # self_coll_dist_hinge[self_coll_dist_hinge <= 0.0] = 0.0
         # self_coll_dist_hinge[self_coll_dist_hinge > 0.2] = 0.2

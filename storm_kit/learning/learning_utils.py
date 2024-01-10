@@ -484,6 +484,38 @@ def episode_runner(
         
         return buffer, metrics
 
+def plot_episode(episode, block=False):
+    q_pos = episode['states/q_pos'].cpu().numpy()
+    q_vel = episode['states/q_vel'].cpu().numpy()
+    q_acc = episode['states/q_acc'].cpu().numpy()
+    actions = episode['actions'].cpu().numpy()
+
+    fig, ax = plt.subplots(3,1)
+    num_points, n_dofs = q_pos.shape
+    for n in range(n_dofs):
+
+        ax[0].plot(q_pos[:,n], label='dof_{}'.format(n+1))
+        ax[1].plot(q_vel[:,n])
+        ax[2].plot(actions[:,n])
+    
+    ax[-1].set_xlabel('Episode Timestep')
+    ax[0].set_ylabel('q_pos (rad)')
+    ax[1].set_ylabel('q_vel (rad/s)')
+    ax[2].set_ylabel('actions [q_acc] (rad/s^2)')
+    ax[0].legend(loc='upper center', bbox_to_anchor=(0.5, 1.1), ncol=5, fancybox=True, shadow=True)    
+    plt.show(block=block)
+    if not block:
+        plt.waitforbuttonpress(-1)
+        plt.close(fig)
+
+
+def discount_cumsum(x:torch.Tensor, discount:float):
+    pass
+
+
+
+
+
 #DEPRECATED
 # def minimal_episode_runner(
 #     envs,
@@ -627,34 +659,3 @@ def episode_runner(
 #     #     metrics[k] = avg_val
 
 #     return buffer, metrics
-
-
-def plot_episode(episode, block=False):
-    q_pos = episode['states/q_pos'].cpu().numpy()
-    q_vel = episode['states/q_vel'].cpu().numpy()
-    q_acc = episode['states/q_acc'].cpu().numpy()
-    actions = episode['actions'].cpu().numpy()
-
-    fig, ax = plt.subplots(3,1)
-    num_points, n_dofs = q_pos.shape
-    for n in range(n_dofs):
-
-        ax[0].plot(q_pos[:,n])
-        ax[1].plot(q_vel[:,n])
-        ax[2].plot(actions[:,n])
-    
-    ax[-1].set_xlabel('Episode Timestep')
-    
-    
-    plt.show(block=block)
-    if not block:
-        plt.waitforbuttonpress(-1)
-        plt.close(fig)
-
-
-
-
-def discount_cumsum(x:torch.Tensor, discount:float):
-    pass
-
-
