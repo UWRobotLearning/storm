@@ -294,17 +294,17 @@ class DifferentiableRobotModel(torch.nn.Module):
         """
         # assert q.ndim == 2
 
-        if recursive:
-            return self.compute_forward_kinematics_all_links(q)[link_name]
+        # if recursive:
+        #     return self.compute_forward_kinematics_all_links(q)[link_name]
 
-        else:
-            qd = torch.zeros_like(q)
-            self.update_kinematic_state(q, qd)
+        # else:
+        qd = torch.zeros_like(q)
+        self.update_kinematic_state(q, qd)
 
-            pose = self._bodies[self._name_to_idx_map[link_name]].pose
-            pos = pose.translation()
-            rot = pose.rotation() #.get_quaternion()
-            return pos, rot
+        pose = self._bodies[self._name_to_idx_map[link_name]].pose
+        pos = pose.translation()
+        rot = pose.rotation() #.get_quaternion()
+        return pos, rot
 
     @torch.jit.export
     def get_link_pose(self, link_name: str)->Tuple[torch.Tensor, torch.Tensor]:

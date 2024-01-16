@@ -71,7 +71,11 @@ class MPPI(GaussianMPC):
                  task=None,
                  dynamics_model=None,
                  sampling_policy=None,
-                 value_function=None,
+                #  value_function=None,
+                 vf=None,
+                 qf=None,
+                 V_min=-float('inf'),
+                 V_max=float('inf'),
                  hotstart=True,
                  state_batch_size:int = 1,
                 #  num_instances=1,
@@ -104,7 +108,8 @@ class MPPI(GaussianMPC):
                                    task,
                                    dynamics_model,
                                    sampling_policy,
-                                   value_function,
+                                #    value_function,
+                                   vf, qf, V_min, V_max,
                                    hotstart,
                                    state_batch_size,
                                 #    num_instances,
@@ -326,22 +331,22 @@ class MPPI(GaussianMPC):
     def _compute_traj_returns(self, trajectories, normalize:bool=False)->torch.Tensor:
         costs = trajectories["costs"]
         value_preds = trajectories['value_preds']
-        terminals = trajectories['terminals']
+        terminals = trajectories['terminals'].float()
         term_cost = trajectories['term_cost']
         
         costs = costs + term_cost
-
+        print(value_preds)
         if value_preds is not None:
             value_preds = value_preds * (1. - terminals) + costs * terminals
-            costs[..., -1] = value_preds[..., -1]
+            costs[..., -1] += value_preds[..., -1]
         traj_returns = cost_to_go(costs, self.gammalam_seq)
 
         # if not self.time_based_weights: traj_returns = traj_returns[:,0]
-        traj_returns = traj_returns[...,0]
+        traj_returns = traj_returns[...,0] - value_preds[...,0]
         if normalize:
             max_return = torch.max(traj_returns, dim=-1)[0][:,None]
             min_return = torch.min(traj_returns, dim=-1)[0][:,None]
-            traj_returns = (traj_returns - min_return) / (max_return - min_return)
+            traj_returns = (traj_returns - min_return) / (max_return - min_return + 1e-12)
 
         return traj_returns
        

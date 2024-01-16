@@ -49,7 +49,7 @@ class GaussianPolicy(Policy):
     def forward(self, input_dict: Dict[str,torch.Tensor], skip_tanh: bool =False):
         
         if 'obs' in input_dict:
-            inp = input_dict['obs']
+            inp = input_dict['obs'].to(self.device)
         else:
             if self.task is not None:
                 inp = self.task.compute_observations(
@@ -63,7 +63,7 @@ class GaussianPolicy(Policy):
 
     def get_action(self, input_dict: Dict[str, torch.Tensor], deterministic: bool = False): #, num_samples:int = 1):
         if 'obs' in input_dict:
-            inp = input_dict['obs']
+            inp = input_dict['obs'].to(self.device)
         else:
             if self.task is not None:
                 inp = self.task.compute_observations(
@@ -73,7 +73,7 @@ class GaussianPolicy(Policy):
             act = torch.tanh(act)
         if self.rescale_action:
             act = self.scale_action(act)
-        return act
+        return act, {}
     
     def log_prob(self, input_dict: Dict[str, torch.Tensor], actions: torch.Tensor):
         dist = self.forward(input_dict)

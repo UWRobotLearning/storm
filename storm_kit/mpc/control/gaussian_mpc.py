@@ -27,7 +27,7 @@ MPC with open-loop Gaussian policies
 import torch
 import torch.nn as nn
 from torch.profiler import record_function
-
+from copy import deepcopy
 from .control_base import Controller
 from .control_utils import generate_noise, scale_ctrl, gaussian_entropy, matrix_cholesky
 from .sample_libs import StompSampleLib, HaltonSampleLib, RandomSampleLib, HaltonStompSampleLib, MultipleSampleLib
@@ -57,7 +57,10 @@ class GaussianMPC(Controller):
                  task=None,
                  dynamics_model=None,
                  sampling_policy=None,
-                 value_function=None,
+                 vf=None,
+                 qf=None,
+                 V_min=-float('inf'),
+                 V_max=float('inf'),
                  hotstart:bool=True,
                  state_batch_size:int=1,
                  squash_fn='clamp',
@@ -104,11 +107,12 @@ class GaussianMPC(Controller):
         self.task = task
         self.dynamics_model = dynamics_model
         self.sampling_policy = sampling_policy
-        self.value_function = value_function
+        # self.value_function = value_function
+        self.vf, self.qf = vf, qf
         self.null_act_frac = null_act_frac
         self.cl_act_frac = cl_act_frac
         self.use_cl_std = use_cl_std
-
+        self.V_min, self.V_max = V_min, V_max
         self.num_null_particles:int = round(int(null_act_frac * self.num_particles * 1.0))
         self.num_nonzero_particles:int = self.num_particles - self.num_null_particles # - self.num_neg_particles
 
@@ -133,9 +137,9 @@ class GaussianMPC(Controller):
             self.num_particles, self.num_ol_particles, self.num_cl_particles, self.num_null_particles, self.sampling_policy is not None
         ))
 
-        self.sample_shape = torch.Size([self.num_nonzero_particles - 1])
+        self.sample_shape = torch.Size([self.num_nonzero_particles - 2])
         if self.num_cl_particles > 0 and self.num_ol_particles > 0 and not self.use_cl_std:
-            self.sample_shape = torch.Size([self.num_nonzero_particles - 2])
+            self.sample_shape = torch.Size([self.num_nonzero_particles - 3])
 
         self.sample_params = sample_params
         self.sample_type = sample_params['type']
@@ -225,16 +229,16 @@ class GaussianMPC(Controller):
             act_seq.append(act_seq_cl)
 
         # act_seq = scale_ctrl(act_seq, self.action_lows, self.action_highs, squash_fn=self.squash_fn)
-        # append_acts = self.best_traj.unsqueeze(1)
+        append_acts = self.best_traj.unsqueeze(1)
         #append zero actions (for stopping)
         if self.num_null_particles > 0:
             # negative action particles:
             # neg_action = -1.0 * self.mean_action.unsqueeze(1)
             # neg_act_seqs = neg_action.expand(1, self.num_neg_particles,-1,-1)
             # append_acts = torch.cat((append_acts, self.null_act_seqs, neg_act_seqs),dim=1)
-            # append_acts = torch.cat((append_acts, self.null_act_seqs), dim=1)
-            # act_seq.append(append_acts)
-            act_seq.append(self.null_act_seqs)
+            append_acts = torch.cat((append_acts, self.null_act_seqs), dim=1)
+            act_seq.append(append_acts)
+            # act_seq.append(self.null_act_seqs)
 
         # act_seq = torch.cat((act_seq, append_acts), dim=1)
         act_seq = torch.cat(act_seq, dim=1)
@@ -274,7 +278,14 @@ class GaussianMPC(Controller):
         
         if act_seq is None: act_seq = cl_act_seq
         act_seq = torch.cat([act_seq, cl_act_seq], dim=1) if cl_act_seq is not None else act_seq
-        
+
+        # print(state_dict.keys())
+        # input('....')
+        # print('before')
+        # state_before = deepcopy(state_dict)
+
+        # full_state_dict = self.task.compute_full_state(state_dict)
+        # import pdb; pdb.set_trace()
         with record_function("compute_cost"):
             cost_seq, cost_terms = self.task.compute_cost(state_dict, act_seq)
 
@@ -285,20 +296,22 @@ class GaussianMPC(Controller):
 
         # if term_cost is not None:
         #     cost_seq += term_cost
-        value_preds = None
-        if self.value_function is not None:
+        q_preds = None
+        v_preds = None
+        if self.vf is not None:
             with record_function("value_fn_inference"):
                 obs = self.task.compute_observations(state_dict, compute_full_state=False, cost_terms=cost_terms)
-                value_preds = self.value_function({'obs': obs}, act_seq)
-
+                q_preds = self.qf({'obs': obs}, act_seq).clamp(min=self.V_min, max=self.V_max) #, max=self.V_max
+                v_preds = self.vf({'obs': obs}).clamp(min=self.V_min, max=self.V_max) #max=self.V_max
+        
         sim_trajs = dict(
             actions=act_seq,
             costs=cost_seq,
             terminals=term_seq,
             term_cost=term_cost,
-            ee_pos_seq=state_dict['ee_pos_seq'],
-            value_preds=value_preds,
-            rollout_time=0.0
+            ee_pos_seq=state_dict['ee_pos'],
+            value_preds=v_preds,
+            q_value_preds=q_preds,
         )
 
         return sim_trajs

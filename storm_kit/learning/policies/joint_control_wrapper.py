@@ -68,7 +68,7 @@ class JointControlWrapper(nn.Module):
             command_dict['q_vel'], 
             command_dict['q_acc']], dim=-1)
                 
-        return command_tensor, {'action': action, 'filtered_states': input_dict['states']} #, 'scaled_action': scaled_action}
+        return action, {'command': command_tensor, 'filtered_states': input_dict['states']} #, 'scaled_action': scaled_action}
 
     def log_prob(self, input_dict: Dict[str, torch.Tensor], actions:torch.Tensor):
         return self.policy.log_prob(input_dict, actions)

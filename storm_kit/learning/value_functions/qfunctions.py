@@ -62,6 +62,7 @@ class TwinQFunction(nn.Module):
         self.mlp_params = self.config['mlp_params']
         self.in_dim = obs_dim + act_dim
         self.out_dim = 1
+        self.aggregation = self.config.get('aggregation', 'max')
 
         self.layer_sizes = [self.in_dim] + OmegaConf.to_object(self.mlp_params['hidden_layers']) + [self.out_dim]
         self.net1 = mlp(
@@ -70,7 +71,7 @@ class TwinQFunction(nn.Module):
             output_activation=self.mlp_params['output_activation'],
             dropout_prob=self.mlp_params['dropout_prob'],
             layer_norm=self.mlp_params['layer_norm'],
-            squeeze_output=False)
+            squeeze_output=False).to(self.device)
 
         self.net2 = mlp(
             layer_sizes=self.layer_sizes, 
@@ -89,8 +90,12 @@ class TwinQFunction(nn.Module):
 
 
     def forward(self, obs_dict: Dict[str,torch.Tensor], actions: torch.Tensor):
-        # return torch.min(*self.all(obs_dict, actions))
-        preds = torch.max(self.all(obs_dict, actions), dim=-1)[0]
+        if self.aggregation == 'max':
+            preds = torch.max(self.all(obs_dict, actions), dim=-1)[0]
+        elif self.aggregation == 'min':
+            preds = torch.min(self.all(obs_dict, actions), dim=-1)[0]
+        elif self.aggregation == 'mean':
+            preds = torch.mean(self.all(obs_dict, actions), dim=-1)
         return preds
 
 
@@ -113,9 +118,9 @@ class EnsembleQFunction(nn.Module):
         self.prediction_size = self.config['prediction_size']
         self.in_dim = obs_dim + act_dim
         self.out_dim = 1
-
+        self.aggregation = self.config.get('aggregation', 'max')
         self.layer_sizes = [self.in_dim] + OmegaConf.to_object(self.mlp_params['hidden_layers']) + [self.out_dim]
-
+        
         self.nets = []
         for i in range(self.ensemble_size):
             net = mlp(
@@ -147,6 +152,40 @@ class EnsembleQFunction(nn.Module):
         rand_idxs = np.random.choice(self.ensemble_size, size=self.prediction_size, replace=False)
         #return minimum predicted value amongst chosen members
         # return torch.min(self._idx(obs_dict, actions, rand_idxs), dim=-1)[0]
-        return torch.max(self._idx(obs_dict, actions, rand_idxs), dim=-1)[0]
+        if self.aggregation == 'max':
+            preds = torch.max(self._idx(obs_dict, actions, rand_idxs), dim=-1)[0]
+        elif self.aggregation == 'min':
+            preds = torch.min(self._idx(obs_dict, actions, rand_idxs), dim=-1)[0]
+        elif self.aggregation == 'mean':
+            preds = torch.mean(self._idx(obs_dict, actions, rand_idxs), dim=-1)
+        return preds
 
-        # return torch.min(*self._idx(obs_dict, actions, rand_idxs))
+class ValueFunction(nn.Module):
+    def __init__(
+            self,
+            obs_dim: int,
+            config,
+            device: torch.device = torch.device('cpu'),
+
+    ):
+        super().__init__()
+        self.obs_dim = obs_dim
+        self.config = config 
+        self.device = device
+        self.mlp_params = self.config['mlp_params']
+        self.out_dim = 1
+
+        self.layer_sizes = [self.obs_dim] + OmegaConf.to_object(self.mlp_params['hidden_layers']) + [self.out_dim]
+        self.net = mlp(
+            layer_sizes=self.layer_sizes, 
+            activation=self.mlp_params['activation'],
+            output_activation=self.mlp_params['output_activation'],
+            dropout_prob=self.mlp_params['dropout_prob'],
+            layer_norm=self.mlp_params['layer_norm'],
+            squeeze_output=True).to(self.device)
+        
+    def forward(self, obs_dict:Dict[str, torch.Tensor]):
+        input = obs_dict['obs']
+        return self.net(input)
+
+

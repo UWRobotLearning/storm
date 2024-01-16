@@ -7,9 +7,12 @@ import torch
 from tqdm import tqdm
 from typing import Optional
 from torch.utils.data import TensorDataset, DataLoader
-from storm_kit.learning.replay_buffers import RobotBuffer
+import torchaudio
+from scipy import signal
+from storm_kit.learning.replay_buffer import ReplayBuffer
 import matplotlib.pyplot as plt
-
+from collections import defaultdict
+import numpy as np
 
 def _gen_dir_name():
     now_str = datetime.now().strftime('%m-%d-%y_%H.%M.%S')
@@ -76,7 +79,7 @@ class Log:
 
 def buffer_from_file(filepath):
     print('Loading buffer from {}'.format(filepath))
-    buffer = RobotBuffer(capacity=1000)
+    buffer = ReplayBuffer(capacity=1000)
     buffer.load(filepath)
     print('Loaded buffer {}'.format(buffer))
     return buffer, len(buffer)
@@ -97,7 +100,7 @@ def single_buffer_from_folder(data_dir, capacity=None, device=torch.device('cpu'
     # act_dim = episode_buffers[0].act_dim
     # buffer = ReplayBuffer(capacity=total_data_points, obs_dim=obs_dim, act_dim=act_dim, device=device)
     buffer_capacity=total_data_points if capacity is None else capacity
-    buffer = RobotBuffer(buffer_capacity, 7, device)
+    buffer = ReplayBuffer(buffer_capacity, 7, device)
     for b in episode_buffers:
         buffer.concatenate(b.state_dict()) 
     return buffer
@@ -320,7 +323,7 @@ def episode_runner(
         
         buffer = None
         if collect_data:
-            buffer = RobotBuffer(capacity=int(1e6), device=device)
+            buffer = ReplayBuffer(capacity=int(1e6), device=device)
         
         total_steps_collected = 0
 
@@ -484,11 +487,238 @@ def episode_runner(
         
         return buffer, metrics
 
+def run_episode(
+        env, task, policy, 
+        max_episode_steps:int,
+        deterministic: bool = False,
+        check_termination: bool = True,
+        discount: float = 0.99,
+        rng:Optional[torch.Generator] = None):
+        
+        reset_data, state = None, None
+        try: 
+            obs, reset_info = env.reset(rng=rng)
+            state = reset_info['state']
+            reset_data = reset_info['reset_data']
+            policy.reset(reset_data)
+        except:
+            obs = env.reset()
+
+        traj_data = defaultdict(list)
+        total_return, discounted_total_return = 0.0, 0.0
+        for i in range(max_episode_steps):
+            with torch.no_grad():
+                policy_input = {
+                    'obs': torch.as_tensor(obs).float(),
+                    'states': state}
+                                
+                action, policy_info = policy.get_action(policy_input, deterministic=deterministic)
+                try:
+                    #mujoco
+                    next_obs, reward, done, info = env.step(
+                        action.cpu().numpy(), compute_cost=True, compute_termination=check_termination)
+                except:
+                    #storm (isaacgym)
+                    next_obs, reward, done, info = env.step(
+                        action, compute_cost=True, compute_termination=check_termination)
+
+                next_state = info['state'] if 'state' in info else None
+                total_return += reward
+                discounted_total_return += reward * discount**i
+
+            timeout = i == max_episode_steps - 1
+            terminal = done and (not timeout)
+
+            traj_data['observations'].append(obs)
+            traj_data['actions'].append(action)
+            traj_data['next_observations'].append(next_obs)
+            traj_data['rewards'].append(reward)
+            traj_data['terminals'].append(bool(terminal))
+            traj_data['timeouts'].append(bool(timeout))
+            if reset_data is not None:
+                goal_dict = reset_data['goal_dict']
+                for k,v in goal_dict.items(): traj_data['goals/'+k].append(v)
+            if state is not None:
+                for k,v in state.items():traj_data['states/'+k].append(v.squeeze(-1))
+            if next_state is not None:
+                for k,v in next_state.items():traj_data['next_states/'+k].append(v.squeeze(-1))
+        
+            # traj_data['qpos'].append(qpos)
+            # traj_data['qvel'].append(qvel)
+
+            if done or timeout: break
+            obs = next_obs
+            state = copy.deepcopy(next_state)
+
+        for k in traj_data:
+            if torch.is_tensor(traj_data[k][0]):
+                traj_data[k] = torch.cat(traj_data[k], dim=0).cpu().numpy()
+            else: traj_data[k] = np.array(traj_data[k])
+
+        traj_info = {
+            'return': total_return,
+            'discounted_return': discounted_total_return,
+            'traj_length': i+1
+            }
+        
+        return traj_data, traj_info
+
+def evaluate_policy(
+        env, task, policy, 
+        max_episode_steps:int,
+        num_episodes:int,
+        deterministic: bool = False,
+        check_termination: bool = True,
+        discount: float = 0.99,
+        normalize_score_fn = None,                                     
+        rng:Optional[torch.Generator] = None):
+
+    ep_datas = []
+    ep_infos = []
+    num_steps = 0
+    for ep_num in range(num_episodes):
+        ep_data, ep_info = run_episode(
+        env, task, policy, 
+        max_episode_steps,
+        deterministic,
+        check_termination,
+        discount, rng)
+        ep_datas.append(ep_data)
+        ep_infos.append(ep_info)
+        num_steps += ep_info['traj_length']
+   
+    eval_returns = np.array([ep_info['return'] for ep_info in ep_infos])
+    eval_discounted_returns = np.array([ep_info['discounted_return'] for ep_info in ep_infos])
+
+    info = {
+        'Eval/mean_return': eval_returns.mean(),
+        'Eval/std_return': eval_returns.std(),
+        'Eval/discounted_return': eval_discounted_returns.mean(),
+        'Eval/num_steps': num_steps}
+
+    if normalize_score_fn is not None:
+        normalized_returns = normalize_score_fn(eval_returns)
+        info['Eval/normalized_return_mean'] = normalized_returns.mean()
+        info['Eval/normalized_return_std'] = normalized_returns.std()
+
+    return ep_datas, info
+
+
+def preprocess_dataset(dataset, env, task=None, cfg=None, normalize_score_fn=None):
+    info = {}
+    discount = 1.0
+    if cfg is not None:
+        discount = cfg.discount
+        #relabel cost, rewards and terminals
+        if task is not None and cfg.relabel_data:
+            dataset = relabel_dataset(dataset, task)
+    #Set range of rewards/costs
+    rew_or_cost = dataset['costs'] if 'costs' in dataset else dataset['rewards']
+    r_c_min = rew_or_cost.min().item()
+    r_c_max = rew_or_cost.max().item()
+    info['r_c_min'] = r_c_min
+    info['r_c_max'] = r_c_max
+    # Set range of value functions
+    Vmax, Vmin = float('inf'), -float('inf')
+    if cfg.clip_values:
+        Vmax = max(0.0, rew_or_cost.max()/(1.-discount)).item()
+        Vmin = min(0.0, rew_or_cost.min()/(1.-discount), Vmax-1.0/(1-discount))
+    info['V_max'] = Vmax
+    info['V_min'] = Vmin
+
+    #Augment data with returns/discounted returns and other quantitites 
+    # useful for calculating MC targets
+    returns, ep_returns = [], []
+    disc_returns, ep_disc_returns = [], []
+    remaining_steps, last_observations = [], []
+    last_terminals = []
+    for ep in dataset.episode_iterator():
+        episode_r_c = ep['costs'] if 'costs' in ep else ep['rewards']
+        H = len(episode_r_c)
+        ret = discount_cumsum(episode_r_c, 1.0)
+        disc_ret = discount_cumsum(episode_r_c, discount)
+        returns.append(ret)
+        disc_returns.append(disc_ret)
+        ep_returns.append(ret[0].item())
+        ep_disc_returns.append(disc_ret[0].item())
+        #Note this only works for torch datasets
+        rem_steps = torch.flip(torch.arange(H, device=dataset.device), dims=(0,))+1
+        assert rem_steps.shape == episode_r_c.shape
+        remaining_steps.append(rem_steps)
+        last_obs = torch.repeat_interleave(ep['observations'][-1:], H, dim=0)
+        assert last_obs.shape == ep['observations'].shape
+        last_observations.append(last_obs) 
+        last_term = torch.repeat_interleave(ep['terminals'][-1], H)
+        assert last_term.shape == ep['terminals'].shape
+        last_terminals.append(last_term)
+
+    returns = torch.cat(returns, dim=0)
+    disc_returns = torch.cat(disc_returns, dim=0)
+    dataset['returns'] = returns
+    dataset['disc_returns'] = disc_returns
+    dataset['remaining_steps'] = torch.cat(remaining_steps, dim=0)
+    dataset['last_observations'] = torch.cat(last_observations, dim=0)
+    dataset['last_terminals'] = torch.cat(last_terminals, dim=0)
+    
+    info['ep_return_min'] = min(ep_returns)
+    info['ep_return_max'] = max(ep_returns)
+    info['ep_disc_return_min'] = min(ep_disc_returns)
+    info['ep_disc_return_max'] = max(ep_disc_returns)
+    
+    if normalize_score_fn is not None:
+        normalized_returns = normalize_score_fn(np.array(dataset['returns']))
+        info['normalized_return_mean'] = normalized_returns.mean()
+        info['normalized_return_std'] = normalized_returns.std()
+    
+    return dataset, info
+
+def relabel_dataset(dataset, task):
+    device = task.device
+    q_pos = torch.as_tensor(dataset['states/q_pos']).to(device)
+    q_vel = torch.as_tensor(dataset['states/q_vel']).to(device)
+    q_acc = torch.as_tensor(dataset['states/q_acc']).to(device)
+    actions = torch.as_tensor(dataset['actions']).to(device)
+    
+    state_dict = {'q_pos': q_pos, 'q_vel': q_vel, 'q_acc': q_acc}
+    goal_dict = {}
+    for k,v in dataset.items():
+        split = k.split("/")
+        if split[0] == 'goals':
+            goal_dict[split[-1]] = torch.as_tensor(v).to(device)
+    
+
+    with torch.no_grad():
+        task.update_params({'goal_dict': goal_dict})
+        full_state_dict = task.compute_full_state(state_dict)
+        new_cost, cost_terms = task.compute_cost(full_state_dict, actions)
+        new_terminals, new_terminal_cost, term_info = task.compute_termination(full_state_dict)
+        new_cost += new_terminal_cost
+        new_observations = task.compute_observations(full_state_dict, compute_full_state=False, cost_terms=cost_terms)
+
+    dataset["observations"] = new_observations.to(dataset.device)
+    dataset["costs"] = new_cost.to(dataset.device)
+    dataset["terminals"] = new_terminals.to(dataset.device)
+
+    return dataset
+
+
+
+
 def plot_episode(episode, block=False):
-    q_pos = episode['states/q_pos'].cpu().numpy()
-    q_vel = episode['states/q_vel'].cpu().numpy()
-    q_acc = episode['states/q_acc'].cpu().numpy()
-    actions = episode['actions'].cpu().numpy()
+
+    q_pos = episode['states/q_pos']
+    q_vel = episode['states/q_vel']
+    q_acc = episode['states/q_acc']
+    actions = episode['actions']
+    if torch.is_tensor(q_pos): 
+        q_pos = q_pos.cpu().numpy()
+    if torch.is_tensor(q_vel): 
+        q_vel = q_vel.cpu().numpy()
+    if torch.is_tensor(q_acc): 
+        q_acc = q_acc.cpu().numpy()
+    if torch.is_tensor(actions): 
+        actions = actions.cpu().numpy()
+
 
     fig, ax = plt.subplots(3,1)
     num_points, n_dofs = q_pos.shape
@@ -508,21 +738,66 @@ def plot_episode(episode, block=False):
         plt.waitforbuttonpress(-1)
         plt.close(fig)
 
+# Below are modified from 
+# https://github.com/gwthomas/IQL-PyTorch
 
-def discount_cumsum(x:torch.Tensor, discount:float):
-    pass
+def discount_cumsum(x, discount):
+    """Discounted cumulative sum.
+    See https://docs.scipy.org/doc/scipy/reference/tutorial/signal.html#difference-equation-filtering  # noqa: E501
+    Here, we have y[t] - discount*y[t+1] = x[t]
+    or rev(y)[t] - discount*rev(y)[t-1] = rev(x)[t]
+    Args:
+        x (np.ndarrary): Input.
+        discount (float): Discount factor.
+    Returns:
+        np.ndarrary: Discounted cumulative sum.
+    """
+    if torch.is_tensor(x):
+        return torchaudio.functional.lfilter(
+                x.flip(dims=(0,)),
+                a_coeffs=torch.tensor([1, -discount], device=x.device),
+                b_coeffs=torch.tensor([1, 0], device=x.device), clamp=False).flip(dims=(0,))
+    else:
+        return signal.lfilter([1], [1, float(-discount)], x[::-1], axis=-1)[::-1]
+
+def asymmetric_l2_loss(u, tau):
+    return torch.mean(torch.abs(tau - (u < 0).float()) * u**2)
+
+
+def return_range(dataset, max_episode_steps):
+    returns, lengths = [], []
+    ep_ret, ep_len = 0., 0
+    for r, d in zip(dataset['rewards'], dataset['terminals']):
+        ep_ret += float(r)
+        ep_len += 1
+        if d or ep_len == max_episode_steps:
+            returns.append(ep_ret)
+            lengths.append(ep_len)
+            ep_ret, ep_len = 0., 0
+    returns.append(ep_ret)    # incomplete trajectory
+    lengths.append(ep_len)      # but still keep track of number of steps
+    assert sum(lengths) == len(dataset['rewards'])
+    return min(returns), max(returns)
+
+
 
 
 
 
 
 #DEPRECATED
+
+# if isinstance(episode_r_c, torch.Tensor):
+#     ret = torch.cumsum(episode_r_c.flip(0), dim=0).flip(0)
+# else:
+#     ret = np.cumsum(episode_r_c.flip(0)).flip(0)
+
 # def minimal_episode_runner(
 #     envs,
 #     num_episodes: int, 
 #     policy,
 #     task,
-#     buffer: Optional[RobotBuffer] = None,
+#     buffer: Optional[ReplayBuffer] = None,
 #     deterministic: bool = False,
 #     debug: bool = False,
 #     device: torch.device = torch.device('cpu'),

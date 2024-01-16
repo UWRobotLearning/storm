@@ -151,7 +151,7 @@ class ArmTask(nn.Module):
         self.full_state_dict = None
     
     def forward(self, state_dict: Dict[str, torch.Tensor], act_batch:Optional[torch.Tensor]=None):
-        state_dict = self._compute_full_state(state_dict)
+        state_dict = self.compute_full_state(state_dict)
         
         termination, termination_cost, term_info = self.compute_termination(state_dict, act_batch)
         cost, cost_terms = self.compute_cost(state_dict, act_batch)
@@ -173,19 +173,19 @@ class ArmTask(nn.Module):
         cost_terms = {}
         # state_dict = self.compute_full_state(state_dict)
 
-        q_pos_batch = state_dict['q_pos_seq']
-        q_vel_batch = state_dict['q_vel_seq']
-        q_acc_batch = state_dict['q_acc_seq']
+        q_pos_batch = state_dict['q_pos']
+        q_vel_batch = state_dict['q_vel']
+        q_acc_batch = state_dict['q_acc']
         orig_size = q_pos_batch.size()[0:-1]
 
 
         # action_batch = action_batch.view(self.num_instances * self.batch_size, self.horizon, -1)
-        # ee_jacobian = state_dict['ee_jacobian_seq'].view(self.num_instances*self.batch_size, self.horizon, 6, -1)
-        # ee_vel_twist_batch = state_dict['ee_vel_twist_seq'].view(self.num_instances*self.batch_size, self.horizon, -1)
-        # ee_acc_twist_batch = state_dict['ee_acc_twist_seq'].view(self.num_instances*self.batch_size, self.horizon, -1)
-        ee_jacobian = state_dict['ee_jacobian_seq'].view(-1, 6, self.n_dofs)
-        ee_vel_twist_batch = state_dict['ee_vel_twist_seq']
-        ee_acc_twist_batch = state_dict['ee_acc_twist_seq']
+        # ee_jacobian = state_dict['ee_jacobian'].view(self.num_instances*self.batch_size, self.horizon, 6, -1)
+        # ee_vel_twist_batch = state_dict['ee_vel_twist'].view(self.num_instances*self.batch_size, self.horizon, -1)
+        # ee_acc_twist_batch = state_dict['ee_acc_twist'].view(self.num_instances*self.batch_size, self.horizon, -1)
+        ee_jacobian = state_dict['ee_jacobian'].view(-1, 6, self.n_dofs)
+        ee_vel_twist_batch = state_dict['ee_vel_twist']
+        ee_acc_twist_batch = state_dict['ee_acc_twist']
 
         # lin_jac_batch, ang_jac_batch = state_dict['lin_jac_seq'], state_dict['ang_jac_seq']
         # lin_jac_batch = lin_jac_batch.view(self.num_instances*self.batch_size, self.horizon, 3, self.n_dofs)
@@ -230,7 +230,7 @@ class ArmTask(nn.Module):
 
         if self.cfg['cost']['zero_q_jerk']['weight'] > 0:
             with record_function('zero_q_jerk_cost'):
-                q_jerk_batch = state_dict['q_jerk_seq']
+                q_jerk_batch = state_dict['q_jerk']
                 cost += self.zero_q_jerk_cost.forward(q_jerk_batch)
 
         if self.cfg['cost']['ee_vel_twist']['weight'] > 0:
@@ -264,7 +264,7 @@ class ArmTask(nn.Module):
 
             if self.cfg['cost']['stop_cost_acc']['weight'] > 0:
                 with record_function("stop_cost_acc"):
-                    q_acc_batch = q_acc_batch.view(self.batch_size, self.horizon, -1)
+                    # q_acc_batch = q_acc_batch.view(self.batch_size, self.horizon, -1)
                     cost += self.stop_cost_acc.forward(q_acc_batch) #.view(new_size)
 
         # cost = cost.view(orig_size)
@@ -276,33 +276,38 @@ class ArmTask(nn.Module):
             state_dict: Dict[str,torch.Tensor],
             cost_terms: Optional[Dict[str, torch.Tensor]]=None):
                 
-        q_pos_batch = state_dict['q_pos_seq']
-        q_vel_batch = state_dict['q_vel_seq']
-        q_acc_batch = state_dict['q_acc_seq']
-        ee_pos_batch = state_dict['ee_pos_seq']
-        ee_vel_twist = state_dict['ee_vel_twist_seq']
+        q_pos_batch = state_dict['q_pos']
+        q_vel_batch = state_dict['q_vel']
+        q_acc_batch = state_dict['q_acc']
+        ee_pos_batch = state_dict['ee_pos']
+        ee_rot_batch = state_dict['ee_rot'].flatten(-2,-1)
+        ee_vel_twist = state_dict['ee_vel_twist']
 
-        orig_size = q_pos_batch.size()[0:-1]
-        new_size = reduce(mul, list(orig_size))  
+        q_pos_lower = self.state_lower_bounds[0:self.n_dofs]
+        q_pos_upper = self.state_upper_bounds[0:self.n_dofs]
+        q_vel_lower = self.state_lower_bounds[self.n_dofs:2*self.n_dofs]
+        q_vel_upper = self.state_upper_bounds[self.n_dofs:2*self.n_dofs]
 
-        if 'ee_quat_seq' not in state_dict:
-            ee_rot_batch = state_dict['ee_rot_seq']
-            ee_quat_batch = matrix_to_quaternion(ee_rot_batch.view(new_size, 3, 3)).view(*orig_size, -1)
-            state_dict['ee_quat_seq'] = ee_quat_batch
-        else:
-            ee_quat_batch = state_dict['ee_quat_seq']
+        q_pos_norm = (q_pos_batch - q_pos_lower) / (q_pos_upper - q_pos_lower)
+        q_vel_norm = (q_vel_batch - q_vel_lower) / (q_vel_upper - q_vel_lower)
+
+        # if 'ee_quat_seq' not in state_dict:
+        #     ee_rot_batch = state_dict['ee_rot_seq']
+        #     ee_quat_batch = matrix_to_quaternion(ee_rot_batch.view(new_size, 3, 3)).view(*orig_size, -1)
+        #     state_dict['ee_quat_seq'] = ee_quat_batch
+        # else:
+        #     ee_quat_batch = state_dict['ee_quat_seq']
         
-        if cost_terms is None:
-            state_batch = torch.cat((q_pos_batch, q_vel_batch, q_acc_batch), dim=-1).view(new_size, -1)
-            _, bound_cost_info = self.bound_cost.forward(state_batch)
-            bound_dist = bound_cost_info['bound_dist'].view(*orig_size,-1)
-        else:
-            bound_dist = cost_terms['bound_dist']
+        # if cost_terms is None:
+        #     state_batch = torch.cat((q_pos_batch, q_vel_batch, q_acc_batch), dim=-1).view(new_size, -1)
+        #     _, bound_cost_info = self.bound_cost.forward(state_batch)
+        #     bound_dist = bound_cost_info['bound_dist'].view(*orig_size,-1)
+        # else:
+        #     bound_dist = cost_terms['bound_dist']
         
         obs = torch.cat(
-            (q_pos_batch, q_vel_batch,
-             ee_pos_batch, ee_quat_batch,
-             ee_vel_twist, bound_dist), dim=-1)
+            (q_pos_norm, q_vel_norm,
+             ee_pos_batch, ee_rot_batch, ee_vel_twist), dim=-1) #bound_dist #
 
         return obs
 
@@ -313,20 +318,22 @@ class ArmTask(nn.Module):
                             compute_full_state: bool = False):
 
         if compute_full_state:
-            state_dict = self._compute_full_state(state_dict)
+            state_dict = self.compute_full_state(state_dict)
 
         # num_instances, curr_batch_size, num_traj_points, _ = state_dict['state_seq'].shape
         # termination = torch.zeros(self.num_instances, self.batch_size, self.horizon, device=self.device)
-        q_pos_batch = state_dict['q_pos_seq']
-        q_vel_batch = state_dict['q_vel_seq']
-        q_acc_batch = state_dict['q_acc_seq']
+        q_pos_batch = state_dict['q_pos']
+        q_vel_batch = state_dict['q_vel']
+        q_acc_batch = state_dict['q_acc']
         orig_size = q_pos_batch.size()[0:-1]
-        new_size = reduce(mul, list(orig_size))  
+        # new_size = reduce(mul, list(orig_size))  
 
         # state_batch = state_dict['state_seq'].view(new_size, -1)
-        link_pos_batch, link_rot_batch = state_dict['link_pos_seq'], state_dict['link_rot_seq']
-        link_pos_batch = link_pos_batch.view(new_size, self.num_links, 3)
-        link_rot_batch = link_rot_batch.view(new_size, self.num_links, 3, 3)
+        link_pos_batch, link_rot_batch = state_dict['link_pos'], state_dict['link_rot']
+        # link_pos_batch = link_pos_batch.view(new_size, self.num_links, 3)
+        # link_rot_batch = link_rot_batch.view(new_size, self.num_links, 3, 3)
+        link_pos_batch = link_pos_batch.view(-1, self.num_links, 3)
+        link_rot_batch = link_rot_batch.view(-1, self.num_links, 3, 3)
 
         with record_function('primitive_collision'):
             coll_cost, coll_cost_info = self.primitive_collision_cost.forward(link_pos_batch, link_rot_batch)
@@ -335,7 +342,8 @@ class ArmTask(nn.Module):
             # termination = coll_cost > 0
 
         with record_function('bound_cost'):
-            state_batch = torch.cat((q_pos_batch, q_vel_batch, q_acc_batch), dim=-1).view(new_size, -1)
+            # state_batch = torch.cat((q_pos_batch, q_vel_batch, q_acc_batch), dim=-1).view(new_size, -1)
+            state_batch = torch.cat((q_pos_batch, q_vel_batch, q_acc_batch), dim=-1).view(-1, 3*self.n_dofs)
             bound_cost, bound_cost_info = self.bound_cost.forward(state_batch)
             in_bounds = bound_cost_info['in_bounds']#[..., 0:2*self.n_dofs] #only use qpos and qvel
             bounds_violation = torch.logical_not(in_bounds).sum(-1)
@@ -343,10 +351,6 @@ class ArmTask(nn.Module):
         termination = torch.logical_or(collision_violation, bounds_violation)
         
         termination_cost = coll_cost +  bound_cost
-
-        # if termination.nonzero().numel() > 0:
-        #     print('in task')
-        #     import pdb; pdb.set_trace()
 
         # if self.cfg['cost']['robot_self_collision']['weight'] > 0:
         #     #coll_cost = self.robot_self_collision_cost.forward(link_pos_batch, link_rot_batch)
@@ -357,32 +361,19 @@ class ArmTask(nn.Module):
         #         termination += self_coll_cost > 0.
 
         # termination = (termination > 0).float()
-
-        termination_cost = termination_cost.view(orig_size)
         termination = termination.float().view(orig_size)
+        termination_cost = termination_cost.view(orig_size)
         info = coll_cost_info
         info['in_bounds'] = bound_cost_info['in_bounds'].view(*orig_size, -1)
         info['bound_dist'] = bound_cost_info['bound_dist'].view(*orig_size, -1)
 
         return termination, termination_cost, info
 
-    def _compute_full_state(self, state_dict: Dict[str,torch.Tensor], debug=False):
+    def compute_full_state(self, state_dict: Dict[str,torch.Tensor], debug=False):
         if 'state_seq' not in state_dict:
             q_pos = state_dict['q_pos'].to(device=self.device)
             q_vel = state_dict['q_vel'].to(device=self.device)
             q_acc = state_dict['q_acc'].to(device=self.device)
-
-            # current_state_tensor = torch.cat((q_pos, q_vel, q_acc, tstep), dim=-1)
-            # num_instances = current_state_tensor.shape[0]
-            # num_traj_points = 1 
-            # horizon = 1 #self.dynamics_model.num_traj_points
-            
-            # ee_pos_batch, ee_rot_batch, lin_jac_batch, ang_jac_batch = self.dynamics_model.robot_model.compute_fk_and_jacobian(
-            #     current_state[:, :self.dynamics_model.n_dofs], 
-            #     current_state[:, self.dynamics_model.n_dofs: 2*self.dynamics_model.n_dofs], 
-            #     self.cfg['model']['ee_link_name'])
-            # orig_size = q_pos.size()[0:-1]
-            # new_size = reduce(mul, list(orig_size))
 
             ee_pos_batch, ee_rot_batch, lin_jac_batch, ang_jac_batch = self.robot_model.compute_fk_and_jacobian(
                 q_pos.reshape(-1, q_pos.shape[-1]), self.cfg['ee_link_name'])
@@ -399,7 +390,6 @@ class ArmTask(nn.Module):
             ee_quat_batch = ee_quat_batch.view(*q_pos.shape[0:-1], -1)
             lin_jac_batch = lin_jac_batch.view(*q_pos.shape[0:-1], 3, -1)
             ang_jac_batch = ang_jac_batch.view(*q_pos.shape[0:-1], 3, -1)
-
 
 
             ee_jac_batch = torch.cat((ang_jac_batch, lin_jac_batch), dim=-2)
@@ -428,17 +418,17 @@ class ArmTask(nn.Module):
                 new_state_dict[k] = state_dict[k] #.clone()
             
             # new_state_dict['state_seq'] = current_state_tensor
-            new_state_dict['q_pos_seq'] = q_pos #.clone()
-            new_state_dict['q_vel_seq'] = q_vel #.clone()
-            new_state_dict['q_acc_seq'] = q_acc #.clone()
-            new_state_dict['ee_pos_seq'] =  ee_pos_batch #.clone() 
-            new_state_dict['ee_rot_seq'] = ee_rot_batch #.clone()
-            new_state_dict['ee_quat_seq'] = ee_quat_batch #.clone()
-            new_state_dict['ee_jacobian_seq'] = ee_jac_batch #.clone()
-            new_state_dict['ee_vel_twist_seq'] = ee_vel_twist_batch #.clone()
-            new_state_dict['ee_acc_twist_seq'] = ee_acc_twist_batch #.clone()
-            new_state_dict['link_pos_seq'] = link_pos_seq #.clone()
-            new_state_dict['link_rot_seq'] = link_rot_seq #.clone()
+            # new_state_dict['q_pos_seq'] = q_pos #.clone()
+            # new_state_dict['q_vel_seq'] = q_vel #.clone()
+            # new_state_dict['q_acc_seq'] = q_acc #.clone()
+            new_state_dict['ee_pos'] =  ee_pos_batch #.clone() 
+            new_state_dict['ee_rot'] = ee_rot_batch #.clone()
+            new_state_dict['ee_quat'] = ee_quat_batch #.clone()
+            new_state_dict['ee_jacobian'] = ee_jac_batch #.clone()
+            new_state_dict['ee_vel_twist'] = ee_vel_twist_batch #.clone()
+            new_state_dict['ee_acc_twist'] = ee_acc_twist_batch #.clone()
+            new_state_dict['link_pos'] = link_pos_seq #.clone()
+            new_state_dict['link_rot'] = link_rot_seq #.clone()
 
             # self.prev_state_buff = self.prev_state_buff.roll(-1, dims=1)
             # self.prev_state_buff[:,-1,:] = new_state_dict['state_seq'].clone()
@@ -521,7 +511,7 @@ class ArmTask(nn.Module):
 
     @property
     def obs_dim(self)->int:
-        return 2*self.n_dofs + 34
+        return 2*self.n_dofs + 18
 
     @property
     def action_dim(self)->int:

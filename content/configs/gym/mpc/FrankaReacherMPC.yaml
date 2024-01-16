@@ -5,6 +5,7 @@ rollout:
   max_acc: ${task.task.max_acc} #100.0 
   max_jerk: ${task.task.max_jerk}
   n_dofs: ${task.n_dofs}
+  ee_link_name: ${task.ee_link_name}
 
   model:
     # any link that is not specified as learnable will be initialized from urdf
@@ -40,14 +41,14 @@ rollout:
   cost:
     goal_pose:
       vec_weight: [1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
-      weight: [5.0, 10.0] #[10.0, 50.0] #[50.0, 100.0]
+      weight: [5.0, 15.0] #[10.0, 50.0] #[50.0, 100.0]
       cost_type: 'se3_twist'
       norm_type: 'l2'
       hinge_val: -1
       convergence_val: [0.0, 0.0] # orientation, position
 
     ee_vel_twist:
-      weight: 8e-3 #1.0
+      weight: 1e-5 #1.0
       norm_type: 'l2'
       # hinge_val: 0.01
       # vec_weight: [1.0, 1.0, 1.0] 
@@ -58,7 +59,7 @@ rollout:
       # vec_weight: [1.0, 1.0, 1.0] 
 
     zero_q_vel:
-      weight: 1e-2
+      weight: 3e-2
       norm_type: 'l2'
       # hinge_val: 0.2 #0.2
 
@@ -68,7 +69,7 @@ rollout:
       # hinge_val: -1.0
 
     zero_q_jerk:
-      weight: 0.0 #2e-4 
+      weight: 0.0 #2e-3 #2e-4 
       norm_type: 'l2'
       # hinge_val: -1.0
       
@@ -81,7 +82,7 @@ rollout:
       norm_type: 'l2'
 
     stop_cost:
-      weight: 1.5 #1.0 #30.0 #50.0 #50.0 #10.0 #10.0 
+      weight: 2.0 #1.0 #30.0 #50.0 #50.0 #10.0 #10.0 
       max_nlimit: 5.0 #1.5 #0.2
 
     stop_cost_acc:
@@ -93,7 +94,7 @@ rollout:
       order: 1
 
     primitive_collision:
-      weight: 200.0
+      weight: 100.0
       distance_threshold_world: 0.03
       distance_threshold_self: 0.03
 
@@ -102,7 +103,7 @@ rollout:
     #   distance_threshold: 0.05
 
     state_bound:
-      weight: 200.0 
+      weight: 100.0 
       bound_thresh: 0.03
 
     retract_state : [0.00, 0.0, 0.00, -1.5, 0.00, 2.0, 0.0] #check
@@ -113,7 +114,7 @@ viz_rollouts: False
 
 mppi:
   state_batch_size  : 1
-  horizon           : 20
+  horizon           : 2 #20
   init_cov          : 0.1 #0.005 #.5 #.5
   gamma             : 0.99 
   td_lam            : 1.0
@@ -122,7 +123,7 @@ mppi:
   step_size_cov     : 0.7
   beta              : 0.01
   alpha             : 1
-  num_particles     : 400
+  num_particles     : 1000
   update_cov        : True
   cov_type          : 'full_AxA'
   kappa             : 0.01
@@ -132,12 +133,12 @@ mppi:
   base_action       : 'repeat'
   squash_fn         : 'clamp'
   hotstart          : True
-  normalize_returns : True
+  normalize_returns : False
   visual_traj       : 'ee_pos_seq'
   sample_params:
     type: 'multiple'
     fixed_samples: True
-    sample_ratio: {'halton': 0.0, 'halton-knot': 1.0, 'random': 0.0, 'random-knot': 0.0}
+    sample_ratio: {'halton': 1.0, 'halton-knot': 0.0, 'random': 0.0, 'random-knot': 0.0}
     seed: 0
     filter_coeffs: [0.3, 0.3, 0.4]
     knot_scale: 4

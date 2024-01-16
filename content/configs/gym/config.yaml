@@ -61,7 +61,7 @@ headless: False
 defaults:
   - task: FrankaReacher
   - mpc: ${task}MPC
-  - train: SAC
+  - train: BP
   - hydra/job_logging: disabled
 
 eval: 

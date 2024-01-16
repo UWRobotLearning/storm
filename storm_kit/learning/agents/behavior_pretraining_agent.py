@@ -1,13 +1,16 @@
 import copy
 from collections import defaultdict
-from typing import Optional
+from typing import Optional, Dict
+import numpy as np
 import torch
 import torch.optim as optim
+from torch.optim.lr_scheduler import CosineAnnealingLR
+
 import torch.nn.functional as F
 from torch.profiler import record_function
 
 from storm_kit.learning.agents import Agent
-from storm_kit.learning.learning_utils import dict_to_device
+from storm_kit.learning.learning_utils import dict_to_device, asymmetric_l2_loss
 from storm_kit.mpc.control.control_utils import cost_to_go
 import time
 from tqdm import tqdm
@@ -22,14 +25,15 @@ class BPAgent(Agent):
         action_dim,
         buffer,
         runner_fn,
-        mpc_policy,
+        # mpc_policy,
         policy=None,
         qf=None,
         vf=None,
         target_qf=None,
         target_vf=None,
-        # target_q_func=None,
-        # target_critic=None,
+        max_steps=np.inf,
+        V_min=-float('inf'),
+        V_max=float('inf'),
         logger=None,
         tb_writer=None,
         device=torch.device('cpu'), 
@@ -43,43 +47,44 @@ class BPAgent(Agent):
             device=device, eval_rng=eval_rng
         )
 
-        self.buffer = self.preprocess_dataset(self.buffer)
-        self.mpc_policy = mpc_policy
         self.qf = qf
-        self.vf = vf        
+        self.vf = vf 
+
+        if self.policy is not None:
+            self.policy_optimizer = optim.Adam(self.policy.parameters(), lr=self.cfg['policy_optimizer']['lr'])
+            self.policy_lr_schedule = CosineAnnealingLR(self.policy_optimizer, max_steps)
+
         if self.qf is not None:
-            assert self.policy is not None, 'Learning a q network requires a policy network.'
+            self.qf_optimizer = optim.Adam(self.qf.parameters(), lr=self.cfg['qf_optimizer']['lr'])
+
+        if self.vf is not None:
+            self.vf_optimizer = optim.Adam(self.vf.parameters(), lr=self.cfg['vf_optimizer']['lr'])
+
+        if self.qf is not None:
+            # assert self.policy is not None, 'Learning a q network requires a policy network.'
             self.target_qf = copy.deepcopy(self.qf).requires_grad_(False) if target_qf is None else target_qf
 
         if self.vf is not None:
             self.target_vf = copy.deepcopy(self.vf).requires_grad_(False) if target_vf is None else target_vf
-
-        #get full list of parameters
-        params = []
-        for net in (self.policy, self.qf, self.vf):
-            if net is not None:
-                params += list(net.parameters())
-
-        self.optimizer = optim.Adam(params, lr=self.cfg['optimizer']['lr'])
-
-        # if self.policy is not None:
-        #     self.policy_optimizer = optim.Adam(self.policy.parameters(), 
-        #                                 lr=self.cfg['policy_optimizer']['lr'])
-        # if self.critic is not None:
-        #     self.critic_optimizer = optim.Adam(self.critic.parameters(), 
-        #                                 lr=self.cfg['critic_optimizer']['lr'])
  
-        self.policy_loss_type = self.cfg['policy_loss_type']
+        self.V_min, self.V_max = V_min, V_max
         self.num_action_samples = self.cfg['num_action_samples']
         # self.fixed_alpha = self.cfg['fixed_alpha']
-        if self.policy_loss_type not in ["mse", "nll"]:
-            raise ValueError('Unidentified policy loss type {}.'.format(self.policy_loss_type))
+        # if self.policy_loss_type not in ["mse", "nll"]:
+        #     raise ValueError('Unidentified policy loss type {}.'.format(self.policy_loss_type))
         self.num_eval_episodes = self.cfg.get('num_eval_episodes', 1)
         self.eval_first_policy = self.cfg.get('eval_first_policy', False)
         self.policy_use_tanh = self.cfg.get('policy_use_tanh', False)
         self.discount = self.cfg.get('discount')
         self.polyak_tau = float(self.cfg['polyak_tau'])
-        # self.best_policy = copy.deepcopy(self.policy)
+        self.num_warmstart_steps = self.cfg.get('num_warmstart_steps', np.inf)
+        self.beta = self.cfg.get('beta', 1.0)
+        self.num_adv_samples = self.cfg.get('num_adv_samples', 4)
+        self.advantage_mode = self.cfg.get('advantage_mode', 'max')
+        self.weight_mode = self.cfg.get('weight_mode', 'exp')
+        self.vf_target_mode = self.cfg.get('vf_target_mode', 'asymmetric_l2')
+        self.expecile_tau = self.cfg.get('expecile_tau', 0.7)
+        self.lambd = self.cfg.get('lambd', 1.0)
 
     def train(self, model_dir=None, data_dir=None, debug:bool=False):
         num_train_steps = self.cfg['num_pretrain_steps']
@@ -92,7 +97,7 @@ class BPAgent(Agent):
                 print('[BehaviorPretraining]: Evaluating policy')
                 self.policy.eval()
                 eval_buffer, eval_metrics = self.evaluate_policy(
-                    self.mpc_policy, 
+                    self.policy, 
                     num_eval_episodes=self.num_eval_episodes, 
                     deterministic=True, 
                     debug=False)
@@ -146,28 +151,34 @@ class BPAgent(Agent):
 
     def update(self, batch_dict, step_num):
 
-        policy_info_dict, qf_info_dict = {}, {}
-        total_loss = torch.tensor(0., device=self.device)
-        if self.policy is not None:
-            policy_loss, policy_info_dict = self.compute_policy_loss(batch_dict)
-            total_loss += policy_loss
+        policy_info_dict, qf_info_dict, vf_info_dict = {}, {}, {}
 
-        # self.policy_optimizer.zero_grad()
-        # policy_loss.backward()
-        # self.policy_optimizer.step()
+        #Update value function
+        if self.vf is not None:
+            vf_loss, adv, vf_info_dict = self.compute_vf_loss(batch_dict, step_num)
+            self.vf_optimizer.zero_grad()
+            vf_loss.backward()
+            self.vf_optimizer.step()
+            batch_dict['adv'] = adv
 
+        #Update q function
         if self.qf is not None:
-            qf_loss, qf_info_dict = self.compute_critic_loss(batch_dict)
-            total_loss += qf_loss
-            # self.critic_optimizer.zero_grad()
-            # qf_loss.backward()
-            # self.critic_optimizer.step()
+            qf_loss, qf_info_dict = self.compute_qf_loss(batch_dict, step_num)
+            self.qf_optimizer.zero_grad()
+            qf_loss.backward()
+            self.qf_optimizer.step()
+        
+        #Update policy
+        if self.policy is not None:
+            policy_loss, policy_info_dict = self.compute_policy_loss(batch_dict, step_num)
+            self.policy_optimizer.zero_grad()
+            policy_loss.backward()
+            self.policy_optimizer.step()
+            self.policy_lr_schedule.step()
 
-
-        #TODO: Add value function learning
-        self.optimizer.zero_grad()
-        total_loss.backward()
-        self.optimizer.step()
+        # self.optimizer.zero_grad()
+        # total_loss.backward()
+        # self.optimizer.step()
 
         # for p1, p2 in zip(self.mpc_policy.policy.controller.sampling_policy.parameters(), self.policy.parameters()):
         #     assert torch.allclose(p2, p2)
@@ -177,85 +188,113 @@ class BPAgent(Agent):
         #     assert torch.allclose(p1, p2)
         # print([p for p in self.mpc_policy.policy.controller.value_function.parameters()])
         # input('...')
-
-
-        info_dict = {**policy_info_dict, **qf_info_dict}
+            
+        info_dict = {**policy_info_dict, **qf_info_dict, **vf_info_dict}
         
         return info_dict
 
 
-    def compute_policy_loss(self, batch_dict):
-        obs_batch = batch_dict['obs']
+    def compute_policy_loss(self, batch_dict:Dict[str, torch.Tensor], step_num:int):
+        obs_batch = batch_dict['observations']
         state_batch = batch_dict['state_dict']
         act_batch = batch_dict['actions']
         
         if self.policy_use_tanh:
             act_batch = torch.tanh(act_batch)
 
-        if self.policy_loss_type == 'mse':
-            new_actions = self.policy.get_action({'obs':obs_batch}, deterministic=False, num_samples=self.num_action_samples)            
-            if new_actions.dim() == 3:
-                act_batch = act_batch.unsqueeze(0).repeat(self.num_action_samples, 1, 1)
-            policy_imitation_loss = F.mse_loss(new_actions, act_batch, reduction='none')
-            policy_imitation_loss = policy_imitation_loss.sum(-1).mean()
-            policy_loss = policy_imitation_loss
-        
-        elif self.policy_loss_type == 'nll':
-            policy_input = {
-                'states': state_batch,
-                'obs': obs_batch}
-            dist = self.policy(policy_input)
-            policy_loss = -1.0 * dist.log_prob(act_batch).mean()
-            new_actions = dist.sample()
-            log_pi_new_actions = dist.log_prob(new_actions).mean()
-            action_diff = torch.norm(new_actions - act_batch, dim=-1).mean()
-            # policy_loss = -1.0 * self.policy.log_prob(policy_input, act_batch).mean()
+        policy_input = {
+            'states': state_batch,
+            'obs': obs_batch}
 
-            # action_dist = self.policy({'obs':obs_batch})
-            # policy_imitation_loss = -1.0 * action_dist.log_prob(act_batch).mean()
-            # #compute policy entropy
-            # new_actions = action_dist.rsample()
-            # log_prob_new_actions = action_dist.log_prob(new_actions)
-            # policy_entropy = -log_prob_new_actions.mean()
-            # policy_loss = policy_imitation_loss - self.fixed_alpha * policy_entropy
+        policy_out = self.policy(policy_input)
 
-        # new_actions, log_pi_new_actions = self.policy.entropy(policy_input)
+        if isinstance(policy_out, torch.distributions.Distribution):  # MLE
+            bc_loss = -1.0 * policy_out.log_prob(act_batch)
+            new_actions = policy_out.sample()
+            log_pi_new_actions = policy_out.log_prob(new_actions).mean()
+        elif torch.is_tensor(policy_out):
+            assert policy_out.shape == act_batch.shape
+            new_actions = policy_out
+            bc_loss = F.mse_loss(new_actions, act_batch, reduction=None)
+            log_pi_new_actions = torch.tensor([0.0])
+
+        action_diff = torch.norm(new_actions - act_batch, dim=-1).mean()
         
+        if step_num < self.num_warmstart_steps:
+            policy_loss = bc_loss.mean()
+        else:
+            #compute advantage weighted behavior cloning loss
+            if self.vf is not None and self.vf_target_mode=='asymmetric_l2':
+                #IQL loss
+                if 'adv' in batch_dict: adv = batch_dict['adv']
+                else:
+                    v_target = self.target_qf(
+                        {'obs': obs_batch}, act_batch)
+                    v_pred = self.vf({'obs': obs_batch})  # inference
+                    adv = v_target - v_pred
+                weight = torch.exp(self.beta * adv.detach()).clamp(max=100.)
+            else:
+                #CRR loss
+                q_pred = self.qf(
+                    {'obs': obs_batch}, act_batch)
+                action_samples = torch.stack([policy_out.sample() for _ in range(self.num_adv_samples)], dim=0)
+                repeat_obs = torch.repeat_interleave(obs_batch.unsqueeze(0), self.num_adv_samples, 0)
+                v_pred = self.qf(
+                    {'obs': repeat_obs}, action_samples)
+                if self.advantage_mode == 'mean':
+                    advantage = q_pred - v_pred.mean(dim=0)
+                elif self.advantage_mode == 'max':
+                    advantage = q_pred - v_pred.max(dim=0)[0]
+                
+                if self.weight_mode == 'exp':
+                    weight = torch.exp(advantage / self.beta)
+                elif self.weight_mode == 'binary':
+                    weight = (advantage > 0).float()
+                weight = torch.clamp_max(weight, 20).detach()
+            
+            policy_loss = torch.mean(weight * bc_loss.mean(-1))
+
+
         policy_info_dict = {
-            'policy_loss': policy_loss.item(),
-            'action_difference': action_diff.item(),
-            'policy_entropy': log_pi_new_actions.item()
+            'Train/bc_loss': bc_loss.mean().item(),
+            'Train/policy_loss': policy_loss.item(),
+            'Train/action_difference': action_diff.item(),
+            'Train/policy_entropy': log_pi_new_actions.item()
         }
 
         return policy_loss, policy_info_dict
     
-    def compute_critic_loss(self, batch_dict):
+    def compute_qf_loss(self, batch_dict:Dict[str, torch.Tensor], step_num:int):
         assert self.policy is not None, "Q-function learning requires policy"
-        cost_batch = batch_dict['cost']
-        obs_batch = batch_dict['obs']
+        r_c_batch = batch_dict['costs'] if 'costs' in batch_dict else batch_dict['rewards']
+        obs_batch = batch_dict['observations']
         act_batch = batch_dict['actions']
-        next_obs_batch = batch_dict['next_obs']
+        next_obs_batch = batch_dict['next_observations']
         next_state_batch = batch_dict['next_state_dict']
         done_batch = batch_dict['terminals'].float()
-
         #Update target critic using exponential moving average
         for (param1, param2) in zip(self.target_qf.parameters(), self.qf.parameters()):
             param1.data.mul_(1. - self.polyak_tau).add_(param2.data, alpha=self.polyak_tau)
 
         with torch.no_grad():
-            policy_input = {
-                'states': next_state_batch,
-                'obs': next_obs_batch}
-            
-            next_actions_dist = self.policy(policy_input)                
-            next_actions = next_actions_dist.sample(torch.Size([self.num_action_samples]))
-            # next_actions_log_prob = next_actions_dist.log_prob(next_actions).mean()
+            if self.vf is not None and self.vf_target_mode == 'asymmetric_l2':
+                #use vf to compute q-target similar to IQL
+                v_next = self.vf({'obs': next_obs_batch})
 
-            q_pred_next = self.target_qf(
-                {'obs': next_obs_batch.unsqueeze(0).repeat(self.num_action_samples, 1, 1)}, 
-                next_actions).mean(0)
+            else:
+                #query policy to compute q target
+                policy_input = {
+                    'states': next_state_batch,
+                    'obs': next_obs_batch}
+                
+                next_actions_dist = self.policy(policy_input)                
+                next_actions = next_actions_dist.sample(torch.Size([self.num_action_samples]))
+
+                v_next = self.target_qf(
+                    {'obs': next_obs_batch.unsqueeze(0).repeat(self.num_action_samples, 1, 1)}, 
+                    next_actions).mean(0)
             
-            q_target = cost_batch +  (1. - done_batch) * self.discount * q_pred_next
+            q_target = (r_c_batch +  (1. - done_batch) * self.discount * v_next).clamp(min=self.V_min, max=self.V_max)
 
         qf_all = self.qf.all({'obs': obs_batch}, act_batch)
         q_target = q_target.unsqueeze(-1).repeat(1, qf_all.shape[-1])
@@ -263,25 +302,74 @@ class BPAgent(Agent):
         qf_loss = F.mse_loss(qf_all, q_target, reduction='none')
         qf_loss = qf_loss.sum(-1).mean(0) #sum along ensemble dimension and mean along batch
 
-        avg_q_value = torch.max(qf_all, dim=-1)[0].mean() 
+        avg_q_value = torch.min(qf_all, dim=-1)[0].mean() 
         avg_target_value = q_target.mean()
-        max_target_value = q_target.max()#max instead of min since we are minimizing costs
+        max_target_value = q_target.max()
+        min_target_value = q_target.min()
        
         qf_info_dict = {
-            'qf_loss': qf_loss.item(),
-            'avg_q_value': avg_q_value.item(),
-            'avg_target_value': avg_target_value.item(),
-            'max_target_value': max_target_value.item()
+            'Train/qf_loss': qf_loss.item(),
+            'Train/avg_q_value': avg_q_value.item(),
+            'Train/avg_target_value': avg_target_value.item(),
+            'Train/max_target_value': max_target_value.item(),
+            'Train/min_target_value': min_target_value.item(),
         }
         return qf_loss, qf_info_dict
 
+    def compute_vf_loss(self, batch_dict:Dict[str, torch.Tensor], step_num:int):
+        
+        r_c_batch = batch_dict['costs'] if 'costs' in batch_dict else batch_dict['rewards']
+        obs_batch = batch_dict['observations']
+        actions = batch_dict['actions']
+        next_obs_batch = batch_dict['next_observations']
+        done_batch = batch_dict['terminals'].float()
+        last_terminals = batch_dict['last_terminals'].float()
+        last_observations = batch_dict['last_observations']
+        returns = batch_dict['disc_returns']
+        remaining_steps = batch_dict['remaining_steps']
 
-    def preprocess_dataset(self, buffer):
+        #Update target vf using exponential moving average
+        for (param1, param2) in zip(self.target_vf.parameters(), self.vf.parameters()):
+            param1.data.mul_(1. - self.polyak_tau).add_(param2.data, alpha=self.polyak_tau)
 
-        for episode in buffer.episode_iterator():
-            H = len(episode['actions'])
-            
+        v_pred = self.vf({'obs': obs_batch})  # inference        
+        if self.vf_target_mode == 'asymmetric_l2':
+            with torch.no_grad():
+                v_target = self.target_qf(
+                    {'obs': obs_batch}, actions
+                ).clamp(min=self.V_min, max=self.V_max)
+            adv = v_target - v_pred
+            vf_loss = asymmetric_l2_loss(adv, self.expecile_tau) 
+        else:
+            mc_targets = torch.zeros_like(r_c_batch)
+            td_targets = torch.zeros_like(r_c_batch)
+            with torch.no_grad():
 
-        buffer = buffer.qlearning_dataset()
-        return buffer
+                if self.lambd > 0:
+                    last_vs = self.target_vf({'obs': last_observations})  # inference
+                    mc_targets = (returns + (1. - last_terminals) * (self.discount**remaining_steps) * last_vs).clamp(min=self.V_min, max=self.V_max)
 
+                if self.lambd < 1:    
+                    v_next = self.target_vf(
+                        {'obs': next_obs_batch})            
+                    td_targets = (r_c_batch +  (1. - done_batch) * self.discount * v_next).clamp(min=self.V_min, max=self.V_max)
+            v_target = td_targets*(1-self.lambd) + mc_targets*self.lambd
+            adv = v_target - v_pred
+            vf_loss = F.mse_loss(v_pred, v_target, reduction='none').mean()
+        
+        avg_v_value = v_pred.mean()
+        avg_target_value = v_target.mean()
+        max_target_value = v_target.max()
+        min_target_value = v_target.min()
+
+        vf_info_dict = {
+            'Train/vf_loss': vf_loss.item(),
+            'Train/avg_v_value': avg_v_value.item(),
+            'Train/avg_vtarget_value': avg_target_value.item(),
+            'Train/max_vtarget_value': max_target_value.item(),
+            'Train/min_vtarget_value': min_target_value.item(),
+        }        
+        
+        
+        return vf_loss, adv, vf_info_dict
+        

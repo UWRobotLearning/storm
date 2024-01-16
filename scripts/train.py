@@ -5,14 +5,13 @@ import isaacgym
 import hydra
 from omegaconf import DictConfig, OmegaConf
 import torch
-torch.manual_seed(0)
 from torch.utils.tensorboard import SummaryWriter
 from datetime import datetime
 from storm_kit.learning.agents import BPAgent, SACAgent, MPCAgent, MPOAgent, MPQAgent
 from storm_kit.learning.policies import MPCPolicy, GaussianPolicy, JointControlWrapper
 from storm_kit.learning.value_functions import QFunction, TwinQFunction, EnsembleQFunction
 from storm_kit.learning.world_models import GaussianWorldModel
-from storm_kit.learning.replay_buffers import RobotBuffer
+from storm_kit.learning.replay_buffer import ReplayBuffer
 from storm_kit.learning.learning_utils import Log, buffer_from_file
 from storm_kit.util_file import get_data_path
 from storm_kit.learning.learning_utils import episode_runner
@@ -42,7 +41,6 @@ def init_logging(task_name, agent_name, cfg):
 def main(cfg: DictConfig):
     torch.set_default_dtype(torch.float32)
     
-    from storm_kit.envs import IsaacGymRobotEnv
     task_details = task_map[cfg.task.name]
     task_cls = task_details['task_cls']    
 
@@ -88,7 +86,7 @@ def main(cfg: DictConfig):
     act_lows, act_highs = task.action_lims
     state_bounds = task.state_bounds
 
-    buffer = RobotBuffer(capacity=int(cfg.train.agent.max_buffer_size), device=cfg.rl_device)
+    buffer = ReplayBuffer(capacity=int(cfg.train.agent.max_buffer_size), device=cfg.rl_device)
 
     train_from_scratch = cfg.train.agent.get('train_from_scratch', True)
     #Load init data

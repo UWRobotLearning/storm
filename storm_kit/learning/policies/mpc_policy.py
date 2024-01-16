@@ -19,7 +19,11 @@ class MPCPolicy(Policy):
             task_cls,
             dynamics_model_cls,
             sampling_policy = None,
-            value_function = None,
+            # value_function = None,
+            vf = None,
+            qf = None,
+            V_min=-float('inf'), 
+            V_max=float('inf'),
             device=torch.device('cpu')):
         
         super().__init__(obs_dim, act_dim, config, device=device)
@@ -28,7 +32,7 @@ class MPCPolicy(Policy):
         # self.rollout = self.init_rollout(task_cls) 
         self.controller = self.init_controller(
             task_cls, dynamics_model_cls,
-            sampling_policy, value_function)
+            sampling_policy, vf ,qf, V_min, V_max)
         self.prev_command_time = time.time()
         # self.dt = self.cfg.rollout.control_dt
         
@@ -50,7 +54,8 @@ class MPCPolicy(Policy):
         curr_action_seq, _, _ = self.controller.sample(
             state_dict, shift_steps=1, deterministic=deterministic)#, calc_val=False, num_samples=num_samples)
         action = curr_action_seq[:, 0]
-        return action
+        info = {}
+        return action, info
 
     def log_prob(self, input_dict: Dict[str, torch.Tensor], actions: torch.Tensor):
         dist = self.forward(input_dict)
@@ -65,7 +70,8 @@ class MPCPolicy(Policy):
 
     def init_controller(self, 
                         task_cls, dynamics_model_cls,
-                        sampling_policy, value_function):
+                        sampling_policy, vf=None, qf=None,
+                        V_min=-float('inf'), V_max=float('inf')):
         # world_params = self.cfg.world
         # rollout = self.init_rollout(task_cls)
         # rollout_params = self.cfg.rollout
@@ -96,7 +102,9 @@ class MPCPolicy(Policy):
             task=task,
             dynamics_model=dynamics_model,
             sampling_policy=sampling_policy,
-            value_function=value_function,
+            # value_function=value_function,
+            vf=vf, qf=qf,
+            V_min=V_min, V_max=V_max,
             tensor_args=self.tensor_args)
         return controller
 

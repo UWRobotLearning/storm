@@ -15,10 +15,8 @@ policy:
   std_type: 'heteroscedastic'
   learn_logvar_bounds: false
   use_tanh: false
-  world: ${task.world}
-  rollout: ${task.rollout}
 
-critic:
+qf:
   mlp_params:
     hidden_layers: [256, 256] 
     activation: torch.nn.ReLU 
@@ -27,33 +25,47 @@ critic:
     layer_norm: false
   ensemble_size: 2
   prediction_size: 2
+  aggregation: 'max'
+
+vf:
+  mlp_params:
+    hidden_layers: [256, 256] 
+    activation: torch.nn.ReLU 
+    output_activation: null
+    dropout_prob: 0.0 
+    layer_norm: false
 
 agent:
   name: 'BP'
   max_buffer_size: 1e6
-  num_pretrain_steps: 100000
+  num_pretrain_steps: 1000000
   train_batch_size: 256
-  # policy_optimizer:
-  #   __target__: torch.optim.Adam
-  #   lr: 3e-4
-  # critic_optimizer:
-  #   __target__: torch.optim.Adam
-  #   lr: 3e-4
-  optimizer:
+  policy_optimizer:
     __target__: torch.optim.Adam
-    lr: 1e-3 #3e-4
+    lr: 3e-4
+  qf_optimizer:
+    __target__: torch.optim.Adam
+    lr: 1e-3
+  vf_optimizer:
+    __target__: torch.optim.Adam
+    lr: 1e-3
   polyak_tau: 5e-3
   log_freq: 100
   checkpoint_freq: 5000
-  eval_freq: 1000
+  eval_freq: 20000
   eval_first_policy: false
-  num_eval_episodes: 2
+  num_eval_episodes: 5
   policy_use_tanh: ${train.policy.use_tanh}
-  # learn_deterministic_policy: false
-  policy_loss_type: nll
+  num_warmstart_steps: 1000000
   num_action_samples: 1
   fixed_alpha: 0.2
   relabel_data: true
   load_pretrained_policy: false
   pretrain_critic: true
+  vf_target_mode: 'td'
   discount: 0.99
+  beta: 3.0
+  expectile_tau: 0.7
+  clip_values: true
+  normalize_rewards: true
+  normalize_states: true

@@ -338,34 +338,45 @@ class MultipleSampleLib(SampleLib):
 
         # sample from a mix of possibilities:
         # halton
+        self.sample_fns = {}
         self.halton_sample_lib = HaltonSampleLib(num_instances=num_instances, horizon=horizon, 
                                                  d_action=d_action, seed=seed,
                                                  device=device,
                                                  fixed_samples=fixed_samples,
                                                  filter_coeffs=filter_coeffs)
+        self.sample_fns['halton'] = self.halton_sample_lib.get_samples
 
-        self.knot_halton_sample_lib = KnotSampleLib(
-            num_instances=num_instances, horizon=horizon, d_action=d_action, 
-            n_knots=horizon//knot_scale, degree=bspline_degree, sample_method='halton', device=device)
+        if sample_ratio['halton-knot'] > 0:
+            self.knot_halton_sample_lib = KnotSampleLib(
+                num_instances=num_instances, horizon=horizon, d_action=d_action, 
+                n_knots=horizon//knot_scale, degree=bspline_degree, sample_method='halton', device=device)
+
+            self.sample_fns['halton-knot'] = self.knot_halton_sample_lib.get_samples
 
         #random
-        self.random_sample_lib = RandomSampleLib(num_instances=num_instances, horizon=horizon, 
-                                                 d_action=d_action, seed=seed,
-                                                 device=device,
-                                                 fixed_samples=fixed_samples,
-                                                 filter_coeffs=filter_coeffs)
+        if sample_ratio['random'] > 0:
+            self.random_sample_lib = RandomSampleLib(num_instances=num_instances, horizon=horizon, 
+                                                    d_action=d_action, seed=seed,
+                                                    device=device,
+                                                    fixed_samples=fixed_samples,
+                                                    filter_coeffs=filter_coeffs)
+            self.sample_fns['random'] = self.random_sample_lib.get_samples
 
-        self.knot_random_sample_lib = KnotSampleLib(
-            num_instances=num_instances, horizon=horizon, d_action=d_action, 
-            n_knots=horizon//knot_scale, degree=bspline_degree, sample_method='random', 
-            covariance_matrix=covariance_matrix, device=device)
+        if sample_ratio['random-knot'] > 0:
+            self.knot_random_sample_lib = KnotSampleLib(
+                num_instances=num_instances, horizon=horizon, d_action=d_action, 
+                n_knots=horizon//knot_scale, degree=bspline_degree, sample_method='random', 
+                covariance_matrix=covariance_matrix, device=device)
+
+            self.sample_fns['random-knot'] = self.knot_random_sample_lib.get_samples
+
 
         self.sample_ratio = sample_ratio
-        self.sample_fns = []
-        self.sample_fns = {'halton': self.halton_sample_lib.get_samples,
-                           'halton-knot': self.knot_halton_sample_lib.get_samples,
-                           'random': self.random_sample_lib.get_samples,
-                           'random-knot': self.knot_random_sample_lib.get_samples}
+        # self.sample_fns = []
+        # self.sample_fns = {'halton': self.halton_sample_lib.get_samples,
+        #                    'halton-knot': self.knot_halton_sample_lib.get_samples,
+        #                    'random': self.random_sample_lib.get_samples,
+        #                    'random-knot': self.knot_random_sample_lib.get_samples}
         self.device=device
         self.fixed_samples = fixed_samples
         self.samples = None

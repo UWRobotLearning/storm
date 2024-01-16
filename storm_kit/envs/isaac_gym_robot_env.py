@@ -18,7 +18,7 @@ from hydra.utils import instantiate
 from storm_kit.differentiable_robot_model.spatial_vector_algebra import CoordinateTransform, quaternion_to_matrix
 from storm_kit.envs.isaac_gym_env_utils import tensor_clamp, load_urdf_asset, load_primitive_asset
 from storm_kit.envs.joint_controllers import JointStiffnessController, InverseDynamicsController
-
+from storm_kit.mpc.utils.state_filter import JointStateFilter
 
 EXISTING_SIM = None
 SCREEN_CAPTURE_RESOLUTION = (1027, 768)
@@ -123,8 +123,16 @@ class IsaacGymRobotEnv():
         self.sim_initialized = True
         self.set_viewer()
         self.allocate_buffers()
+
+        self.state_filter = JointStateFilter(
+            filter_coeff=self.cfg.joint_control.state_filter_coeff, 
+            # bounds=self.state_bounds,
+            device=self.device,
+            n_dofs=self.num_robot_dofs,
+            dt=self.cfg.joint_control.control_dt)
         self.reset_idx(torch.arange(self.num_envs, device=self.device))
         self._refresh()
+
 
     def set_viewer(self):
         """Create the viewer."""
@@ -521,15 +529,18 @@ class IsaacGymRobotEnv():
     
     def pre_physics_step(self, actions:torch.Tensor):
 
-        pos_des = actions[:, 0:self.num_robot_dofs].clone().to(self.device)
-        vel_des = actions[:, self.num_robot_dofs:2*self.num_robot_dofs].clone().to(self.device)
-        #feedforward componenet of desired acceleration
-        acc_des = actions[:, 2*self.num_robot_dofs:3*self.num_robot_dofs].clone().to(self.device)
-
-        if pos_des.ndim == 3:
-            pos_des = pos_des[:, 0]
-            vel_des = vel_des[:, 0]
-            acc_des = acc_des[:, 0]
+        # pos_des = actions[:, 0:self.num_robot_dofs].clone().to(self.device)
+        # vel_des = actions[:, self.num_robot_dofs:2*self.num_robot_dofs].clone().to(self.device)
+        # #feedforward componenet of desired acceleration
+        # acc_des = actions[:, 2*self.num_robot_dofs:3*self.num_robot_dofs].clone().to(self.device)
+        command_dict = copy.deepcopy(self.state_filter.predict_internal_state(actions))
+        pos_des = command_dict['q_pos']
+        vel_des = command_dict['q_vel']
+        acc_des = command_dict['q_acc']
+        # if pos_des.ndim == 3:
+        #     pos_des = pos_des[:, 0]
+        #     vel_des = vel_des[:, 0]
+        #     acc_des = acc_des[:, 0]
 
         # pos_des = tensor_clamp(pos_des, min=self.robot_q_pos_lower_lims, max=self.robot_q_pos_upper_lims)
         # vel_des = tensor_clamp(vel_des, min=-1.0 * self.robot_q_vel_lims, max=self.robot_q_vel_lims)
@@ -593,7 +604,7 @@ class IsaacGymRobotEnv():
         self.control_steps += 1
 
         # fill time out buffer: set to 1 if we reached the max episode length AND the reset buffer is 1. Timeout == 1 makes sense only if the reset buffer is 1.
-        self.timeout_buf = (self.progress_buf >= self.max_episode_length - 1) & (self.reset_buf != 0)
+        self.timeout_buf = (self.progress_buf >= self.max_episode_length) & (self.reset_buf != 0) #- 1
 
         # # randomize observations
         # if self.dr_randomizations.get('observations', None):
@@ -620,8 +631,9 @@ class IsaacGymRobotEnv():
         # self.compute_observations()
         # self.compute_reward()
         state_dict = self.get_state_dict()
+        state_dict = self.state_filter.filter_joint_state(copy.deepcopy(state_dict))
         self.reset_buf[:] = torch.where(
-            self.progress_buf >= self.max_episode_length - 1, torch.ones_like(self.reset_buf), self.reset_buf)
+            self.progress_buf >= self.max_episode_length, torch.ones_like(self.reset_buf), self.reset_buf) #- 1
         
         return state_dict
 
@@ -708,7 +720,8 @@ class IsaacGymRobotEnv():
         self.ee_handle = self.gym.find_actor_rigid_body_handle(self.envs[0], self.robots[0], self.ee_link_name)
         self.ee_state = self.rigid_body_states[:, self.ee_handle]
         # print("reset function tray link pose", self.ee_state)
-
+        self.state_filter.reset()
+        state_dict = copy.deepcopy(self.state_filter.filter_joint_state(copy.deepcopy(state_dict)))
         return state_dict 
 
     #only for object reset

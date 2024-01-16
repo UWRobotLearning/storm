@@ -5,7 +5,7 @@ import numpy as np
 import os
 import hydra
 import torch
-from storm_kit.learning.replay_buffers import RobotBuffer
+from storm_kit.learning.replay_buffer import ReplayBuffer
 from storm_kit.learning.learning_utils import buffer_dict_from_folder, plot_episode
 from task_map import task_map
 import matplotlib.pyplot as plt

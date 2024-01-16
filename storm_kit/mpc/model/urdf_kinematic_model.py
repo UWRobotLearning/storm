@@ -406,20 +406,20 @@ class URDFKinematicModel(nn.Module):
         ee_acc_twist_seq = torch.matmul(ee_jacobian_seq, q_acc_seq.unsqueeze(-1)).squeeze(-1) 
 
         state_dict = {
-            'state_seq': state_seq,
-            'q_pos_seq': q_pos_seq,
-            'q_vel_seq': q_vel_seq,
-            'q_acc_seq': q_acc_seq,
-            'q_jerk_seq': q_jerk_seq,
-            'ee_pos_seq': ee_pos_seq,
-            'ee_rot_seq': ee_rot_seq,
-            'ee_jacobian_seq': ee_jacobian_seq,
-            'ee_vel_twist_seq': ee_vel_twist_seq,
-            'ee_acc_twist_seq': ee_acc_twist_seq,
-            'link_pos_seq': link_pos_seq,
-            'link_rot_seq': link_rot_seq,
-            'prev_state_seq': self.prev_state_buffer,
-            'tstep_seq': tstep_seq}
+            # 'state_seq': state_seq, 
+            'q_pos': q_pos_seq,
+            'q_vel': q_vel_seq,
+            'q_acc': q_acc_seq,
+            'q_jerk': q_jerk_seq,
+            'ee_pos': ee_pos_seq,
+            'ee_rot': ee_rot_seq,
+            'ee_jacobian': ee_jacobian_seq,
+            'ee_vel_twist': ee_vel_twist_seq,
+            'ee_acc_twist': ee_acc_twist_seq,
+            'link_pos': link_pos_seq,
+            'link_rot': link_rot_seq,
+            'prev_state': self.prev_state_buffer,
+            'tstep': tstep_seq}
         
         return state_dict
 

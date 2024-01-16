@@ -41,17 +41,7 @@ class Agent(nn.Module):
         self.eval_freq = self.cfg.get('eval_freq', -1)  
         self.checkpoint_freq = self.cfg.get('checkpoint_freq', -1)
         self.relabel_data = self.cfg.get('relabel_data', False)
-        self.init_buffers()
-
-
-    def init_buffers(self):
-        self.curr_rewards = torch.zeros(self.envs.num_envs, device=self.device)
-        self.episode_lens = torch.zeros(self.envs.num_envs, device=self.device)
-        self.episode_reward_buffer = []
-        self.curr_idx = 0
-        self.total_episodes_done = 0
-        self.avg_episode_reward = 0.0
-
+ 
     def update(self):
         return {}
 
@@ -63,9 +53,10 @@ class Agent(nn.Module):
         if model_dir is not None:
             print('Saving agent models and state = {}'.format(len(self.buffer)))
             state = {
-                'iter': iter,
-                'policy_state_dict': self.policy.state_dict(),
-            }
+                'iter': iter}
+            if self.policy is not None:
+                state['policy_state_dict'] = self.policy.state_dict()
+
             torch.save(state, os.path.join(model_dir, 'agent_checkpoint_{}.pt'.format(iter)))
         if data_dir is not None:
             print('Saving buffer len = {}'.format(len(self.buffer)))
