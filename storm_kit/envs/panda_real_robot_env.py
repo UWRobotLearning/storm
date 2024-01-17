@@ -12,6 +12,9 @@ from sensor_msgs.msg import JointState
 from storm_kit.learning.policies import MPCPolicy, JointControlWrapper
 from storm_kit.tasks import ArmReacher
 from storm_kit.mpc.model import URDFKinematicModel
+from storm_kit.mpc.utils.state_filter import JointStateFilter
+from storm_kit.learning.learning_utils import dict_to_device
+
 
 class PandaRealRobotEnv():
     def __init__(self, cfg, device=torch.device('cpu'), headless:bool=False, safe_mode:bool = True):
@@ -61,6 +64,15 @@ class PandaRealRobotEnv():
         self.first_iter = True
 
         self.allocate_buffers()
+        self.state_filter = JointStateFilter(
+            filter_coeff=self.cfg.joint_control.state_filter_coeff, 
+            # bounds=self.state_bounds,
+            device=self.device,
+            n_dofs=self.n_dofs,
+            dt=self.cfg.joint_control.control_dt)
+
+
+
         self.init_reset_policy()
         if not self.headless:
             import roslaunch
@@ -127,7 +139,9 @@ class PandaRealRobotEnv():
         pass
 
     def pre_physics_steps(self, actions:torch.Tensor):
-        pass
+        command_dict = copy.deepcopy(
+            self.state_filter.predict_internal_state(actions))
+        return command_dict
 
     def step(self, actions:torch.Tensor):
         if not self.headless:
@@ -135,12 +149,18 @@ class PandaRealRobotEnv():
 
         #only publish command if state has been received
         if self.state_sub_on:
+            #convert actions to desired command
+            command_dict = self.pre_physics_steps(actions)
             #publish mpc 
             self.mpc_command.header = self.command_header
             self.mpc_command.header.stamp = rospy.Time.now()
-            self.mpc_command.position = actions[0][0:7].cpu().numpy()
-            self.mpc_command.velocity = actions[0][7:14].cpu().numpy()
-            self.mpc_command.effort =  actions[0][14:21].cpu().numpy()
+            self.mpc_command.position = command_dict['q_pos'].cpu().numpy()
+            self.mpc_command.velocity = command_dict['q_vel'].cpu().numpy()
+            self.mpc_command.effort =  command_dict['q_acc'].cpu().numpy()
+
+            # self.mpc_command.position = actions[0][0:7].cpu().numpy()
+            # self.mpc_command.velocity = actions[0][7:14].cpu().numpy()
+            # self.mpc_command.effort =  actions[0][14:21].cpu().numpy()
             self.command_pub.publish(self.mpc_command)
             
             #update tstep
@@ -166,14 +186,17 @@ class PandaRealRobotEnv():
         if len(env_ids) > 0:
             self.reset()
         state_dict = self.get_state_dict()
+        state_dict = self.state_filter.filter_joint_state(copy.deepcopy(state_dict))
+
         self.reset_buf[:] = torch.where(
-            self.progress_buf >= self.max_episode_length - 1, torch.ones_like(self.reset_buf), self.reset_buf)
+            self.progress_buf >= self.max_episode_length, torch.ones_like(self.reset_buf), self.reset_buf)
 
         return state_dict
 
     def get_state_dict(self):
         state_dict = copy.deepcopy(self.robot_state)
         state_dict['tstep'] = torch.as_tensor([self.tstep]).unsqueeze(0)
+        state_dict = dict_to_device(state_dict, self.device)
         return state_dict
 
     def reset(self, reset_data=None):
@@ -199,7 +222,8 @@ class PandaRealRobotEnv():
             policy_input = {
                 'states': self.get_state_dict()}
 
-            command_tensor, policy_info = self.reset_policy.get_action(policy_input, deterministic=True)
+            action, policy_info = self.reset_policy.get_action(policy_input, deterministic=True)
+            command_tensor = policy_info['command']
 
             self.mpc_command.header = self.command_header
             self.mpc_command.header.stamp = rospy.Time.now()
@@ -225,7 +249,11 @@ class PandaRealRobotEnv():
         self.reset_buf[:] = 0
         if self.safe_mode: 
             input('[PandaRobotEnv]: Press enter to finish reset')
-        return self.get_state_dict()
+        state_dict = self.get_state_dict()
+        self.state_filter.reset()
+        state_dict = copy.deepcopy(self.state_filter.filter_joint_state(copy.deepcopy(state_dict)))
+        return state_dict 
+
     
     def close(self):
         self.command_pub.unregister()

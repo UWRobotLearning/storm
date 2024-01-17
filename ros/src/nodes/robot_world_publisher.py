@@ -11,7 +11,6 @@ from visualization_msgs.msg import Marker, MarkerArray
 import torch
 from hydra import initialize, compose
 
-
 from storm_kit.util_file import get_configs_path, get_gym_configs_path, join_path, load_yaml, get_assets_path
 from storm_kit.differentiable_robot_model import DifferentiableRobotModel
 from storm_kit.differentiable_robot_model.spatial_vector_algebra import quaternion_to_matrix, CoordinateTransform
@@ -28,7 +27,8 @@ class RobotWorldPublisher():
         self.joint_names = rospy.get_param('~robot_joint_names', None)
         self.fixed_frame = rospy.get_param('~fixed_frame', None)
         
-        self.device = torch.device('cuda', 0)
+        # self.device = torch.device('cuda', 0)
+        self.device = torch.device('cpu')
 
         initialize(config_path="../../../content/configs/gym", job_name="robot_world_publisher")
         self.config = compose(config_name="config", overrides=["task=FrankaReacherRealRobot"])
@@ -48,9 +48,7 @@ class RobotWorldPublisher():
         self.first_iter = True
 
         self.robot_state = {}
-        
         self.robot_sphere_marker_array = MarkerArray()
-
         self.marker_pub = rospy.Publisher("/robot_collision_spheres", MarkerArray, queue_size=1, tcp_nodelay=True, latch=False)
         self.world_marker_pub = rospy.Publisher("/world", MarkerArray, queue_size=1, tcp_nodelay=True, latch=False)
         self.state_sub = rospy.Subscriber(self.joint_states_topic, JointState, self.robot_state_callback, queue_size=1)

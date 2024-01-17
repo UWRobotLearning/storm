@@ -51,8 +51,7 @@ class JointControlWrapper(nn.Module):
         input_dict['states'] = copy.deepcopy(self.state_filter.filter_joint_state(
             dict_to_device(input_dict['states'], self.device)))
 
-        action = self.policy.get_action(input_dict, deterministic)
-        # print(time.time()-st)
+        action, _ = self.policy.get_action(input_dict, deterministic)
 
         # if num_samples == 1 and action.ndim > 2:
         #     action = action[:, 0]

@@ -98,7 +98,6 @@ class MPCPolicy(Policy):
         controller = MPPI(
             **mppi_params, 
             init_mean=init_mean,
-            # rollout_fn=rollout,
             task=task,
             dynamics_model=dynamics_model,
             sampling_policy=sampling_policy,
@@ -123,7 +122,6 @@ class MPCPolicy(Policy):
             join_path(get_assets_path(), rollout_params['model']['urdf_path']),
             batch_size=rollout_params['batch_size'],
             horizon=rollout_params['horizon'],
-            # num_instances=self.cfg.mppi['num_instances'],
             ee_link_name=rollout_params['model']['ee_link_name'],
             link_names=rollout_params['model']['link_names'],
             dt_traj_params=rollout_params['model']['dt_traj_params'],
@@ -133,10 +131,6 @@ class MPCPolicy(Policy):
 
         return task, dynamics_model
 
-        # return ArmRollout(cfg = rollout_params, task=task, value_function=self.value_function, viz_rollouts=self.cfg.viz_rollouts, device=self.device)
-
-        # return rollout_cls(
-        #     cfg = rollout_params, world_params = world_params, value_function=self.value_function, viz_rollouts=self.cfg.viz_rollouts, device=self.device)
 
     def update_task_params(self, param_dict):
         self.controller.task.update_params(param_dict)
