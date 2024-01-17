@@ -3,11 +3,8 @@ from omegaconf import open_dict
 import torch
 from torch.distributions import Normal, MultivariateNormal, TransformedDistribution
 import time
-
-
 from storm_kit.learning.policies import Policy
 from storm_kit.mpc.control import MPPI
-# from storm_kit.mpc.rollout.arm_rollout import ArmRollout
 from storm_kit.util_file import join_path, get_assets_path
 
 class MPCPolicy(Policy):

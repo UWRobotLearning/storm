@@ -8,9 +8,8 @@ class NormCost(nn.Module):
     def __init__(
             self,
             weight:float=1.0,
-            norm_type:str = 'squared_l2',
+            norm_type:str = 'l2',
             hinge_val:float = 0.0,
-            alpha:float = 1.0,
             device: torch.device = torch.device('cpu'),
             ):
         super().__init__()
@@ -18,12 +17,9 @@ class NormCost(nn.Module):
         self.device = device
         self.weight = weight
         self.hinge_val = hinge_val
-        self.alpha = 3
-        self.log_two = torch.log(torch.tensor([2.0], device=self.device))
     
-
     @torch.jit.export
-    def forward(self, x:torch.Tensor, hinge_x:Optional[torch.Tensor]=None, keepdim:bool=False) -> torch.Tensor:
+    def forward(self, x:torch.Tensor, hinge_x:Optional[torch.Tensor]=None, keepdim:bool=False, logcosh_alpha:float=3.0) -> torch.Tensor:
         
         if self.norm_type == 'l2':
             dist = torch.norm(x, p=2, dim=-1, keepdim=keepdim)
@@ -34,7 +30,7 @@ class NormCost(nn.Module):
         elif self.norm_type == 'logcosh':
             # dist = torch.where(x > 0, F.softplus(-2.0 * x) + x - self.log_two, F.softplus(2.0 * x) - x - self.log_two)
             norm = torch.norm(x, p=2, dim=-1, keepdim=keepdim)
-            dist = logcosh(self.alpha * norm)
+            dist = logcosh(logcosh_alpha * norm)
             # dist2 = torch.log(torch.cosh(self.alpha * norm))
             # is_close = torch.isclose(dist, dist2)
             # print(dist[~is_close], dist2[~is_close])

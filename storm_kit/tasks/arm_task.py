@@ -436,6 +436,9 @@ class ArmTask(nn.Module):
             return new_state_dict
         
         return state_dict
+    
+    def compute_success(self, state_dict:Dict[str,torch.Tensor]):
+        pass
 
     def compute_metrics(self):
         pass

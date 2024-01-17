@@ -148,8 +148,6 @@ Visualization Manager:
         All Enabled: false
         base_link:
           Value: false
-        ee_goal:
-          Value: true
         ee_link:
           Value: true
         panda_hand:
@@ -184,8 +182,6 @@ Visualization Manager:
       Show Names: true
       Tree:
         base_link:
-          ee_goal:
-            {}
           panda_link0:
             panda_link1:
               panda_link2:
@@ -273,6 +269,15 @@ Visualization Manager:
         sphere1: true
         table: true
       Queue Size: 100
+      Value: true
+    - Class: rviz/InteractiveMarkers
+      Enable Transparency: true
+      Enabled: true
+      Name: InteractiveMarkers
+      Show Axes: false
+      Show Descriptions: true
+      Show Visual Aids: false
+      Update Topic: /goal_marker/update
       Value: true
   Enabled: true
   Global Options:
