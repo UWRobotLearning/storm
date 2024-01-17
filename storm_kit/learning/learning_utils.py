@@ -513,14 +513,14 @@ def run_episode(
                     'states': state}
                                 
                 action, policy_info = policy.get_action(policy_input, deterministic=deterministic)
-                try:
-                    #mujoco
-                    next_obs, reward, done, info = env.step(
-                        action.cpu().numpy(), compute_cost=True, compute_termination=check_termination)
-                except:
-                    #storm (isaacgym)
-                    next_obs, reward, done, info = env.step(
-                        action, compute_cost=True, compute_termination=check_termination)
+                # try:
+                #     #mujoco
+                #     next_obs, reward, done, info = env.step(
+                #         action.cpu().numpy(), compute_cost=True, compute_termination=check_termination)
+                # except:
+                #     #storm (isaacgym)
+                next_obs, reward, done, info = env.step(
+                    action, compute_cost=True, compute_termination=check_termination)
 
                 next_state = info['state'] if 'state' in info else None
                 total_return += reward

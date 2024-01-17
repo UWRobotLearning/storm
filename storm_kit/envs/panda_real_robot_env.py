@@ -154,9 +154,9 @@ class PandaRealRobotEnv():
             #publish mpc 
             self.mpc_command.header = self.command_header
             self.mpc_command.header.stamp = rospy.Time.now()
-            self.mpc_command.position = command_dict['q_pos'].cpu().numpy()
-            self.mpc_command.velocity = command_dict['q_vel'].cpu().numpy()
-            self.mpc_command.effort =  command_dict['q_acc'].cpu().numpy()
+            self.mpc_command.position = command_dict['q_pos'][0].cpu().numpy()
+            self.mpc_command.velocity = command_dict['q_vel'][0].cpu().numpy()
+            self.mpc_command.effort =  command_dict['q_acc'][0].cpu().numpy()
 
             # self.mpc_command.position = actions[0][0:7].cpu().numpy()
             # self.mpc_command.velocity = actions[0][7:14].cpu().numpy()
