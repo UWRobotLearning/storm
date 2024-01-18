@@ -6,6 +6,7 @@ from omegaconf import OmegaConf
 import torch
 from tqdm import tqdm
 from typing import Optional
+import torch.nn as nn
 from torch.utils.data import TensorDataset, DataLoader
 import torchaudio
 from scipy import signal
@@ -13,6 +14,7 @@ from storm_kit.learning.replay_buffer import ReplayBuffer
 import matplotlib.pyplot as plt
 from collections import defaultdict
 import numpy as np
+import math
 
 def _gen_dir_name():
     now_str = datetime.now().strftime('%m-%d-%y_%H.%M.%S')
@@ -701,9 +703,6 @@ def relabel_dataset(dataset, task):
 
     return dataset
 
-
-
-
 def plot_episode(episode, block=False):
 
     q_pos = episode['states/q_pos']
@@ -780,7 +779,32 @@ def return_range(dataset, max_episode_steps):
     return min(returns), max(returns)
 
 
+class VectorizedLinear(nn.Module):
+    def __init__(self, in_features: int, out_features: int, ensemble_size: int):
+        super().__init__()
+        self.in_features = in_features
+        self.out_features = out_features
+        self.ensemble_size = ensemble_size
 
+        self.weight = nn.Parameter(torch.empty(ensemble_size, in_features, out_features))
+        self.bias = nn.Parameter(torch.empty(ensemble_size, 1, out_features))
+
+        self.reset_parameters()
+
+    def reset_parameters(self):
+        # default pytorch init for nn.Linear module
+        for layer in range(self.ensemble_size):
+            nn.init.kaiming_uniform_(self.weight[layer], a=math.sqrt(5))
+
+        fan_in, _ = nn.init._calculate_fan_in_and_fan_out(self.weight[0])
+        bound = 1 / math.sqrt(fan_in) if fan_in > 0 else 0
+        nn.init.uniform_(self.bias, -bound, bound)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        # input: [ensemble_size, batch_size, input_size]
+        # weight: [ensemble_size, input_size, out_size]
+        # out: [ensemble_size, batch_size, out_size]
+        return x @ self.weight + self.bias
 
 
 

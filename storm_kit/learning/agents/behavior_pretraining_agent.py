@@ -332,32 +332,37 @@ class BPAgent(Agent):
         for (param1, param2) in zip(self.target_vf.parameters(), self.vf.parameters()):
             param1.data.mul_(1. - self.polyak_tau).add_(param2.data, alpha=self.polyak_tau)
 
-        v_pred = self.vf({'obs': obs_batch})  # inference        
-        if self.vf_target_mode == 'asymmetric_l2':
-            with torch.no_grad():
-                v_target = self.target_qf(
-                    {'obs': obs_batch}, actions
-                ).clamp(min=self.V_min, max=self.V_max)
-            adv = v_target - v_pred
-            vf_loss = asymmetric_l2_loss(adv, self.expecile_tau) 
-        else:
-            mc_targets = torch.zeros_like(r_c_batch)
-            td_targets = torch.zeros_like(r_c_batch)
-            with torch.no_grad():
+        # v_pred = self.vf({'obs': obs_batch})  # inference        
+        # if self.vf_target_mode == 'asymmetric_l2':
+        #     with torch.no_grad():
+        #         v_target = self.target_qf(
+        #             {'obs': obs_batch}, actions
+        #         ).clamp(min=self.V_min, max=self.V_max)
+        #     adv = v_target - v_pred
+        #     vf_loss = asymmetric_l2_loss(adv, self.expecile_tau) 
+        # else:
+        mc_targets = torch.zeros_like(r_c_batch)
+        td_targets = torch.zeros_like(r_c_batch)
+        with torch.no_grad():
+            if self.lambd > 0:
+                last_vs = self.target_vf({'obs': last_observations})  # inference
+                mc_targets = (returns + (1. - last_terminals) * (self.discount**remaining_steps) * last_vs).clamp(min=self.V_min, max=self.V_max)
 
-                if self.lambd > 0:
-                    last_vs = self.target_vf({'obs': last_observations})  # inference
-                    mc_targets = (returns + (1. - last_terminals) * (self.discount**remaining_steps) * last_vs).clamp(min=self.V_min, max=self.V_max)
-
-                if self.lambd < 1:    
-                    v_next = self.target_vf(
-                        {'obs': next_obs_batch})            
-                    td_targets = (r_c_batch +  (1. - done_batch) * self.discount * v_next).clamp(min=self.V_min, max=self.V_max)
-            v_target = td_targets*(1-self.lambd) + mc_targets*self.lambd
-            adv = v_target - v_pred
-            vf_loss = F.mse_loss(v_pred, v_target, reduction='none').mean()
+            if self.lambd < 1:    
+                v_next = self.target_vf(
+                    {'obs': next_obs_batch})            
+                td_targets = (r_c_batch +  (1. - done_batch) * self.discount * v_next).clamp(min=self.V_min, max=self.V_max)
+        v_target = td_targets*(1-self.lambd) + mc_targets*self.lambd
+        # adv = v_target - v_pred
+        # vf_loss = F.mse_loss(v_pred, v_target, reduction='none').mean()
         
-        avg_v_value = v_pred.mean()
+        vf_all = self.vf.all({'obs': obs_batch})
+        v_target = v_target.unsqueeze(0).repeat(vf_all.shape[0],1)
+
+        vf_loss = F.mse_loss(vf_all, v_target, reduction='none')
+        vf_loss = vf_loss.sum(0).mean() #sum along ensemble dimension and mean along batch
+
+        avg_v_value = torch.min(vf_all, dim=-1)[0].mean() 
         avg_target_value = v_target.mean()
         max_target_value = v_target.max()
         min_target_value = v_target.min()
@@ -371,5 +376,5 @@ class BPAgent(Agent):
         }        
         
         
-        return vf_loss, adv, vf_info_dict
+        return vf_loss, None, vf_info_dict
         

@@ -301,9 +301,10 @@ class GaussianMPC(Controller):
         if self.vf is not None:
             with record_function("value_fn_inference"):
                 obs = self.task.compute_observations(state_dict, compute_full_state=False, cost_terms=cost_terms)
-                q_preds = self.qf({'obs': obs}, act_seq).clamp(min=self.V_min, max=self.V_max) #, max=self.V_max
-                v_preds = self.vf({'obs': obs}).clamp(min=self.V_min, max=self.V_max) #max=self.V_max
-        
+                # q_preds = self.qf({'obs': obs}, act_seq).clamp(min=self.V_min, max=self.V_max) #, max=self.V_max
+                v_preds = self.vf({'obs': obs.view(-1, obs.shape[-1])}).clamp(min=self.V_min, max=self.V_max) #max=self.V_max
+                v_preds = v_preds.view(self.state_batch_size, self.num_particles, self.horizon)
+
         sim_trajs = dict(
             actions=act_seq,
             costs=cost_seq,

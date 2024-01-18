@@ -16,7 +16,7 @@ import os
 from torch.utils.tensorboard import SummaryWriter
 from storm_kit.envs.gym_env_wrapper import GymEnvWrapper
 from storm_kit.learning.policies import MPCPolicy, GaussianPolicy
-from storm_kit.learning.value_functions.qfunctions import TwinQFunction, ValueFunction, EnsembleQFunction
+from storm_kit.learning.value_functions import TwinQFunction, ValueFunction, EnsembleQFunction, EnsembleValueFunction
 from storm_kit.learning.learning_utils import Log, evaluate_policy, preprocess_dataset, dict_to_device, buffer_dict_from_folder #, return_range
 from storm_kit.learning.agents import BPAgent
 from storm_kit.learning.replay_buffer import ReplayBuffer, qlearning_dataset, qlearning_dataset2
@@ -216,7 +216,7 @@ def main(cfg: DictConfig):
     qf = EnsembleQFunction(
         obs_dim=obs_dim, act_dim=act_dim, config=cfg.train.qf, device=cfg.rl_device)
     target_qf = copy.deepcopy(qf).requires_grad_(False)
-    vf = ValueFunction(
+    vf = EnsembleValueFunction(
         obs_dim=obs_dim, config=cfg.train.vf, device=cfg.rl_device)
     target_vf = copy.deepcopy(vf).requires_grad_(False)
 

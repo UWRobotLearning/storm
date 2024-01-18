@@ -96,8 +96,7 @@ class ArmReacher(ArmTask):
             ee_goal_rot.transpose(-1,-2), ee_rot)
         obs = torch.cat(
             (obs,
-            ee_goal_pos, ee_goal_rot.flatten(-2,-1), 
-            goal_pos_err, goal_rot_err.flatten(-2,-1) ), dim=-1)
+            ee_goal_pos, ee_goal_rot.flatten(-2,-1)), dim=-1)
 
         return obs
 
@@ -342,7 +341,7 @@ class ArmReacher(ArmTask):
     
     @property
     def obs_dim(self)->int:
-        return super().obs_dim + 19
+        return super().obs_dim + 12
 
     @property
     def action_lims(self)->Tuple[torch.Tensor, torch.Tensor]:

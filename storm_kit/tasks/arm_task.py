@@ -288,8 +288,8 @@ class ArmTask(nn.Module):
         q_vel_lower = self.state_lower_bounds[self.n_dofs:2*self.n_dofs]
         q_vel_upper = self.state_upper_bounds[self.n_dofs:2*self.n_dofs]
 
-        q_pos_norm = (q_pos_batch - q_pos_lower) / (q_pos_upper - q_pos_lower)
-        q_vel_norm = (q_vel_batch - q_vel_lower) / (q_vel_upper - q_vel_lower)
+        # q_pos_norm = (q_pos_batch - q_pos_lower) / (q_pos_upper - q_pos_lower)
+        # q_vel_norm = (q_vel_batch - q_vel_lower) / (q_vel_upper - q_vel_lower)
 
         # if 'ee_quat_seq' not in state_dict:
         #     ee_rot_batch = state_dict['ee_rot_seq']
@@ -306,7 +306,7 @@ class ArmTask(nn.Module):
         #     bound_dist = cost_terms['bound_dist']
         
         obs = torch.cat(
-            (q_pos_norm, q_vel_norm,
+            (q_pos_batch, q_vel_batch,
              ee_pos_batch, ee_rot_batch, ee_vel_twist), dim=-1) #bound_dist #
 
         return obs
