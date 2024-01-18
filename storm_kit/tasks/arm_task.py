@@ -306,8 +306,7 @@ class ArmTask(nn.Module):
         #     bound_dist = cost_terms['bound_dist']
         
         obs = torch.cat(
-            (q_pos_batch, q_vel_batch,
-             ee_pos_batch, ee_rot_batch, ee_vel_twist), dim=-1) #bound_dist #
+            (q_pos_batch, q_vel_batch), dim=-1) #bound_dist #ee_pos_batch, ee_rot_batch, ee_vel_twist
 
         return obs
 
@@ -436,6 +435,9 @@ class ArmTask(nn.Module):
             return new_state_dict
         
         return state_dict
+    
+    def compute_success(self, state_dict:Dict[str,torch.Tensor]):
+        pass
 
     def compute_metrics(self):
         pass
@@ -511,7 +513,7 @@ class ArmTask(nn.Module):
 
     @property
     def obs_dim(self)->int:
-        return 2*self.n_dofs + 18
+        return 2*self.n_dofs
 
     @property
     def action_dim(self)->int:

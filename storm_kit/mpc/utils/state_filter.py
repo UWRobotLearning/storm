@@ -100,7 +100,7 @@ class JointStateFilter(object):
         #     self.filter_coeff = filter_coeff
         self.dt = dt
         self.prev_cmd_qdd = None
-        self.initial_step = True 
+        self.initial_step = True
     
     def filter_joint_state(self, raw_joint_state: Dict[str, torch.Tensor])->Dict[str, torch.Tensor]:
 

@@ -58,7 +58,7 @@ class WorldGridCollision(WorldCollision):
         
         # super().__init__(batch_size, tensor_args)
         super().__init__(batch_size, device)
-        self.bounds = torch.tensor(bounds, device=self.device)
+        self.bounds = torch.as_tensor(bounds, device=self.device)
         self.grid_resolution = grid_resolution
         self.pitch = self.grid_resolution
         self.scene_sdf = None
@@ -102,7 +102,7 @@ class WorldGridCollision(WorldCollision):
         pitch: float
         '''
         # origin = torch.tensor(bounds[0], **self.tensor_args)
-        origin = torch.tensor(bounds[0], device=self.device)
+        origin = torch.as_tensor(bounds[0], device=self.device)
         # build pt to idx
         # given a point (x,y,z), convert to an index assuming pt is within bounds
         # self.pt_to_idx_rot = torch.eye(3, **self.tensor_args) * (1.0 / pitch)

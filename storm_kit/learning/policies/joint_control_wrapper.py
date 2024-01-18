@@ -48,21 +48,10 @@ class JointControlWrapper(nn.Module):
     def get_action(self, input_dict, deterministic=False):
         # st=time.time()
         #filter states
-        input_dict['states'] = copy.deepcopy(self.state_filter.filter_joint_state(
-            dict_to_device(input_dict['states'], self.device)))
-
-        action = self.policy.get_action(input_dict, deterministic)
-        # print(time.time()-st)
-
-        # if num_samples == 1 and action.ndim > 2:
-        #     action = action[:, 0]
-        # # #TODO: This must go by making state_filter compatible with num actions
-        # if action.ndim > 2:
-        #     action = action[0]
-        
+        input_dict['states'] = copy.deepcopy(self.state_filter.filter_joint_state(input_dict['states']))
+            # dict_to_device(input_dict['states'], self.device)))
+        action, _ = self.policy.get_action(input_dict, deterministic)
         command_dict = copy.deepcopy(self.state_filter.predict_internal_state(action))
-        # command_dict = self.bound_joint_command(command_dict)
-
         command_tensor = torch.cat([
             command_dict['q_pos'], 
             command_dict['q_vel'], 

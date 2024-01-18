@@ -40,7 +40,7 @@ class PoseCost(NormCost):
     def __init__(
             self, weight:List, vec_weight:List, cost_type:str = 'se3_transform', 
             norm_type:str='squared_l2', device:torch.device=torch.device("cpu"), hinge_val:float=100.0,
-            convergence_val=[0.0,0.0]):
+            convergence_val=[0.0,0.0], logcosh_alpha=[1.0, 1.0]):
         
         super(PoseCost, self).__init__(weight=1.0, norm_type=norm_type, device=device)
 
@@ -58,6 +58,7 @@ class PoseCost(NormCost):
         
         self.hinge_val = hinge_val
         self.convergence_val = convergence_val
+        self.logcosh_alpha = logcosh_alpha
 
     def forward(
             self, ee_pos_batch:torch.Tensor, ee_rot_batch:torch.Tensor, 
@@ -135,7 +136,8 @@ class PoseCost(NormCost):
         goal_rot_ee = goal_to_ee_transform.rotation()
 
         #compute translation error
-        position_err = super(PoseCost).forward(self.trans_vec_weight * goal_trans_ee, keepdim=False)
+        position_err = super(PoseCost).forward(
+            self.trans_vec_weight * goal_trans_ee, keepdim=False, logcosh_alpha=self.logcosh_alpha[1])
         # goal_dist = torch.norm(self.pos_weight * d_g_ee, p=2, dim=-1, keepdim=True)
         
         # position_err = (torch.sum(torch.square(self.pos_weight * d_g_ee),dim=-1))
@@ -173,19 +175,11 @@ class PoseCost(NormCost):
         
         _, omega, v = logMapSE3(goal_to_ee_transform.rotation(), goal_to_ee_transform.translation())
 
-        position_err = super().forward(self.trans_vec_weight * v, keepdim=False)
-        rotation_err = super().forward(self.rot_vec_weight * omega, keepdim=False)
+        position_err = super().forward(self.trans_vec_weight * v, keepdim=False, logcosh_alpha=self.logcosh_alpha[1])
+        rotation_err = super().forward(self.rot_vec_weight * omega, keepdim=False, logcosh_alpha=self.logcosh_alpha[0])
         rotation_err[rotation_err < self.convergence_val[0]] = 0.0
         position_err[position_err < self.convergence_val[1]] = 0.0
 
-        # if jac_batch is not None:
-        #     #Compute jacobian transpose projection
-        #     jac_T = jac_batch.transpose(-2,-1)
-        #     ee_twist = torch.cat([v, omega], dim=-1)[:, :, None]
-        #     q_vel_des = (jac_T @ ee_twist).squeeze(-1)
-        #     cost = 500.0 * super().forward(q_vel_des, keepdim=False)
-
-        # else:
         cost = self.rot_err_weight * rotation_err + self.trans_err_weight * position_err
         
         info = dict(

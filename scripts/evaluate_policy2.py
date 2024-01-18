@@ -38,7 +38,7 @@ def get_env_and_task(task_name:str, cfg=None): #log max_episode_steps
             from storm_kit.envs.panda_real_robot_env import PandaRealRobotEnv
             env = PandaRealRobotEnv(
                 cfg.task, device=cfg.rl_device,
-                headless=cfg.headless, safe_mode=False
+                headless=cfg.headless, safe_mode=True
             )
         task = task_cls(
             cfg=cfg.task.task, device=cfg.rl_device, viz_rollouts=False, world_params=cfg.task.world)
@@ -75,7 +75,6 @@ def main(cfg: DictConfig):
     obs_dim = task.obs_dim
     act_dim = task.action_dim
     act_lows, act_highs = task.action_lims
-    state_bounds = task.state_bounds
     
     eval_pretrained = cfg.eval.eval_pretrained and (cfg.eval.pretrained_policy is not None)
     load_pretrained = cfg.eval.load_pretrained and (cfg.eval.pretrained_policy is not None)
@@ -126,7 +125,8 @@ def main(cfg: DictConfig):
         env, None, policy, max_episode_steps,
         num_episodes=num_episodes, 
         deterministic = deterministic_eval,
-        check_termination=True,
+        compute_cost=not cfg.real_robot_exp,
+        compute_termination=not cfg.real_robot_exp,
         discount=cfg.train.agent.discount,
         normalize_score_fn=None,
         rng=eval_rng)
@@ -141,25 +141,6 @@ def main(cfg: DictConfig):
         print(episode_metrics)
 
     print(buffer)
-
-    # buffer, metrics = episode_runner(
-    #     envs,
-    #     num_episodes = num_episodes, 
-    #     policy = policy,
-    #     task = task,
-    #     collect_data = True,
-    #     deterministic = deterministic_eval,
-    #     debug = False,
-    #     check_termination= not cfg.real_robot_exp,
-    #     device = cfg.rl_device,
-    #     rng = eval_rng)
-    # print(metrics)
-
-    # for episode in buffer.episode_iterator():
-    #     episode_metrics = task.compute_metrics(episode)
-    #     if cfg.debug:
-    #         plot_episode(episode, block=False)
-    #     print(episode_metrics)
 
     print('Time taken = {}'.format(time.time() - st))
     data_dir = data_dir if cfg.eval.save_buffer else None

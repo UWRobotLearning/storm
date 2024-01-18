@@ -319,7 +319,7 @@ def episode_runner(
         collect_data: bool = False,
         deterministic: bool = False,
         debug: bool = False,
-        check_termination: bool = True,
+        compute_termination: bool = True,
         device: torch.device = torch.device('cpu'),
         rng:Optional[torch.Generator] = None):  
         
@@ -362,7 +362,7 @@ def episode_runner(
                 next_state_dict, done_env = envs.step(command)
                 # next_obs, cost, done_task, cost_terms, done_cost, done_info = task.forward(next_state_dict, actions)
                 done_task = torch.zeros_like(done_env)
-                if check_termination:
+                if compute_termination:
                     done_task, done_cost, done_info = task.compute_termination(
                         curr_state_dict, actions, compute_full_state=True)
                     if done_task.item() > 0:
@@ -493,7 +493,8 @@ def run_episode(
         env, task, policy, 
         max_episode_steps:int,
         deterministic: bool = False,
-        check_termination: bool = True,
+        compute_cost: bool = True,
+        compute_termination: bool = True,
         discount: float = 0.99,
         rng:Optional[torch.Generator] = None):
         
@@ -515,14 +516,13 @@ def run_episode(
                     'states': state}
                                 
                 action, policy_info = policy.get_action(policy_input, deterministic=deterministic)
-                try:
-                    #mujoco
-                    next_obs, reward, done, info = env.step(
-                        action.cpu().numpy(), compute_cost=True, compute_termination=check_termination)
-                except:
-                    #storm (isaacgym)
-                    next_obs, reward, done, info = env.step(
-                        action, compute_cost=True, compute_termination=check_termination)
+                #     #mujoco
+                #     next_obs, reward, done, info = env.step(
+                #         action.cpu().numpy(), compute_cost=True, compute_termination=compute_termination)
+                # except:
+                #     #storm (isaacgym)
+                next_obs, reward, done, info = env.step(
+                    action, compute_cost=compute_cost, compute_termination=compute_termination)
 
                 next_state = info['state'] if 'state' in info else None
                 total_return += reward
@@ -570,7 +570,8 @@ def evaluate_policy(
         max_episode_steps:int,
         num_episodes:int,
         deterministic: bool = False,
-        check_termination: bool = True,
+        compute_cost: bool = True,
+        compute_termination: bool = True,
         discount: float = 0.99,
         normalize_score_fn = None,                                     
         rng:Optional[torch.Generator] = None):
@@ -583,7 +584,8 @@ def evaluate_policy(
         env, task, policy, 
         max_episode_steps,
         deterministic,
-        check_termination,
+        compute_cost,
+        compute_termination,
         discount, rng)
         ep_datas.append(ep_data)
         ep_infos.append(ep_info)

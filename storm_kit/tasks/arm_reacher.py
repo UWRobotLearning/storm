@@ -162,6 +162,9 @@ class ArmReacher(ArmTask):
         return super().compute_termination(
             state_dict, act_batch, compute_full_state)
 
+    def compute_success(self, state_dict:Dict[str,torch.Tensor]):
+        pass
+
 
     def compute_metrics(self, episode_data: Dict[str, torch.Tensor]) -> Dict[str, float]:
         q_pos = torch.as_tensor(episode_data['states/q_pos']).to(self.device)
