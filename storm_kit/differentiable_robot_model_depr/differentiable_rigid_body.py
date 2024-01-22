@@ -72,6 +72,7 @@ class DifferentiableRigidBody(torch.nn.Module):
     Differentiable Representation of a link
     """
     joint_limits: Dict[str, float]
+    name: str
 
     def __init__(self, rigid_body_params, 
                  device: torch.device = torch.device('cpu')):

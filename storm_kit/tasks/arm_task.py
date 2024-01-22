@@ -79,9 +79,7 @@ class ArmTask(nn.Module):
         # self.null_cost = ProjectedDistCost(ndofs=self.n_dofs, device=device, 
         #                                    **cfg['cost']['null_space'])
         
-        self.manipulability_cost = ManipulabilityCost(device=self.device,
-                                                      **cfg['cost']['manipulability'])
-        
+        self.manipulability_cost = ManipulabilityCost(device=self.device, **cfg['cost']['manipulability'])
         self.zero_q_vel_cost = torch.jit.script(NormCost(**self.cfg['cost']['zero_q_vel'], device=self.device))
         self.zero_q_acc_cost = torch.jit.script(NormCost(**self.cfg['cost']['zero_q_acc'], device=self.device))
         self.zero_q_jerk_cost = torch.jit.script(NormCost(**self.cfg['cost']['zero_q_jerk'], device=self.device))
@@ -318,38 +316,42 @@ class ArmTask(nn.Module):
 
         if compute_full_state:
             state_dict = self.compute_full_state(state_dict)
-
-        # num_instances, curr_batch_size, num_traj_points, _ = state_dict['state_seq'].shape
-        # termination = torch.zeros(self.num_instances, self.batch_size, self.horizon, device=self.device)
+        
+        info = {}
         q_pos_batch = state_dict['q_pos']
         q_vel_batch = state_dict['q_vel']
         q_acc_batch = state_dict['q_acc']
         orig_size = q_pos_batch.size()[0:-1]
-        # new_size = reduce(mul, list(orig_size))  
 
-        # state_batch = state_dict['state_seq'].view(new_size, -1)
-        link_pos_batch, link_rot_batch = state_dict['link_pos'], state_dict['link_rot']
-        # link_pos_batch = link_pos_batch.view(new_size, self.num_links, 3)
-        # link_rot_batch = link_rot_batch.view(new_size, self.num_links, 3, 3)
-        link_pos_batch = link_pos_batch.view(-1, self.num_links, 3)
-        link_rot_batch = link_rot_batch.view(-1, self.num_links, 3, 3)
+        termination = torch.zeros(orig_size, device=self.device).flatten()
+        term_cost = torch.zeros(orig_size, device=self.device).flatten()
 
-        with record_function('primitive_collision'):
-            coll_cost, coll_cost_info = self.primitive_collision_cost.forward(link_pos_batch, link_rot_batch)
-            collision_violation = torch.logical_or(coll_cost_info['in_coll_world'], coll_cost_info['in_coll_self'])
-            collision_violation = collision_violation.sum(-1)
-            # termination = coll_cost > 0
+        if self.cfg['cost']['primitive_collision']['weight'] > 0:
+            with record_function('primitive_collision'):
+                link_pos_batch, link_rot_batch = state_dict['link_pos'], state_dict['link_rot']
+                link_pos_batch = link_pos_batch.view(-1, self.num_links, 3)
+                link_rot_batch = link_rot_batch.view(-1, self.num_links, 3, 3)
+
+                coll_cost, coll_cost_info = self.primitive_collision_cost.forward(link_pos_batch, link_rot_batch)
+                collision_violation = torch.logical_or(coll_cost_info['in_coll_world'], coll_cost_info['in_coll_self'])
+                collision_violation = collision_violation.sum(-1)
+                termination = torch.logical_or(termination, collision_violation)
+                term_cost += coll_cost
+                info = coll_cost_info
 
         with record_function('bound_cost'):
-            # state_batch = torch.cat((q_pos_batch, q_vel_batch, q_acc_batch), dim=-1).view(new_size, -1)
             state_batch = torch.cat((q_pos_batch, q_vel_batch, q_acc_batch), dim=-1).view(-1, 3*self.n_dofs)
             bound_cost, bound_cost_info = self.bound_cost.forward(state_batch)
             in_bounds = bound_cost_info['in_bounds']#[..., 0:2*self.n_dofs] #only use qpos and qvel
             bounds_violation = torch.logical_not(in_bounds).sum(-1)
+            termination = torch.logical_or(termination, bounds_violation)
+            term_cost += bound_cost
+            info['in_bounds'] = bound_cost_info['in_bounds'].view(*orig_size, -1)
+            info['bound_dist'] = bound_cost_info['bound_dist'].view(*orig_size, -1)
+
         
-        termination = torch.logical_or(collision_violation, bounds_violation)
-        
-        termination_cost = coll_cost +  bound_cost
+        # termination = torch.logical_or(collision_violation, bounds_violation)
+        # termination_cost = coll_cost +  bound_cost
 
         # if self.cfg['cost']['robot_self_collision']['weight'] > 0:
         #     #coll_cost = self.robot_self_collision_cost.forward(link_pos_batch, link_rot_batch)
@@ -361,12 +363,9 @@ class ArmTask(nn.Module):
 
         # termination = (termination > 0).float()
         termination = termination.float().view(orig_size)
-        termination_cost = termination_cost.view(orig_size)
-        info = coll_cost_info
-        info['in_bounds'] = bound_cost_info['in_bounds'].view(*orig_size, -1)
-        info['bound_dist'] = bound_cost_info['bound_dist'].view(*orig_size, -1)
+        term_cost = term_cost.view(orig_size)
 
-        return termination, termination_cost, info
+        return termination, term_cost, info
 
     def compute_full_state(self, state_dict: Dict[str,torch.Tensor], debug=False):
         if 'state_seq' not in state_dict:
@@ -376,9 +375,7 @@ class ArmTask(nn.Module):
 
             ee_pos_batch, ee_rot_batch, lin_jac_batch, ang_jac_batch = self.robot_model.compute_fk_and_jacobian(
                 q_pos.reshape(-1, q_pos.shape[-1]), self.cfg['ee_link_name'])
-
             ee_quat_batch = matrix_to_quaternion(ee_rot_batch)
-
             # ee_pos_batch = ee_pos_batch.view(*orig_size, -1)
             # ee_rot_batch = ee_rot_batch.view(*orig_size, 3, 3)
             # ee_quat_batch = ee_quat_batch.view(*orig_size, -1)
@@ -394,9 +391,9 @@ class ArmTask(nn.Module):
             ee_jac_batch = torch.cat((ang_jac_batch, lin_jac_batch), dim=-2)
             ee_vel_twist_batch = torch.matmul(ee_jac_batch, q_vel.unsqueeze(-1)).squeeze(-1)
             ee_acc_twist_batch = torch.matmul(ee_jac_batch, q_acc.unsqueeze(-1)).squeeze(-1)
-
  
             # get link poses:
+            st4=time.time()
             link_pos_list = []
             link_rot_list = []
             for ki,k in enumerate(self.link_names):
@@ -416,10 +413,6 @@ class ArmTask(nn.Module):
             for k in state_dict.keys():
                 new_state_dict[k] = state_dict[k] #.clone()
             
-            # new_state_dict['state_seq'] = current_state_tensor
-            # new_state_dict['q_pos_seq'] = q_pos #.clone()
-            # new_state_dict['q_vel_seq'] = q_vel #.clone()
-            # new_state_dict['q_acc_seq'] = q_acc #.clone()
             new_state_dict['ee_pos'] =  ee_pos_batch #.clone() 
             new_state_dict['ee_rot'] = ee_rot_batch #.clone()
             new_state_dict['ee_quat'] = ee_quat_batch #.clone()
@@ -437,7 +430,8 @@ class ArmTask(nn.Module):
         return state_dict
     
     def compute_success(self, state_dict:Dict[str,torch.Tensor]):
-        pass
+        q_pos = state_dict['q_pos']
+        return torch.zeros(q_pos.shape[0:-1], device=self.device)        
 
     def compute_metrics(self):
         pass

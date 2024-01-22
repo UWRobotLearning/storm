@@ -114,7 +114,7 @@ viz_rollouts: False
 
 mppi:
   state_batch_size  : 1
-  horizon           : 3
+  horizon           : 20
   init_cov          : 0.1 #0.005 #.5 #.5
   gamma             : 0.99 
   td_lam            : 1.0
@@ -132,13 +132,13 @@ mppi:
   use_cl_std        : False #whether to use std of closed loop policy for exploration
   base_action       : 'repeat'
   squash_fn         : 'clamp'
-  hotstart          : False
-  normalize_returns : False
+  hotstart          : True
+  normalize_returns : True
   visual_traj       : 'ee_pos_seq'
   sample_params:
     type: 'multiple'
     fixed_samples: True
-    sample_ratio: {'halton': 1.0, 'halton-knot': 0.0, 'random': 0.0, 'random-knot': 0.0}
+    sample_ratio: {'halton': 0.0, 'halton-knot': 1.0, 'random': 0.0, 'random-knot': 0.0}
     seed: 0
     filter_coeffs: null #[0.3, 0.3, 0.4]
     knot_scale: 4

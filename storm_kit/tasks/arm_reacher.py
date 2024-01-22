@@ -242,9 +242,9 @@ class ArmReacher(ArmTask):
 
         #termination
         term, term_cost, term_info = self.compute_termination(state_dict)
-        world_collision_violation = term_info['in_coll_world'].sum(-1)
-        self_collision_violation = term_info['in_coll_self'].sum(-1)
-        bounds_violation = torch.logical_not(term_info['in_bounds']).sum(-1)
+        world_collision_violation = term_info['in_coll_world'].sum(-1).nonzero().numel() if 'in_coll_world' in term_info else 0
+        self_collision_violation = term_info['in_coll_self'].sum(-1).nonzero().numel() if 'in_coll_self' in term_info else 0
+        bounds_violation = torch.logical_not(term_info['in_bounds']).sum(-1).nonzero().numel() if 'in_bounds' in term_info else 0
 
         #Last 10 step avg error
         # last_n_dist_err =  torch.mean(dist_err[-10:]).item()
@@ -270,9 +270,9 @@ class ArmReacher(ArmTask):
             'rot_err_final': rot_err_final,
             'avg_manip_score': avg_manip_score,
             'ee_path_length': ee_path_length,
-            'world_collision': world_collision_violation.nonzero().numel(),
-            'self_collision': self_collision_violation.nonzero().numel(),
-            'bounds_violation': bounds_violation.nonzero().numel()}
+            'world_collision': world_collision_violation,
+            'self_collision': self_collision_violation,
+            'bounds_violation': bounds_violation}
             # 'last_10_dist_err': last_n_dist_err,
             # 'last_10_dist_err_rel': last_n_dist_err_rel,
             # 'max_q_vel': max_q_vel,

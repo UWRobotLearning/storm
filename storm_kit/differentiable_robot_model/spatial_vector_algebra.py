@@ -141,21 +141,25 @@ class CoordinateTransform(object):
         mat[:, 3:, 3:] = self._rot.transpose(-1, -2)
         return mat
 
+@torch.jit.script
 class SpatialMotionVec(object):
+    lin_motion: torch.Tensor
+    ang_motion: torch.Tensor
+
     def __init__(
         self,
         lin_motion: torch.Tensor = torch.zeros(1,3),
         ang_motion: torch.Tensor = torch.zeros(1,3),
-        device:torch.device = torch.device('cpu'),
+        device: torch.device=torch.device('cpu'),
     ):
         # if lin_motion is None or ang_motion is None:
         #     assert (
         #         device is not None
         #     ), "Cannot initialize with default values without specifying device."
         #     device = torch.device(device)
-        self.device = device
-        self.lin = lin_motion.to(self.device)
-        self.ang = ang_motion.to(self.device)
+        self._device = device
+        self.lin = lin_motion.to(self._device)
+        self.ang = ang_motion.to(self._device)
         # self.lin = (
         #     lin_motion if lin_motion is not None else torch.zeros((1, 3), device=device)
         # )
@@ -170,8 +174,8 @@ class SpatialMotionVec(object):
         Returns:
             the sum of motion vectors
         """
-        return SpatialMotionVec(self.lin + smv.lin, self.ang + smv.ang, device=self.device)
-
+        return SpatialMotionVec(self.lin + smv.lin, self.ang + smv.ang, device=self._device)
+    
     def cross_motion_vec(self, smv: SpatialMotionVec) -> SpatialMotionVec:
         r"""
         Args:
@@ -181,18 +185,18 @@ class SpatialMotionVec(object):
         """
         new_ang = cross_product(self.ang, smv.ang)
         new_lin = cross_product(self.ang, smv.lin) + cross_product(self.lin, smv.ang)
-        return SpatialMotionVec(new_lin, new_ang, device=self.device)
+        return SpatialMotionVec(new_lin, new_ang, device=self._device)
 
-    def cross_force_vec(self, sfv: SpatialForceVec) -> SpatialForceVec:
-        r"""
-        Args:
-            sfv: spatial force vector
-        Returns:
-            the cross product between motion (self) and force vector
-        """
-        new_ang = cross_product(self.ang, sfv.ang) + cross_product(self.lin, sfv.lin)
-        new_lin = cross_product(self.ang, sfv.lin)
-        return SpatialForceVec(new_lin, new_ang, device=self.device)
+    # def cross_force_vec(self, sfv: SpatialForceVec) -> SpatialForceVec:
+    #     r"""
+    #     Args:
+    #         sfv: spatial force vector
+    #     Returns:
+    #         the cross product between motion (self) and force vector
+    #     """
+    #     new_ang = cross_product(self.ang, sfv.ang) + cross_product(self.lin, sfv.lin)
+    #     new_lin = cross_product(self.ang, sfv.lin)
+    #     return SpatialForceVec(new_lin, new_ang, device=self._device)
 
     def transform(self, transform: CoordinateTransform) -> SpatialMotionVec:
         r"""
@@ -204,29 +208,32 @@ class SpatialMotionVec(object):
         new_ang = (transform.rotation() @ self.ang.unsqueeze(2)).squeeze(2)
         new_lin = (transform.trans_cross_rot() @ self.ang.unsqueeze(2)).squeeze(2)
         new_lin += (transform.rotation() @ self.lin.unsqueeze(2)).squeeze(2)
-        return SpatialMotionVec(new_lin, new_ang, device=self.device)
+        return SpatialMotionVec(new_lin, new_ang, device=self._device)
 
     def get_vector(self)->torch.Tensor:
         return torch.cat([self.ang, self.lin], dim=1)
 
-    def multiply(self, v:torch.Tensor)->SpatialForceVec:
-        batch_size = self.lin.shape[0]
-        return SpatialForceVec(
-            self.lin * v.view(batch_size, 1), self.ang * v.view(batch_size, 1),
-            device=self.device
-        )
+    # def multiply(self, v:torch.Tensor)->SpatialForceVec:
+    #     batch_size = self.lin.shape[0]
+    #     return SpatialForceVec(
+    #         self.lin * v.view(batch_size, 1), self.ang * v.view(batch_size, 1),
+    #         device=self._device
+    #     )
 
+    @torch.jit.export
     def dot(self, smv:SpatialMotionVec)->torch.Tensor:
         tmp1 = torch.sum(self.ang * smv.ang, dim=-1)
         tmp2 = torch.sum(self.lin * smv.lin, dim=-1)
         return tmp1 + tmp2
 
 class SpatialForceVec(object):
+    lin_force: torch.Tensor
+    ang_force: torch.Tensor
     def __init__(
         self,
         lin_force: torch.Tensor = torch.zeros(1,3),
         ang_force: torch.Tensor = torch.zeros(1,3),
-        device=None,
+        device:torch.device = torch.device('cpu'),
     ):
         # if lin_force is None or ang_force is None:
         #     assert (
@@ -267,14 +274,14 @@ class SpatialForceVec(object):
     def get_vector(self):
         return torch.cat([self.ang, self.lin], dim=1)
 
-    def multiply(self, v:torch.Tensor):
+    def multiply(self, v:torch.Tensor) -> SpatialForceVec:
         batch_size = self.lin.shape[0]
         return SpatialForceVec(
             self.lin * v.view(batch_size, 1), self.ang * v.view(batch_size, 1),
             device=self.device
         )
 
-    def dot(self, smv)->torch.Tensor:
+    def dot(self, smv:SpatialMotionVec)->torch.Tensor:
         tmp1 = torch.sum(self.ang * smv.ang, dim=-1)
         tmp2 = torch.sum(self.lin * smv.lin, dim=-1)
         return tmp1 + tmp2

@@ -121,8 +121,8 @@ def main(cfg: DictConfig):
         env, None, policy, max_episode_steps,
         num_episodes=num_episodes, 
         deterministic = deterministic_eval,
-        compute_cost=not cfg.real_robot_exp,
-        compute_termination=not cfg.real_robot_exp,
+        compute_cost=True,
+        compute_termination=True,
         discount=cfg.train.agent.discount,
         normalize_score_fn=None,
         rng=eval_rng)
