@@ -283,10 +283,10 @@ class ArmTask(nn.Module):
         ee_rot_batch = state_dict['ee_rot'].flatten(-2,-1)
         ee_vel_twist = state_dict['ee_vel_twist']
 
-        q_pos_lower = self.state_lower_bounds[0:self.n_dofs]
-        q_pos_upper = self.state_upper_bounds[0:self.n_dofs]
-        q_vel_lower = self.state_lower_bounds[self.n_dofs:2*self.n_dofs]
-        q_vel_upper = self.state_upper_bounds[self.n_dofs:2*self.n_dofs]
+        # q_pos_lower = self.state_lower_bounds[0:self.n_dofs]
+        # q_pos_upper = self.state_upper_bounds[0:self.n_dofs]
+        # q_vel_lower = self.state_lower_bounds[self.n_dofs:2*self.n_dofs]
+        # q_vel_upper = self.state_upper_bounds[self.n_dofs:2*self.n_dofs]
 
         # q_pos_norm = (q_pos_batch - q_pos_lower) / (q_pos_upper - q_pos_lower)
         # q_vel_norm = (q_vel_batch - q_vel_lower) / (q_vel_upper - q_vel_lower)
@@ -306,7 +306,7 @@ class ArmTask(nn.Module):
         #     bound_dist = cost_terms['bound_dist']
         
         obs = torch.cat(
-            (q_pos_batch, q_vel_batch), dim=-1) #bound_dist #ee_pos_batch, ee_rot_batch, ee_vel_twist
+            (ee_pos_batch, ee_rot_batch, ee_vel_twist), dim=-1) #q_pos_batch,q_vel_batch, 
 
         return obs
 
@@ -513,7 +513,7 @@ class ArmTask(nn.Module):
 
     @property
     def obs_dim(self)->int:
-        return 2*self.n_dofs
+        return 18 #+ 2*self.n_dofs 
 
     @property
     def action_dim(self)->int:

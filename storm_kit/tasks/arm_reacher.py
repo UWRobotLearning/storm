@@ -95,8 +95,7 @@ class ArmReacher(ArmTask):
         goal_rot_err = torch.matmul(
             ee_goal_rot.transpose(-1,-2), ee_rot)
         obs = torch.cat(
-            (obs,
-            ee_goal_pos, ee_goal_rot.flatten(-2,-1)), dim=-1)
+            (obs, ee_goal_pos, ee_goal_rot.flatten(-2,-1)), dim=-1)
 
         return obs
 
@@ -163,7 +162,35 @@ class ArmReacher(ArmTask):
             state_dict, act_batch, compute_full_state)
 
     def compute_success(self, state_dict:Dict[str,torch.Tensor]):
-        pass
+        ee_pos = state_dict['ee_pos']
+        ee_rot = state_dict['ee_rot']
+        ee_vel = state_dict['ee_vel_twist']
+        ee_quat = matrix_to_quaternion(ee_rot)
+        q_vel = state_dict['q_vel']
+        if ee_pos.ndim == 2:
+            goal_ee_pos = self.goal_ee_pos.reshape_as(ee_pos)
+            goal_ee_rot = self.goal_ee_rot.reshape_as(ee_rot)
+            goal_ee_quat = self.goal_ee_quat.reshape_as(ee_quat)
+        elif ee_pos.ndim == 3:
+            goal_ee_pos = self.goal_ee_pos.unsqueeze(1).reshape_as(ee_pos)
+            goal_ee_rot = self.goal_ee_rot.unsqueeze(1).reshape_as(ee_rot)
+            goal_ee_quat = self.goal_ee_quat.unsqueeze(1).reshape_as(ee_quat)
+
+        elif ee_pos.ndim == 4:
+            goal_ee_pos = self.goal_ee_pos.unsqueeze(1).unsqueeze(1).repeat(1, ee_pos.shape[1], ee_pos.shape[2], 1)
+            goal_ee_rot = self.goal_ee_rot.unsqueeze(1).unsqueeze(1).repeat(1, ee_rot.shape[1], ee_rot.shape[2], 1, 1)
+            goal_ee_quat = self.goal_ee_quat.unsqueeze(1).unsqueeze(1).repeat(1, ee_quat.shape[1], ee_quat.shape[2], 1)
+
+        conj_quat = ee_quat
+        conj_quat[..., 1:] *= -1.0
+        quat_res = quat_multiply(goal_ee_quat, conj_quat)
+
+        dist_err = 100*torch.norm(ee_pos - goal_ee_pos, p=2, dim=-1) #l2 err in cm
+        rot_err = 2.0 * torch.acos(quat_res[..., 0]) #rotation error in degrees
+        twist_norm = torch.norm(ee_vel, p=2, dim=-1)
+
+        success = (dist_err < 1.0) & (rot_err < 1.0) & (twist_norm <0.2)
+        return success
 
 
     def compute_metrics(self, episode_data: Dict[str, torch.Tensor]) -> Dict[str, float]:

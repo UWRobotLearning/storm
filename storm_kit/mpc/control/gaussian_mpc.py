@@ -59,8 +59,6 @@ class GaussianMPC(Controller):
                  sampling_policy=None,
                  vf=None,
                  qf=None,
-                 V_min=-float('inf'),
-                 V_max=float('inf'),
                  hotstart:bool=True,
                  state_batch_size:int=1,
                  squash_fn='clamp',
@@ -112,7 +110,7 @@ class GaussianMPC(Controller):
         self.null_act_frac = null_act_frac
         self.cl_act_frac = cl_act_frac
         self.use_cl_std = use_cl_std
-        self.V_min, self.V_max = V_min, V_max
+        # self.V_min, self.V_max = V_min, V_max
         self.num_null_particles:int = round(int(null_act_frac * self.num_particles * 1.0))
         self.num_nonzero_particles:int = self.num_particles - self.num_null_particles # - self.num_neg_particles
 
@@ -151,12 +149,20 @@ class GaussianMPC(Controller):
             self.I = torch.eye(self.d_action, **self.tensor_args).unsqueeze(0).repeat(self.state_batch_size, 1, 1)
         
         self.Z_seq = torch.zeros(self.state_batch_size, 1, self.horizon, self.d_action, **self.tensor_args)
-
+        self.d_state = self.dynamics_model.d_state
         self.reset_distribution()
-        
+        self.set_value_metrics(None)
+
         if self.num_null_particles > 0:
             self.null_act_seqs = torch.zeros(self.state_batch_size, self.num_null_particles, self.horizon, self.d_action, **self.tensor_args) 
-            
+        
+        self.allocate_buffers()
+    
+    def allocate_buffers(self):
+        if self.sampling_policy is not None and self.num_cl_particles > 0:
+            self.cl_state_buffer = torch.zeros(self.state_batch_size, self.num_cl_particles, self.horizon, self.d_state, device=self.device)
+
+
     # def _get_action_seq(self, deterministic:bool=True):
     #     if deterministic:
     #         act_seq = self.mean_action.data#.clone()
@@ -244,6 +250,10 @@ class GaussianMPC(Controller):
         act_seq = torch.cat(act_seq, dim=1)
         # act_seq = torch.cat((act_seq, append_acts), dim=0)
         return act_seq
+
+    def rollout_policy(self):
+        "Generate rollouts from closed loop policy"
+        pass
     
     def generate_rollouts(self, state):
         """
@@ -302,8 +312,9 @@ class GaussianMPC(Controller):
             with record_function("value_fn_inference"):
                 obs = self.task.compute_observations(state_dict, compute_full_state=False, cost_terms=cost_terms)
                 # q_preds = self.qf({'obs': obs}, act_seq).clamp(min=self.V_min, max=self.V_max) #, max=self.V_max
-                v_preds = self.vf({'obs': obs.view(-1, obs.shape[-1])}).clamp(min=self.V_min, max=self.V_max) #max=self.V_max
+                v_preds, _ = self.vf({'obs': obs.view(-1, obs.shape[-1])})#.clamp(min=self.V_min, max=self.V_max)
                 v_preds = v_preds.view(self.state_batch_size, self.num_particles, self.horizon)
+                v_preds = self.V_std * v_preds + self.V_mean #unnormalize
 
         sim_trajs = dict(
             actions=act_seq,
@@ -316,6 +327,10 @@ class GaussianMPC(Controller):
         )
 
         return sim_trajs
+
+
+
+
 
     def _shift(self, shift_steps=1):
         """
@@ -414,10 +429,26 @@ class GaussianMPC(Controller):
         self.reset_distribution()
         if reset_data is not None:
             self.task.update_params(reset_data)
+            if 'value_metrics' in reset_data:
+                self.set_value_metrics(reset_data['value_metrics'])
+        
         if self.sampling_policy is not None:
             self.sampling_policy.reset(reset_data)
         self.dynamics_model.reset(reset_data)
-    
+
+    def set_value_metrics(self, value_metrics=None):
+        self.V_min, self.V_max=-float('inf'), float('inf')
+        self.V_mean, self.V_std = 0.0, 1.0
+        if value_metrics is not None:
+            if 'V_max' in value_metrics:
+                self.V_max = value_metrics['V_max']
+            if 'V_min' in value_metrics:
+                self.V_min = value_metrics['V_min']
+            if 'V_mean' in value_metrics:
+                self.V_mean = value_metrics['V_mean']
+            if 'V_max' in value_metrics:
+                self.V_std = value_metrics['V_std']
+
     def compute_value(self, state): #, trajectories=None):
         # if trajectories is None:
         trajectories = self.generate_rollouts(state)

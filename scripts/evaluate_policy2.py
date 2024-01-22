@@ -76,20 +76,17 @@ def main(cfg: DictConfig):
     act_dim = task.action_dim
     act_lows, act_highs = task.action_lims
     
-    eval_pretrained = cfg.eval.eval_pretrained and (cfg.eval.pretrained_policy is not None)
-    load_pretrained = cfg.eval.load_pretrained and (cfg.eval.pretrained_policy is not None)
+    eval_pretrained = cfg.eval.eval_pretrained #and (cfg.eval.pretrained_policy is not None)
+    load_pretrained = cfg.eval.load_pretrained #and (cfg.eval.pretrained_policy is not None)
     load_pretrained = eval_pretrained or load_pretrained 
 
     pretrained_policy = None
     policy_loaded = False
     if eval_pretrained or load_pretrained:
-        #we provide a task to policy as well to re-calculate observations
-        # policy_task = task_cls(
-        #     cfg=cfg.task.task, device=cfg.rl_device, viz_rollouts=False, world_params=cfg.task.world)
         #load pretrained policy weights
-        pretrained_policy = GaussianPolicy(obs_dim=obs_dim, act_dim=act_dim, config=cfg.train.policy, task=None, act_lows=act_lows, act_highs=act_highs, device=cfg.rl_device)
-        checkpoint_path = Path('./tmp_results/{}/{}'.format(cfg.task_name, cfg.eval.pretrained_policy))
-        print('Loading policy from {}'.format(checkpoint_path))
+        pretrained_policy = GaussianPolicy(obs_dim=obs_dim, act_dim=act_dim, config=cfg.train.policy, act_lows=act_lows, act_highs=act_highs, device=cfg.rl_device) #task=None,
+        checkpoint_path = Path(f'./tmp_results/{cfg.task_name}/BP/models/agent_checkpoint.pt')
+        print('Loading agent checkpoint from {}'.format(checkpoint_path))
         try:
             checkpoint = torch.load(checkpoint_path)
             policy_state_dict = checkpoint['policy_state_dict']
@@ -112,7 +109,6 @@ def main(cfg: DictConfig):
             obs_dim=obs_dim, act_dim=act_dim, config=cfg.mpc,
             task_cls=task_cls, dynamics_model_cls=dyn_model_cls, 
             sampling_policy=pretrained_policy, device=cfg.rl_device)
-        policy_task = None
 
     st=time.time()
     num_episodes = cfg.eval.num_episodes

@@ -6,7 +6,7 @@ import os
 import hydra
 import torch
 from storm_kit.learning.replay_buffer import ReplayBuffer
-from storm_kit.learning.learning_utils import buffer_dict_from_folder, plot_episode
+from storm_kit.learning.learning_utils import buffer_dict_from_folder, plot_episode, preprocess_dataset
 from task_map import task_map
 import matplotlib.pyplot as plt
 
@@ -31,6 +31,7 @@ def main(cfg: DictConfig):
 
     for buffer_name, buffer in buffer_dict.items():
         print('Analyzing buffer {}'.format(buffer_name))
+        buffer, success_buffer, buffer_info = preprocess_dataset(buffer, None, task, cfg.train.agent)
         for episode in buffer.episode_iterator():
             episode_metrics = task.compute_metrics(episode)
             plot_episode(episode, block=False)

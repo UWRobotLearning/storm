@@ -114,14 +114,14 @@ viz_rollouts: False
 
 mppi:
   state_batch_size  : 1
-  horizon           : 5
+  horizon           : 3
   init_cov          : 0.1 #0.005 #.5 #.5
   gamma             : 0.99 
   td_lam            : 1.0
   n_iters           : 1
   step_size_mean    : 0.98
   step_size_cov     : 0.7
-  beta              : 0.01
+  beta              : 0.0001
   alpha             : 1
   num_particles     : 1000
   update_cov        : True
@@ -132,8 +132,8 @@ mppi:
   use_cl_std        : False #whether to use std of closed loop policy for exploration
   base_action       : 'repeat'
   squash_fn         : 'clamp'
-  hotstart          : True
-  normalize_returns : True
+  hotstart          : False
+  normalize_returns : False
   visual_traj       : 'ee_pos_seq'
   sample_params:
     type: 'multiple'

@@ -41,8 +41,8 @@ multi_gpu: False
 wandb_activate: False
 wandb_group: ''
 wandb_name: ${train.params.config.name}
-wandb_entity: ''
-wandb_project: 'isaacgymenvs'
+wandb_entity: 'mohak-bhardwaj'
+wandb_project: 'storm-rl'
 capture_video: False
 capture_video_freq: 1464
 capture_video_len: 100

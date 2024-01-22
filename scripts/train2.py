@@ -2,8 +2,9 @@ import copy
 from collections import defaultdict
 from pathlib import Path
 from typing import Union, Tuple
+import matplotlib.pyplot as plt
 import hydra
-from omegaconf import DictConfig
+from omegaconf import OmegaConf, DictConfig
 import time 
 import gym
 import d4rl
@@ -21,6 +22,8 @@ from storm_kit.learning.learning_utils import Log, evaluate_policy, preprocess_d
 from storm_kit.learning.agents import BPAgent
 from storm_kit.learning.replay_buffer import ReplayBuffer, qlearning_dataset, qlearning_dataset2
 from task_map import task_map
+import wandb
+
 
 def init_logging(task_name, agent_name, cfg):
     base_dir = Path('./tmp_results/{}/{}'.format(task_name, agent_name))
@@ -32,6 +35,11 @@ def init_logging(task_name, agent_name, cfg):
         os.makedirs(log_dir)
     log = Log(log_dir, cfg)
     log(f'Log dir: {log.dir}')
+    if cfg.wandb_activate:
+        # wandb.config = OmegaConf.to_container(cfg, resolve=True, throw_on_missing=True)
+        wandb.tensorboard.patch(root_logdir=log_dir, pytorch=True, tensorboard_x=False)
+        wandb.init(entity=cfg.wandb_entity, project=cfg.wandb_project, sync_tensorboard=True)
+
     writer = SummaryWriter(log.dir)  
 
     return {
@@ -105,7 +113,6 @@ def get_task_and_dataset(task_name:str, cfg=None): #log max_episode_steps
             cfg=cfg.task.task, device=cfg.rl_device, viz_rollouts=False, world_params=cfg.task.world)
         #Load dataset
         base_dir = Path('./tmp_results/{}/{}'.format(cfg.task_name, 'policy_eval'))
-        model_dir = os.path.join(base_dir, 'models')
         data_dir = os.path.join(base_dir, 'data')
 
         #Initialize task
@@ -118,86 +125,40 @@ def get_task_and_dataset(task_name:str, cfg=None): #log max_episode_steps
 
     return env, task, replay_buffer
 
-def get_mpc_policy(cfg, policy=None, vf=None, qf=None, V_min=-float('inf'), V_max=float('inf')
-):
+def get_mpc_policy(cfg, policy=None, vf=None, qf=None, value_metrics=None):
     task_name = cfg.task_name
     task_details = task_map[task_name]
     task_cls = task_details['task_cls']    
     dynamics_model_cls = task_details['dynamics_model_cls']
-
-    task = task_cls(
-        cfg=cfg.task.task, device=cfg.rl_device, viz_rollouts=False, world_params=cfg.task.world)
-
-    obs_dim = task.obs_dim
-    act_dim = task.action_dim
-
     mpc_policy = MPCPolicy(
-        obs_dim=obs_dim, act_dim=act_dim, config=cfg.mpc,
+        obs_dim=1, act_dim=1, config=cfg.mpc,
         task_cls=task_cls, dynamics_model_cls=dynamics_model_cls, 
-        sampling_policy=policy, vf=vf, qf=qf, V_min=V_min, V_max=V_max,
+        sampling_policy=policy, vf=vf, qf=qf,
         device=cfg.rl_device)
-    del task
+    mpc_policy.set_value_metrics(value_metrics)
     return mpc_policy
-
-
-def wrap_env(
-    env: gym.Env,
-    state_mean: Union[np.ndarray, float] = 0.0,
-    state_std: Union[np.ndarray, float] = 1.0,
-    reward_scale: float = 1.0,
-) -> gym.Env:
-    # PEP 8: E731 do not assign a lambda expression, use a def
-    def normalize_state(state):
-        return (
-            state - state_mean
-        ) / state_std  # epsilon should be already added in std.
-
-    def scale_reward(reward):
-        # Please be careful, here reward is multiplied by scale!
-        return reward_scale * reward
-
-    env = gym.wrappers.TransformObservation(env, normalize_state)
-    if reward_scale != 1.0:
-        env = gym.wrappers.TransformReward(env, scale_reward)
-    return env
-
-def compute_mean_std(states: np.ndarray, eps: float) -> Tuple[np.ndarray, np.ndarray]:
-    mean = states.mean(0)
-    std = states.std(0) + eps
-    return mean.cpu().numpy(), std.cpu().numpy()
-
-
-def normalize_states(states: np.ndarray, mean: np.ndarray, std: np.ndarray):
-    return (states - mean) / std
-
 
 @hydra.main(config_name="config", config_path="../content/configs/gym")
 def main(cfg: DictConfig):
     torch.set_default_dtype(torch.float32)
+    torch.manual_seed(cfg.seed)
+    np.random.seed(cfg.seed)
 
     env, task, dataset = get_task_and_dataset(cfg.task_name, cfg)
-    dataset, dataset_info = preprocess_dataset(
+    train_dataset, val_dataset, success_dataset, dataset_info = preprocess_dataset(
         dataset, env, task, cfg.train.agent, 
         normalize_score_fn=lambda returns: normalize_score(cfg.task_name, returns))
-    dataset = qlearning_dataset(dataset=dataset)
+    train_dataset = qlearning_dataset(train_dataset)
+    if val_dataset is not None: val_dataset.to(cfg.rl_device)
+    success_dataset = None #TODO: Only for testing
+    # if val_dataset is not None: val_dataset = qlearning_dataset(val_dataset)
+    # if success_dataset is not None: success_dataset = qlearning_dataset(success_dataset)
     print(dataset_info)
 
-    if cfg.train.agent.normalize_states:
-        state_mean, state_std = compute_mean_std(dataset["observations"], eps=1e-3)
-    else:
-        state_mean, state_std = 0, 1
-    # dataset["observations"] = normalize_states(
-    #     dataset["observations"], state_mean, state_std
-    # )
-    # dataset["next_observations"] = normalize_states(
-    #     dataset["next_observations"], state_mean, state_std
-    # )
-    # env = wrap_env(env, state_mean=state_mean, state_std=state_std)
     env = GymEnvWrapper(env, task)
 
     logging_info = init_logging(cfg.task_name, cfg.train.agent.name, cfg)
     model_dir = logging_info['model_dir']
-    logger = logging_info['log']
     tb_writer = logging_info['tb_writer']
     eval_rng = torch.Generator(device=cfg.rl_device)
     eval_rng.manual_seed(cfg.seed)
@@ -207,10 +168,10 @@ def main(cfg: DictConfig):
         env.seed(cfg.seed)
     except:
         print('Env does not have seed')
-
     obs_dim, act_dim = dataset['observations'].shape[-1], dataset['actions'].shape[-1]
     policy = GaussianPolicy(
-        obs_dim=obs_dim, act_dim=act_dim, config=cfg.train.policy, task=task, device=cfg.rl_device)
+        obs_dim=obs_dim, act_dim=act_dim, config=cfg.train.policy, device=cfg.rl_device) #task=task,
+    target_policy = copy.deepcopy(policy).requires_grad_(False)
     # qf = TwinQFunction(
     #     obs_dim=obs_dim, act_dim=act_dim, config=cfg.train.qf, device=cfg.rl_device)
     qf = EnsembleQFunction(
@@ -222,65 +183,105 @@ def main(cfg: DictConfig):
 
     #initialize mpc policy
     V_min, V_max = dataset_info['V_min'], dataset_info['V_max']
-    mpc_policy = get_mpc_policy(cfg, policy=None, vf=vf, qf=qf, V_min=V_min, V_max=V_max)
+    value_metrics = {
+        'V_min': dataset_info['V_min'], 'V_max': dataset_info['V_max'],
+        'V_mean':  dataset_info["disc_return_mean"], 'V_std': dataset_info['disc_return_std']}
+    mpc_policy = get_mpc_policy(cfg, policy=None, vf=vf, qf=qf, value_metrics=value_metrics)
 
     # Run behavior pretraining
     num_train_steps = int(cfg.train.agent['num_pretrain_steps'])
     agent = BPAgent(
-        cfg.train.agent, env, task, obs_dim, act_dim,
-        dataset, runner_fn=None, policy=None, qf=None, vf=vf,
-        target_qf=None, target_vf=target_vf,
-        max_steps=num_train_steps, V_min=V_min, V_max=V_max, 
-        logger=None, tb_writer=None,
-        device=cfg.rl_device, eval_rng=eval_rng
+        cfg.train.agent, policy=policy, qf=None, vf=vf, 
+        target_policy=target_policy, target_qf=None, target_vf=target_vf,
+        V_min=V_min, V_max=V_max, device=cfg.rl_device
     )
 
     log_metrics = defaultdict(list)
     pbar = tqdm(range(int(num_train_steps)), desc='train')
     num_eval_episodes = cfg.train.agent.num_eval_episodes
-    eval_first_policy = cfg.train.agent.eval_first_policy
+    eval_first_iter = cfg.train.agent.eval_first_iter
     eval_freq = cfg.train.agent.eval_freq
+    validation_freq = cfg.train.agent.validation_freq
+    max_episode_steps = cfg.task.env.get('episodeLength', 1000)
+    
+    normalization_stats = {"disc_return_mean": 0.0, "disc_return_std": 1.0}
+    if cfg.train.agent.normalize_returns:
+        normalization_stats = {
+            "disc_return_mean": dataset_info["disc_return_mean"],
+            "disc_return_std": dataset_info["disc_return_std"] + 1e-12}
+    agent.setup(max_steps=int(num_train_steps))
     for step_num in pbar:
-        #Evaluate policy at some frequency
-        eval_info = {}
-        if ((step_num + (1-eval_first_policy)) % eval_freq == 0) or (step_num == num_train_steps -1):
-            print('Evaluating policy')
-            policy.eval()
-            eval_data, eval_info = evaluate_policy(
-                env, task, mpc_policy, 1000,
-                num_episodes=num_eval_episodes, 
-                deterministic=True,
-                check_termination=True,
-                discount=cfg.train.agent.discount,
-                normalize_score_fn=lambda returns: normalize_score(cfg.task_name, returns),
-                rng=eval_rng)
-            print(eval_info)
+        #Run validation at some frequency
+        if (step_num % validation_freq == 0) or (step_num == num_train_steps -1):
+            print('Validation...')
+            policy.eval(); qf.eval(); vf.eval()
+            with record_function('validation'):
+                val_metrics, val_figs = agent.compute_validation_metrics(val_dataset, success_dataset, normalization_stats)
+            policy.train(); qf.train(); vf.train()
+
+            #Log stuff
+            row = {}
+            for k, v in val_metrics.items():
+                row[k.split("/")[-1]] = v
+                tb_writer.add_scalar(k, v, step_num)
+            tb_writer.add_figure('Validation Ensemble Value Predictions', [v for k,v in val_figs.items()], step_num)
+            # if cfg.wandb_activate: 
+            #     # wandb.log(val_figs, step=step_num)
+            #     wandb.log(val_metrics, step=step_num)
+            [plt.close(fig) for num, fig in val_figs.items()]
+        
+        #Rollout Policy at some frequency
+        if ((step_num + (1-eval_first_iter)) % eval_freq == 0) or (step_num == num_train_steps -1):
+            eval_info = {}
+            with record_function('rollouts'):
+                policy.eval(); qf.eval(); vf.eval()
+                if num_eval_episodes > 0:
+                    rollout_data, eval_info = evaluate_policy(
+                        env, task, mpc_policy, max_episode_steps,
+                        num_episodes=num_eval_episodes, 
+                        deterministic=True,
+                        compute_cost=True,
+                        compute_termination=True,
+                        discount=cfg.train.agent.discount,
+                        normalize_score_fn=lambda returns: normalize_score(cfg.task_name, returns),
+                        rng=eval_rng)
+                policy.train(); qf.train(); vf.train()
+
             #Log stuff
             row = {}
             for k, v in eval_info.items():
                 row[k.split("/")[-1]] = v
                 tb_writer.add_scalar(k, v, step_num)
-            policy.train()
-        #Sample batch of data
+            # if cfg.wandb_activate: wandb.log(eval_info, step=step_num)
+        
+        #Sample batch of data for training
         with record_function('sample_batch'):
             batch = dataset.sample(cfg.train.agent['train_batch_size'])
             batch = dict_to_device(batch, cfg.rl_device)
+            full_batch = batch
+            if success_dataset is not None:
+                success_batch = success_dataset.sample(cfg.train.agent['train_batch_size'])
+                success_batch = dict_to_device(success_batch, cfg.rl_device)
+                full_batch = {k: torch.cat([full_batch[k], success_batch[k]], dim=0) for k in full_batch.keys()}
+            
         #Update agent
         with record_function('update'):
-            train_metrics = agent.update(batch_dict=batch, step_num=step_num)
+            train_metrics = agent.update(
+                full_batch, step_num=step_num, normalization_stats=normalization_stats)
             # pbar.set_postfix(train_metrics)
         
-        log_metrics = {**log_metrics, **train_metrics}
+        log_metrics = {**log_metrics, **train_metrics, **val_metrics}
         #Log stuff
         row = {}
         for k, v in log_metrics.items():
             row[k.split("/")[-1]] = v
             tb_writer.add_scalar(k, v, step_num)
+        # if cfg.wandb_activate: wandb.log(log_metrics, step=step_num)
         # logger.row(row)
-
         if (step_num % cfg.train.agent.checkpoint_freq == 0) or (step_num == num_train_steps -1):
-            print(f'Iter {step_num}: Saving current policy')
-            agent.save(model_dir, None, iter=0)
-            
+            print(f'Iter {step_num}: Saving current agent to {model_dir}')
+            agent_state = agent.state_dict()
+            torch.save(agent_state, os.path.join(model_dir, 'agent_checkpoint.pt'))
+    if cfg.wandb_activate: wandb.finish()
 if __name__ == "__main__":
     main()

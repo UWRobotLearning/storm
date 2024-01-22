@@ -10,7 +10,7 @@ import torch.nn as nn
 from torch.utils.data import TensorDataset, DataLoader
 import torchaudio
 from scipy import signal
-from storm_kit.learning.replay_buffer import ReplayBuffer
+from storm_kit.learning.replay_buffer import ReplayBuffer, train_val_split
 import matplotlib.pyplot as plt
 from collections import defaultdict
 import numpy as np
@@ -311,183 +311,6 @@ def cat_dict_list(input_dict_list, idx):
     
     return D
 
-def episode_runner(
-        envs,
-        num_episodes: int, 
-        policy,
-        task,
-        collect_data: bool = False,
-        deterministic: bool = False,
-        debug: bool = False,
-        compute_termination: bool = True,
-        device: torch.device = torch.device('cpu'),
-        rng:Optional[torch.Generator] = None):  
-        
-        buffer = None
-        if collect_data:
-            buffer = ReplayBuffer(capacity=int(1e6), device=device)
-        
-        total_steps_collected = 0
-
-        reset_data = task.reset(rng=rng)
-        policy.reset(reset_data)
-        curr_state_dict = copy.deepcopy(envs.reset(reset_data))
-        # curr_obs = task.forward(curr_state_dict)[0]
-        # obs, state_dict_full = task.compute_observations(state_dict=state_dict)
-        # curr_obs = curr_obs.view(envs.num_envs, obs_dim)
-        # curr_costs = torch.zeros(envs.num_envs, device=device)
-        # episode_lens = torch.zeros(envs.num_envs, device=device)
-        # avg_episode_cost = 0.0
-        # episodes_terminated = 0
-        # episodes_done = 0
-        num_episodes_done = 0
-        num_episodes_terminated = 0
-        episode_lens = 0
-        # transition_dict_list = []
-        # episode_metrics_list = []
-        # episode_cost_buffer = []
-        print('Collecting {0} episodes, determinsitic={1}'.format(num_episodes, deterministic))
-        while num_episodes_done < num_episodes:
-            with torch.no_grad():
-
-                policy_input = {
-                    'states': curr_state_dict}
-                                
-                command, policy_info = policy.get_action(policy_input, deterministic=deterministic)
-                actions = policy_info['action']
-                curr_filtered_state = policy_info['filtered_states']
-                if actions.ndim == 3:
-                    actions = actions.squeeze(0)
-
-                next_state_dict, done_env = envs.step(command)
-                # next_obs, cost, done_task, cost_terms, done_cost, done_info = task.forward(next_state_dict, actions)
-                done_task = torch.zeros_like(done_env)
-                if compute_termination:
-                    done_task, done_cost, done_info = task.compute_termination(
-                        curr_state_dict, actions, compute_full_state=True)
-                    if done_task.item() > 0:
-                        print(done_info['in_bounds'])
-                        print('state_dict', curr_state_dict)
-                        print('state_bounds', task.state_bounds)
-                        print('command', command)
-                # done_task = done_task.view(envs.num_envs,)
-                # cost = cost.view(envs.num_envs,)
-                # done_cost = done_cost.view(envs.num_envs,)
-                # task.update_state(next_state_dict)
-                # next_obs = task.compute_observations()
-                # next_obs = next_obs.view(envs.num_envs, obs_dim)
-
-                # next_obs, next_state_dict_full = task.compute_observations(next_state_dict)
-                # done_task, done_cost, _ = task.compute_termination(state_dict_full, actions)
-                # cost, _, _ = task.compute_cost(state_dict=state_dict_full, action_batch=actions, termination_cost=done_cost)
-                # obs, cost, done_task, cost_terms, done_cost = task.forward(next_state_dict, actions)
-
-
-                # next_obs = next_obs.view(envs.num_envs, obs_dim)
-                # done_task = done_task.view(envs.num_envs,)
-                # cost = cost.view(envs.num_envs,)
-                # done_cost = done_cost.view(envs.num_envs, )
-                
-            # curr_costs += cost
-            done = (done_env + done_task) > 0
-
-            #remove timeout from done
-            episode_lens += 1
-            timeout = episode_lens == envs.max_episode_length - 1
-            done_without_timeouts = done * (1.0-timeout)
-
-            total_steps_collected += 1
-            episode_done = done.item()
-            num_episodes_terminated += done_without_timeouts.item() 
-
-            transition_dict = {}  
-            for k in curr_state_dict:
-                transition_dict['states/{}'.format(k)] = copy.deepcopy(curr_state_dict[k])              
-            for k in curr_filtered_state:
-                transition_dict['states/filtered/{}'.format(k)] = copy.deepcopy(curr_filtered_state[k])              
-            for k in reset_data['goal_dict']:
-                transition_dict['goal/{}'.format(k)] = reset_data['goal_dict'][k]
-            # transition_dict['state_dict'] = copy.deepcopy(curr_state_dict)
-            # transition_dict['next_state_dict'] = copy.deepcopy(next_state_dict)
-            # transition_dict['filtered_state_dict'] = copy.deepcopy(curr_filtered_state)
-            # transition_dict['goal_dict'] = reset_data['goal_dict']
-            transition_dict['actions'] = copy.deepcopy(actions)
-            # transition_dict['obs'] = curr_obs.clone()
-            # transition_dict['next_obs'] = next_obs.clone()
-            # transition_dict['cost'] = cost
-            transition_dict['terminals'] = done_without_timeouts
-            transition_dict['timeouts'] = torch.tensor([timeout])     
-            # transition_dict_list.append(transition_dict)  
-            if collect_data:
-                buffer.add(transition_dict)
-
-            curr_state_dict = copy.deepcopy(next_state_dict)
-            # curr_obs = next_obs.clone()
-            # state_dict_full = copy.deepcopy(next_state_dict_full)
-
-            #reset if done
-            # done_indices = done.nonzero(as_tuple=False).squeeze(-1)
-            # done_episode_costs = curr_costs[done_indices]
-            # curr_num_eps_done = len(done_indices)
-
-            # curr_num_eps_terminated = torch.sum(done_without_timeouts).item()
-
-            # episodes_done += curr_num_eps_done
-            # episodes_terminated += curr_num_eps_terminated
-            # curr_num_steps = cost.shape[0]
-
-            # if curr_num_eps_done > 0:
-            if episode_done:
-                num_episodes_done += 1
-                episode_lens = 0
-                #Add done episode to buffer
-                # for idx in done_indices:
-                    # episode_dict = cat_dict_list(transition_dict_list, idx)
-
-                    # if update_buffer:
-                    #     buffer.add(episode_dict)
-                    
-                    #compute episode metrics
-                    # episode_metrics_list.append(task.compute_metrics(episode_dict))
-                    # episode_cost_buffer.append(curr_costs[idx].item())
-                                    
-                #Reset everything
-                # reset_data = task.reset_idx(done_indices, rng=rng)
-                # curr_state_dict = envs.reset_idx(done_indices, reset_data)
-                reset_data = task.reset(rng=rng)
-                curr_state_dict = envs.reset(reset_data)
-                #TODO: policy should be reset only for the required instances
-                #especially this is true for MPC policies
-                policy.reset(reset_data)
-                # task.update_state(curr_state_dict)
-                # obs=task.compute_observations()
-                # curr_obs = task.forward(curr_state_dict)[0]
-                # obs, state_dict_full = task.compute_observations(state_dict=state_dict)
-                # curr_obs = curr_obs.view(envs.num_envs, obs_dim)
-                # transition_dict_list = [] #TODO: This also needs to be reset for specific instances
-                
-            # curr_num_eps_dones = torch.sum(done).item()
-            # if curr_num_eps_dones > 0:
-                # for i in range(curr_num_eps_dones):
-                #     episode_cost_buffer.append(done_episode_costs[i].item())
-                    # if len(episode_reward_buffer) > 10:
-                    #     episode_reward_buffer.pop(0)
-
-            #Reset costs and episode_lens for episodes that are done only
-            # not_done = 1.0 - done.float()
-            # curr_costs = curr_costs * not_done
-            # episode_lens = episode_lens * not_done
-
-        # if len(episode_cost_buffer) > 0:
-        #     avg_episode_cost = np.average(episode_cost_buffer).item()
-
-        metrics = {
-            'num_steps_collected': total_steps_collected,
-            'num_eps_collected': num_episodes_done,
-            'num_eps_terminated': num_episodes_terminated,
-            }
-        
-        return buffer, metrics
 
 def run_episode(
         env, task, policy, 
@@ -608,27 +431,70 @@ def evaluate_policy(
     return ep_datas, info
 
 
-def preprocess_dataset(dataset, env, task=None, cfg=None, normalize_score_fn=None):
+def preprocess_dataset(train_dataset, env, task=None, cfg=None, normalize_score_fn=None):
     info = {}
-    discount = 1.0
-    if cfg is not None:
-        discount = cfg.discount
-        #relabel cost, rewards and terminals
-        if task is not None and cfg.relabel_data:
-            dataset = relabel_dataset(dataset, task)
+    # discount = 1.0
+    validation_dataset = None
+    # if cfg is not None:
+    discount = cfg.discount
+    #relabel cost, rewards and terminals
+    if task is not None and cfg.relabel_data:
+        train_dataset = relabel_dataset(train_dataset, task)
+    #add to dataset returns and quantities required for MC targets
+    train_dataset, ep_returns, ep_disc_returns = add_returns_to_dataset(train_dataset, discount=discount)
+    #split into training and validation trajectories
+    if cfg.train_val_split_ratio > 0.:
+        train_dataset, validation_dataset = train_val_split(train_dataset, cfg.train_val_split_ratio)
+
     #Set range of rewards/costs
-    rew_or_cost = dataset['costs'] if 'costs' in dataset else dataset['rewards']
-    r_c_min = rew_or_cost.min().item()
-    r_c_max = rew_or_cost.max().item()
-    info['r_c_min'] = r_c_min
-    info['r_c_max'] = r_c_max
+    rew_or_cost = train_dataset['costs'] if 'costs' in train_dataset else train_dataset['rewards']
+    info['r_c_min'] = rew_or_cost.min().item()
+    info['r_c_max'] = rew_or_cost.max().item()
+    info['r_c_mean'] = rew_or_cost.mean().item()
+    info['r_c_std'] = rew_or_cost.std().item()
     # Set range of value functions
     Vmax, Vmin = float('inf'), -float('inf')
+    # TODO: Check if this is right since we should take episode length into account too
     if cfg.clip_values:
         Vmax = max(0.0, rew_or_cost.max()/(1.-discount)).item()
         Vmin = min(0.0, rew_or_cost.min()/(1.-discount), Vmax-1.0/(1-discount))
     info['V_max'] = Vmax
     info['V_min'] = Vmin
+    
+    #extract dataset of "success states" from train_dataset
+    #TODO: Maybe this should just be a dataset of trajectories with 
+    # terminals in them 
+    success_dataset=None
+    if "success" in train_dataset.keys():
+        success_idxs = train_dataset["success"] > 0
+        success_dataset = ReplayBuffer(capacity=len(train_dataset["success"].nonzero()), device=train_dataset.device)
+        success_batch = {k: v[success_idxs] for (k,v) in train_dataset.items()}
+        success_dataset.add_batch(success_batch)
+    
+    info["return_min"] = min(train_dataset["returns"]).item()
+    info["return_max"] = max(train_dataset["returns"]).item()
+    info["return_mean"] = train_dataset["returns"].mean().item()
+    info["return_std"] = train_dataset["returns"].std().item()
+    info["disc_return_max"] = max(train_dataset["disc_returns"]).item()
+    info["disc_return_min"] = min(train_dataset["disc_returns"]).item()
+    info["disc_return_mean"] = train_dataset["disc_returns"].mean().item()
+    info["disc_return_std"] = train_dataset["disc_returns"].std().item()
+
+    info['ep_return_min'] = min(ep_returns)
+    info['ep_return_max'] = max(ep_returns)
+    info['ep_disc_return_min'] = min(ep_disc_returns)
+    info['ep_disc_return_max'] = max(ep_disc_returns)
+    
+    if normalize_score_fn is not None:
+        normalized_returns = normalize_score_fn(np.array(train_dataset['returns']))
+        info['normalized_return_mean'] = normalized_returns.mean()
+        info['normalized_return_std'] = normalized_returns.std()
+    
+    return train_dataset, validation_dataset, success_dataset, info
+
+
+
+def add_returns_to_dataset(dataset, discount):
 
     #Augment data with returns/discounted returns and other quantitites 
     # useful for calculating MC targets
@@ -663,18 +529,9 @@ def preprocess_dataset(dataset, env, task=None, cfg=None, normalize_score_fn=Non
     dataset['remaining_steps'] = torch.cat(remaining_steps, dim=0)
     dataset['last_observations'] = torch.cat(last_observations, dim=0)
     dataset['last_terminals'] = torch.cat(last_terminals, dim=0)
-    
-    info['ep_return_min'] = min(ep_returns)
-    info['ep_return_max'] = max(ep_returns)
-    info['ep_disc_return_min'] = min(ep_disc_returns)
-    info['ep_disc_return_max'] = max(ep_disc_returns)
-    
-    if normalize_score_fn is not None:
-        normalized_returns = normalize_score_fn(np.array(dataset['returns']))
-        info['normalized_return_mean'] = normalized_returns.mean()
-        info['normalized_return_std'] = normalized_returns.std()
-    
-    return dataset, info
+
+    return dataset, ep_returns, ep_disc_returns
+
 
 def relabel_dataset(dataset, task):
     device = task.device
@@ -690,7 +547,6 @@ def relabel_dataset(dataset, task):
         if split[0] == 'goals':
             goal_dict[split[-1]] = torch.as_tensor(v).to(device)
     
-
     with torch.no_grad():
         task.update_params({'goal_dict': goal_dict})
         full_state_dict = task.compute_full_state(state_dict)
@@ -698,11 +554,12 @@ def relabel_dataset(dataset, task):
         new_terminals, new_terminal_cost, term_info = task.compute_termination(full_state_dict)
         new_cost += new_terminal_cost
         new_observations = task.compute_observations(full_state_dict, compute_full_state=False, cost_terms=cost_terms)
+        new_success = task.compute_success(full_state_dict)
 
     dataset["observations"] = new_observations.to(dataset.device)
     dataset["costs"] = new_cost.to(dataset.device)
     dataset["terminals"] = new_terminals.to(dataset.device)
-
+    dataset["success"] = new_success.to(dataset.device)    
     return dataset
 
 def plot_episode(episode, block=False):
@@ -711,6 +568,9 @@ def plot_episode(episode, block=False):
     q_vel = episode['states/q_vel']
     q_acc = episode['states/q_acc']
     actions = episode['actions']
+    costs = episode['costs']
+    returns = episode['returns'] if 'returns' in episode else None
+    disc_returns = episode['disc_returns'] if 'disc_returns' in episode else None
     if torch.is_tensor(q_pos): 
         q_pos = q_pos.cpu().numpy()
     if torch.is_tensor(q_vel): 
@@ -719,12 +579,17 @@ def plot_episode(episode, block=False):
         q_acc = q_acc.cpu().numpy()
     if torch.is_tensor(actions): 
         actions = actions.cpu().numpy()
+    if torch.is_tensor(costs):
+        costs = costs.cpu().numpy()
+    if returns is not None and torch.is_tensor(returns):
+        returns = returns.cpu().numpy()
+    if disc_returns is not None and torch.is_tensor(disc_returns):
+        disc_returns = disc_returns.cpu().numpy()
 
 
     fig, ax = plt.subplots(3,1)
     num_points, n_dofs = q_pos.shape
     for n in range(n_dofs):
-
         ax[0].plot(q_pos[:,n], label='dof_{}'.format(n+1))
         ax[1].plot(q_vel[:,n])
         ax[2].plot(actions[:,n])
@@ -734,10 +599,22 @@ def plot_episode(episode, block=False):
     ax[1].set_ylabel('q_vel (rad/s)')
     ax[2].set_ylabel('actions [q_acc] (rad/s^2)')
     ax[0].legend(loc='upper center', bbox_to_anchor=(0.5, 1.1), ncol=5, fancybox=True, shadow=True)    
+
+    fig2, ax2 = plt.subplots(3,1)
+    ax2[0].plot(costs)
+    if returns is not None: ax2[1].plot(returns)
+    if disc_returns is not None: ax2[2].plot(disc_returns)
+
+    ax2[0].set_ylabel('Costs')
+    ax2[1].set_ylabel('Returns')
+    ax2[2].set_ylabel('Discounted Returns')
+    ax2[-1].set_xlabel('Episode Timestep')
+
     plt.show(block=block)
     if not block:
         plt.waitforbuttonpress(-1)
         plt.close(fig)
+        plt.close(fig2)
 
 # Below are modified from 
 # https://github.com/gwthomas/IQL-PyTorch
@@ -780,6 +657,10 @@ def return_range(dataset, max_episode_steps):
     assert sum(lengths) == len(dataset['rewards'])
     return min(returns), max(returns)
 
+def update_exponential_moving_average(target, source, alpha):
+    for target_param, source_param in zip(target.parameters(), source.parameters()):
+        target_param.data.mul_(1. - alpha).add_(source_param.data, alpha=alpha)
+
 
 class VectorizedLinear(nn.Module):
     def __init__(self, in_features: int, out_features: int, ensemble_size: int):
@@ -812,6 +693,186 @@ class VectorizedLinear(nn.Module):
 
 
 #DEPRECATED
+    
+
+# def episode_runner(
+#         envs,
+#         num_episodes: int, 
+#         policy,
+#         task,
+#         collect_data: bool = False,
+#         deterministic: bool = False,
+#         debug: bool = False,
+#         compute_termination: bool = True,
+#         device: torch.device = torch.device('cpu'),
+#         rng:Optional[torch.Generator] = None):  
+        
+#         buffer = None
+#         if collect_data:
+#             buffer = ReplayBuffer(capacity=int(1e6), device=device)
+        
+#         total_steps_collected = 0
+
+#         reset_data = task.reset(rng=rng)
+#         policy.reset(reset_data)
+#         curr_state_dict = copy.deepcopy(envs.reset(reset_data))
+#         # curr_obs = task.forward(curr_state_dict)[0]
+#         # obs, state_dict_full = task.compute_observations(state_dict=state_dict)
+#         # curr_obs = curr_obs.view(envs.num_envs, obs_dim)
+#         # curr_costs = torch.zeros(envs.num_envs, device=device)
+#         # episode_lens = torch.zeros(envs.num_envs, device=device)
+#         # avg_episode_cost = 0.0
+#         # episodes_terminated = 0
+#         # episodes_done = 0
+#         num_episodes_done = 0
+#         num_episodes_terminated = 0
+#         episode_lens = 0
+#         # transition_dict_list = []
+#         # episode_metrics_list = []
+#         # episode_cost_buffer = []
+#         print('Collecting {0} episodes, determinsitic={1}'.format(num_episodes, deterministic))
+#         while num_episodes_done < num_episodes:
+#             with torch.no_grad():
+
+#                 policy_input = {
+#                     'states': curr_state_dict}
+                                
+#                 command, policy_info = policy.get_action(policy_input, deterministic=deterministic)
+#                 actions = policy_info['action']
+#                 curr_filtered_state = policy_info['filtered_states']
+#                 if actions.ndim == 3:
+#                     actions = actions.squeeze(0)
+
+#                 next_state_dict, done_env = envs.step(command)
+#                 # next_obs, cost, done_task, cost_terms, done_cost, done_info = task.forward(next_state_dict, actions)
+#                 done_task = torch.zeros_like(done_env)
+#                 if compute_termination:
+#                     done_task, done_cost, done_info = task.compute_termination(
+#                         curr_state_dict, actions, compute_full_state=True)
+#                     if done_task.item() > 0:
+#                         print(done_info['in_bounds'])
+#                         print('state_dict', curr_state_dict)
+#                         print('state_bounds', task.state_bounds)
+#                         print('command', command)
+#                 # done_task = done_task.view(envs.num_envs,)
+#                 # cost = cost.view(envs.num_envs,)
+#                 # done_cost = done_cost.view(envs.num_envs,)
+#                 # task.update_state(next_state_dict)
+#                 # next_obs = task.compute_observations()
+#                 # next_obs = next_obs.view(envs.num_envs, obs_dim)
+
+#                 # next_obs, next_state_dict_full = task.compute_observations(next_state_dict)
+#                 # done_task, done_cost, _ = task.compute_termination(state_dict_full, actions)
+#                 # cost, _, _ = task.compute_cost(state_dict=state_dict_full, action_batch=actions, termination_cost=done_cost)
+#                 # obs, cost, done_task, cost_terms, done_cost = task.forward(next_state_dict, actions)
+
+
+#                 # next_obs = next_obs.view(envs.num_envs, obs_dim)
+#                 # done_task = done_task.view(envs.num_envs,)
+#                 # cost = cost.view(envs.num_envs,)
+#                 # done_cost = done_cost.view(envs.num_envs, )
+                
+#             # curr_costs += cost
+#             done = (done_env + done_task) > 0
+
+#             #remove timeout from done
+#             episode_lens += 1
+#             timeout = episode_lens == envs.max_episode_length - 1
+#             done_without_timeouts = done * (1.0-timeout)
+
+#             total_steps_collected += 1
+#             episode_done = done.item()
+#             num_episodes_terminated += done_without_timeouts.item() 
+
+#             transition_dict = {}  
+#             for k in curr_state_dict:
+#                 transition_dict['states/{}'.format(k)] = copy.deepcopy(curr_state_dict[k])              
+#             for k in curr_filtered_state:
+#                 transition_dict['states/filtered/{}'.format(k)] = copy.deepcopy(curr_filtered_state[k])              
+#             for k in reset_data['goal_dict']:
+#                 transition_dict['goal/{}'.format(k)] = reset_data['goal_dict'][k]
+#             # transition_dict['state_dict'] = copy.deepcopy(curr_state_dict)
+#             # transition_dict['next_state_dict'] = copy.deepcopy(next_state_dict)
+#             # transition_dict['filtered_state_dict'] = copy.deepcopy(curr_filtered_state)
+#             # transition_dict['goal_dict'] = reset_data['goal_dict']
+#             transition_dict['actions'] = copy.deepcopy(actions)
+#             # transition_dict['obs'] = curr_obs.clone()
+#             # transition_dict['next_obs'] = next_obs.clone()
+#             # transition_dict['cost'] = cost
+#             transition_dict['terminals'] = done_without_timeouts
+#             transition_dict['timeouts'] = torch.tensor([timeout])     
+#             # transition_dict_list.append(transition_dict)  
+#             if collect_data:
+#                 buffer.add(transition_dict)
+
+#             curr_state_dict = copy.deepcopy(next_state_dict)
+#             # curr_obs = next_obs.clone()
+#             # state_dict_full = copy.deepcopy(next_state_dict_full)
+
+#             #reset if done
+#             # done_indices = done.nonzero(as_tuple=False).squeeze(-1)
+#             # done_episode_costs = curr_costs[done_indices]
+#             # curr_num_eps_done = len(done_indices)
+
+#             # curr_num_eps_terminated = torch.sum(done_without_timeouts).item()
+
+#             # episodes_done += curr_num_eps_done
+#             # episodes_terminated += curr_num_eps_terminated
+#             # curr_num_steps = cost.shape[0]
+
+#             # if curr_num_eps_done > 0:
+#             if episode_done:
+#                 num_episodes_done += 1
+#                 episode_lens = 0
+#                 #Add done episode to buffer
+#                 # for idx in done_indices:
+#                     # episode_dict = cat_dict_list(transition_dict_list, idx)
+
+#                     # if update_buffer:
+#                     #     buffer.add(episode_dict)
+                    
+#                     #compute episode metrics
+#                     # episode_metrics_list.append(task.compute_metrics(episode_dict))
+#                     # episode_cost_buffer.append(curr_costs[idx].item())
+                                    
+#                 #Reset everything
+#                 # reset_data = task.reset_idx(done_indices, rng=rng)
+#                 # curr_state_dict = envs.reset_idx(done_indices, reset_data)
+#                 reset_data = task.reset(rng=rng)
+#                 curr_state_dict = envs.reset(reset_data)
+#                 #TODO: policy should be reset only for the required instances
+#                 #especially this is true for MPC policies
+#                 policy.reset(reset_data)
+#                 # task.update_state(curr_state_dict)
+#                 # obs=task.compute_observations()
+#                 # curr_obs = task.forward(curr_state_dict)[0]
+#                 # obs, state_dict_full = task.compute_observations(state_dict=state_dict)
+#                 # curr_obs = curr_obs.view(envs.num_envs, obs_dim)
+#                 # transition_dict_list = [] #TODO: This also needs to be reset for specific instances
+                
+#             # curr_num_eps_dones = torch.sum(done).item()
+#             # if curr_num_eps_dones > 0:
+#                 # for i in range(curr_num_eps_dones):
+#                 #     episode_cost_buffer.append(done_episode_costs[i].item())
+#                     # if len(episode_reward_buffer) > 10:
+#                     #     episode_reward_buffer.pop(0)
+
+#             #Reset costs and episode_lens for episodes that are done only
+#             # not_done = 1.0 - done.float()
+#             # curr_costs = curr_costs * not_done
+#             # episode_lens = episode_lens * not_done
+
+#         # if len(episode_cost_buffer) > 0:
+#         #     avg_episode_cost = np.average(episode_cost_buffer).item()
+
+#         metrics = {
+#             'num_steps_collected': total_steps_collected,
+#             'num_eps_collected': num_episodes_done,
+#             'num_eps_terminated': num_episodes_terminated,
+#             }
+        
+#         return buffer, metrics
+
 
 # if isinstance(episode_r_c, torch.Tensor):
 #     ret = torch.cumsum(episode_r_c.flip(0), dim=0).flip(0)

@@ -5,53 +5,73 @@ import numpy as np
 import torch
 import torch.optim as optim
 from torch.optim.lr_scheduler import CosineAnnealingLR
-import torch.nn as nn
+
 import torch.nn.functional as F
 from torch.profiler import record_function
 
 from storm_kit.learning.agents import Agent
-from storm_kit.learning.learning_utils import dict_to_device, asymmetric_l2_loss, update_exponential_moving_average
-from storm_kit.learning.replay_buffer import ReplayBuffer
-import matplotlib.pyplot as plt
+from storm_kit.learning.learning_utils import dict_to_device, asymmetric_l2_loss
+from storm_kit.mpc.control.control_utils import cost_to_go
+import time
+from tqdm import tqdm
 
-class BPAgent(nn.Module):
+class BPAgent(Agent):
     def __init__(
         self,
         cfg,
+        envs,
+        task,
+        obs_dim,
+        action_dim,
+        buffer,
+        runner_fn,
+        # mpc_policy,
         policy=None,
         qf=None,
         vf=None,
-        target_policy=None,
         target_qf=None,
         target_vf=None,
+        max_steps=np.inf,
         V_min=-float('inf'),
         V_max=float('inf'),
+        logger=None,
+        tb_writer=None,
         device=torch.device('cpu'), 
+        eval_rng: Optional[torch.Generator]=None
     ):
-        super().__init__()
-        self.cfg = cfg
-        self.policy = policy
+        super().__init__(
+            cfg, envs, task, obs_dim, action_dim, #obs_space, action_space,
+            buffer=buffer, policy=policy,
+            runner_fn=runner_fn,
+            logger=logger, tb_writer=tb_writer,
+            device=device, eval_rng=eval_rng
+        )
+
         self.qf = qf
-        self.vf = vf
-        self.device = device 
+        self.vf = vf 
 
         if self.policy is not None:
             self.policy_optimizer = optim.Adam(self.policy.parameters(), lr=self.cfg['policy_optimizer']['lr'])
-            self.target_policy = copy.deepcopy(self.policy).requires_grad_(False) if target_policy is None else target_policy
+            self.policy_lr_schedule = CosineAnnealingLR(self.policy_optimizer, max_steps)
 
         if self.qf is not None:
             self.qf_optimizer = optim.Adam(self.qf.parameters(), lr=self.cfg['qf_optimizer']['lr'])
-            self.target_qf = copy.deepcopy(self.qf).requires_grad_(False) if target_qf is None else target_qf
 
         if self.vf is not None:
             self.vf_optimizer = optim.Adam(self.vf.parameters(), lr=self.cfg['vf_optimizer']['lr'])
+
+        if self.qf is not None:
+            # assert self.policy is not None, 'Learning a q network requires a policy network.'
+            self.target_qf = copy.deepcopy(self.qf).requires_grad_(False) if target_qf is None else target_qf
+
+        if self.vf is not None:
             self.target_vf = copy.deepcopy(self.vf).requires_grad_(False) if target_vf is None else target_vf
-        
-        self.setup_agent_called = False
  
         self.V_min, self.V_max = V_min, V_max
         self.num_action_samples = self.cfg['num_action_samples']
-        self.fixed_alpha = self.cfg.get('fixed_alpha', 0.2)
+        # self.fixed_alpha = self.cfg['fixed_alpha']
+        # if self.policy_loss_type not in ["mse", "nll"]:
+        #     raise ValueError('Unidentified policy loss type {}.'.format(self.policy_loss_type))
         self.num_eval_episodes = self.cfg.get('num_eval_episodes', 1)
         self.eval_first_policy = self.cfg.get('eval_first_policy', False)
         self.policy_use_tanh = self.cfg.get('policy_use_tanh', False)
@@ -66,61 +86,127 @@ class BPAgent(nn.Module):
         self.expecile_tau = self.cfg.get('expecile_tau', 0.7)
         self.lambd = self.cfg.get('lambd', 1.0)
 
-    def update(
-            self, batch:Dict[str, torch.Tensor], 
-            step_num:int, normalization_stats:Dict[str, float] = {'disc_return_mean': 0.0, 'disc_return_std': 1.0}, 
-            debug:bool = False):
-        
-        assert self.setup_agent_called, "Agent setup must be called before training"
-        
+    def train(self, model_dir=None, data_dir=None, debug:bool=False):
+        num_train_steps = self.cfg['num_pretrain_steps']
+        log_metrics = defaultdict(list)
+        pbar = tqdm(range(int(num_train_steps)), desc='train')
+
+        for i in pbar:
+            #Evaluate policy at some frequency
+            if ((i + (1-self.eval_first_policy)) % self.eval_freq == 0) or (i == num_train_steps -1):
+                print('[BehaviorPretraining]: Evaluating policy')
+                self.policy.eval()
+                eval_buffer, eval_metrics = self.evaluate_policy(
+                    self.policy, 
+                    num_eval_episodes=self.num_eval_episodes, 
+                    deterministic=True, 
+                    debug=False)
+               
+                print(eval_metrics)
+                for k,v in eval_metrics.items():
+                    log_metrics['eval/episode/{}'.format(k)].append(v)
+                episode_metric_list = [self.task.compute_metrics(episode) for episode in eval_buffer.episode_iterator(
+                    max_episode_length=self.envs.max_episode_length - 1)]
+                episode_metrics = defaultdict(list)
+                for k in episode_metric_list[0].keys():
+                    [episode_metrics[k].append(l[k]) for l in episode_metric_list]
+                for k,v in episode_metrics.items():
+                    log_metrics['eval/episode/{}'.format(k)].extend(v)
+
+                self.policy.train()
+                pbar.set_postfix(eval_metrics)
+
+            with record_function('sample_batch'):
+                batch = self.buffer.sample(self.cfg['train_batch_size']) #, sample_next_state=False)
+                batch = dict_to_device(batch, self.device)
+            
+            if self.relabel_data:
+                with record_function('relabel_data'):
+                    batch = self.preprocess_batch(batch, compute_cost_and_terminals=True)
+            
+            with record_function('update'):
+                train_metrics = self.update(batch, i)
+            pbar.set_postfix(train_metrics)
+
+            for k,v in train_metrics.items():
+                log_metrics['train/losses/{}'.format(k)].append(v)
+
+            #Log stuff
+            row = {}
+            for k, v in log_metrics.items():
+                row[k.split("/")[-1]] = v[-1]
+                if self.tb_writer is not None:                        
+                    self.tb_writer.add_scalar(k, v[-1], i)
+            if self.logger is not None:
+                self.logger.row(row)
+
+            # if self.tb_writer is not None:
+            #     for k, v in train_metrics.items():
+            #         self.tb_writer.add_scalar('Train/' + k, v, i)
+                        
+            if (i % self.checkpoint_freq == 0) or (i == num_train_steps -1):
+                print(f'Iter {i}: Saving current policy')
+                self.save(model_dir, data_dir, iter=0)
+            
+
+    def update(self, batch:Dict[str, torch.Tensor], success_batch:Dict[str, torch.Tensor], step_num:int, debug:bool = False):
+
         policy_info_dict, qf_info_dict, vf_info_dict = {}, {}, {}
 
         #Update value function
         if self.vf is not None:
-            # for (param1, param2) in zip(self.target_vf.parameters(), self.vf.parameters()):
-            #     param1.data.mul_(1. - self.polyak_tau).add_(param2.data, alpha=self.polyak_tau)
-            update_exponential_moving_average(self.target_vf, self.vf, self.polyak_tau)
-            vf_loss, adv, vf_info_dict = self.compute_vf_loss(batch, step_num, normalization_stats)
+            #Update target vf using exponential moving average
+            for (param1, param2) in zip(self.target_vf.parameters(), self.vf.parameters()):
+                param1.data.mul_(1. - self.polyak_tau).add_(param2.data, alpha=self.polyak_tau)
+            vf_loss, adv, vf_info_dict = self.compute_vf_loss(batch, success_batch, step_num, debug)
+
             self.vf_optimizer.zero_grad()
             vf_loss.backward()
             self.vf_optimizer.step()
             batch['adv'] = adv
 
-        #Update Q function
+        #Update q function
         if self.qf is not None:
-            # for (param1, param2) in zip(self.target_qf.parameters(), self.qf.parameters()):
-            #     param1.data.mul_(1. - self.polyak_tau).add_(param2.data, alpha=self.polyak_tau)
-            update_exponential_moving_average(self.target_qf, self.qf, self.polyak_tau)
-            qf_loss, qf_info_dict = self.compute_qf_loss(batch, step_num, normalization_stats)
+            qf_loss, qf_info_dict = self.compute_qf_loss(batch, success_batch, step_num, debug)
             self.qf_optimizer.zero_grad()
             qf_loss.backward()
             self.qf_optimizer.step()
         
         #Update policy
         if self.policy is not None:
-            update_exponential_moving_average(self.target_policy, self.policy, self.polyak_tau)
-            policy_loss, policy_info_dict = self.compute_policy_loss(batch, step_num, normalization_stats)
+            policy_loss, policy_info_dict = self.compute_policy_loss(batch, success_batch, step_num, debug)
             self.policy_optimizer.zero_grad()
             policy_loss.backward()
             self.policy_optimizer.step()
             self.policy_lr_schedule.step()
+
+        # for p1, p2 in zip(self.mpc_policy.policy.controller.sampling_policy.parameters(), self.policy.parameters()):
+        #     assert torch.allclose(p2, p2)
+        # print([p for p in self.mpc_policy.policy.controller.sampling_policy.parameters()])
+        # input('...')
+        # for p1, p2 in zip(self.mpc_policy.policy.controller.value_function.parameters(), self.qf.parameters()):
+        #     assert torch.allclose(p1, p2)
+        # print([p for p in self.mpc_policy.policy.controller.value_function.parameters()])
+        # input('...')
             
         info_dict = {**policy_info_dict, **qf_info_dict, **vf_info_dict}
         
         return info_dict
 
 
-    def compute_policy_loss(
-            self, batch:Dict[str, torch.Tensor], 
-            step_num:int, normalization_stats:Dict[str, float] = {'disc_return_mean': 0.0, 'disc_return_std': 1.0}):
-        
+    def compute_policy_loss(self, batch:Dict[str, torch.Tensor], success_batch:Dict[str, torch.Tensor], step_num:int, debug:bool=False):
         obs_batch = batch['observations']
+        state_batch = batch['state_dict']
         act_batch = batch['actions']
         
         if self.policy_use_tanh:
             act_batch = torch.tanh(act_batch)
 
-        policy_out = self.policy({'obs': obs_batch})
+        policy_input = {
+            'states': state_batch,
+            'obs': obs_batch}
+
+        policy_out = self.policy(policy_input)
 
         if isinstance(policy_out, torch.distributions.Distribution):  # MLE
             bc_loss = -1.0 * policy_out.log_prob(act_batch)
@@ -178,23 +264,23 @@ class BPAgent(nn.Module):
 
         return policy_loss, policy_info_dict
     
-    def compute_qf_loss(
-            self, batch_dict:Dict[str, torch.Tensor], 
-            step_num:int, normalization_stats:Dict[str, float] = {'disc_return_mean': 0.0, 'disc_return_std': 1.0}):
-        
+    def compute_qf_loss(self, batch_dict:Dict[str, torch.Tensor], success_batch:Dict[str, torch.Tensor], step_num:int, debug:bool=False):
         assert self.policy is not None, "Q-function learning requires policy"
-        
         r_c_batch = batch_dict['costs'] if 'costs' in batch_dict else batch_dict['rewards']
         obs_batch = batch_dict['observations']
         act_batch = batch_dict['actions']
         next_obs_batch = batch_dict['next_observations']
         next_state_batch = batch_dict['next_state_dict']
         done_batch = batch_dict['terminals'].float()
+        #Update target critic using exponential moving average
+        for (param1, param2) in zip(self.target_qf.parameters(), self.qf.parameters()):
+            param1.data.mul_(1. - self.polyak_tau).add_(param2.data, alpha=self.polyak_tau)
 
         with torch.no_grad():
             if self.vf is not None and self.vf_target_mode == 'asymmetric_l2':
                 #use vf to compute q-target similar to IQL
                 v_next = self.vf({'obs': next_obs_batch})
+
             else:
                 #query policy to compute q target
                 policy_input = {
@@ -230,9 +316,7 @@ class BPAgent(nn.Module):
         }
         return qf_loss, qf_info_dict
 
-    def compute_vf_loss(
-            self, batch:Dict[str, torch.Tensor], 
-            step_num:int, normalization_stats:Dict[str, float] = {'disc_return_mean': 0.0, 'disc_return_std': 1.0}):
+    def compute_vf_loss(self, batch:Dict[str, torch.Tensor], success_batch:Dict[str,torch.Tensor], step_num:int, debug:bool=False):
         
         r_c_batch = batch['costs'] if 'costs' in batch else batch['rewards']
         obs_batch = batch['observations']
@@ -242,118 +326,76 @@ class BPAgent(nn.Module):
         last_observations = batch['last_observations']
         returns = batch['disc_returns']
         remaining_steps = batch['remaining_steps']
-        disc_return_mean = normalization_stats['disc_return_mean']
-        disc_return_std = normalization_stats['disc_return_std']
+
+        disc_return_mean = batch['disc_return_mean'] if 'disc_return_mean' in batch else 0.0
+        disc_return_std = (batch['disc_return_std'] + 1e-12) if 'disc_return_std' in batch else 1.0
 
         mc_targets = torch.zeros_like(r_c_batch)
         td_targets = torch.zeros_like(r_c_batch)
         with torch.no_grad():
             if self.lambd > 0:
-                last_vs, _ = self.target_vf({'obs': last_observations})  # inference (normalized space)
-                last_vs = normalization_stats['disc_return_std'] * last_vs + normalization_stats['disc_return_mean'] #un-normalize
+                last_vs = self.target_vf({'obs': last_observations})  # inference
                 mc_targets = (returns + (1. - last_terminals) * (self.discount**remaining_steps) * last_vs)#.clamp(min=self.V_min, max=self.V_max)
 
             if self.lambd < 1:    
-                v_next, _ = self.target_vf({'obs': next_obs_batch}) #inference (normalized space)
-                v_next = normalization_stats['disc_return_std'] * v_next + normalization_stats['disc_return_mean'] #un-normalize         
+                v_next = self.target_vf({'obs': next_obs_batch})            
                 td_targets = (r_c_batch +  (1. - done_batch) * self.discount * v_next)#.clamp(min=self.V_min, max=self.V_max)
         v_target = td_targets*(1.-self.lambd) + mc_targets*self.lambd
         # adv = v_target - v_pred
+        # vf_loss = F.mse_loss(v_pred, v_target, reduction='none').mean()
         
-        vf_all, vf_pred_info = self.vf.all({'obs': obs_batch}) #inference (normalized space)
+        vf_all = self.vf.all({'obs': obs_batch})
         v_target = v_target.unsqueeze(0).repeat(vf_all.shape[0],1)
-        v_target = (v_target - disc_return_mean) / disc_return_std  #Normalize targets 
+        #Normalize targets 
+        v_target = (v_target - disc_return_mean) / disc_return_std
 
-        vf_loss = F.mse_loss(vf_all, v_target, reduction='none') #loss (normalized space)
+        vf_loss = F.mse_loss(vf_all, v_target, reduction='none')
         vf_loss = vf_loss.sum(0).mean() #sum along ensemble dimension and mean along batch
 
-        # avg_v_value = torch.max(vf_all, dim=0)[0].mean() 
+        avg_v_value = torch.max(vf_all, dim=0)[0].mean() 
         avg_target_value = v_target.mean()
         max_target_value = v_target.max()
         min_target_value = v_target.min()
 
         vf_info_dict = {
             'Train/vf_loss': vf_loss.item(),
-            'Train/vf_ensemble_mean': vf_pred_info['mean'].mean().item(),
-            'Train/vf_ensemble_std': vf_pred_info['std'].mean().item(),
+            'Train/avg_v_value': avg_v_value.item(),
             'Train/avg_vtarget_value': avg_target_value.item(),
             'Train/max_vtarget_value': max_target_value.item(),
             'Train/min_vtarget_value': min_target_value.item(),
         }        
         
+        if debug:
+            if success_batch is not None:
+                with torch.no_grad():
+                    disc_returns_success = success_batch['disc_returns']
+                    vf_success = self.vf({'obs': success_batch['observations']})
+                    vf_success = disc_return_std * vf_success + disc_return_mean #unnormalize
+                    vf_error_success = torch.abs(vf_success - disc_returns_success).mean()#torch.norm(vf_success - disc_returns_success, p=2, dim=-1)
+
+                    disc_returns_batch = batch['disc_returns']
+                    vf_batch = self.vf({'obs': batch['observations']})
+                    vf_batch = disc_return_std * vf_batch + disc_return_mean #unnormalize
+                    vf_error_batch = torch.abs(vf_batch - disc_returns_batch).mean() #torch.norm(vf_batch - disc_returns_batch, p=2, dim=-1)
+
+                    # r_c_batch_succ = success_batch['costs'] if 'costs' in success_batch else success_batch['rewards']
+                    # v_next_success = self.target_vf({'obs': success_batch['next_observations']})            
+                    # td_targets_success = (r_c_batch_succ +  (1. - success_batch['terminals'].float()) * self.discount * v_next_success)
+                    # vf_all_success = self.vf.all({'obs': success_batch['observations']})
+                    # v_target_success = td_targets_success.unsqueeze(0).repeat(vf_all_success.shape[0],1)
+
+                    # vf_loss_success = F.mse_loss(vf_all_success, v_target_success, reduction='none')
+                    # vf_loss_success = vf_loss_success.sum(0).mean() #sum along ensemble dimension and mean along batch
+                vf_info_dict['Train/vf_error_success'] = vf_error_success.item()
+                vf_info_dict['Train/vf_error_batch'] = vf_error_batch.item()
+        
         return vf_loss, None, vf_info_dict
         
 
-    def state_dict(self):
-        state = {}
-        if self.policy is not None:
-            state['policy_state_dict'] = self.policy.state_dict()
-        if self.qf is not None:
-            state['qf_state_dict'] = self.qf.state_dict()
-        if self.vf is not None:
-            state['vf_state_dict'] = self.vf.state_dict()
-
-        return state
- 
-    def setup(self, max_steps:int):
-        self.policy_lr_schedule = CosineAnnealingLR(self.policy_optimizer, max_steps)
-        self.setup_agent_called = True
- 
-    def compute_validation_metrics(
-            self, 
-            validation_buffer:ReplayBuffer, 
-            success_buffer:Optional[ReplayBuffer]=None, 
-            normalization_stats:Dict={'disc_return_mean': 0.0, 'disc_return_std': 1.0}):
-        
-        info = {}
-        with torch.no_grad():
-            obs = validation_buffer['observations']
-            vf_preds, vf_preds_info = self.vf.all({'obs': obs})
-            vf_preds = normalization_stats['disc_return_std'] * vf_preds + normalization_stats['disc_return_mean'] #un-normalize
-            disc_returns = validation_buffer['disc_returns'].unsqueeze(0).repeat(vf_preds.shape[0], 1) #ensemble x num_points
-            vf_error_validation = torch.abs(vf_preds - disc_returns).mean().item() #sum across trajectory and moean along ensemble
-            num_members = vf_preds.shape[0]
-            for i in range(num_members):
-                validation_buffer[f'vf_preds_{i}'] = vf_preds[i,:]
-
-            #plot predictions for each trajectory
-            # fig_list, ax_list = [], []
-            figs = {}
-            for episode_num, episode in enumerate(validation_buffer.episode_iterator()):
-                fig, ax = plt.subplots()
-                ax.plot(episode['disc_returns'].cpu().numpy(), linestyle='solid')
-                for ensemble_idx in range(num_members):
-                    vf_preds_i = episode[f'vf_preds_{ensemble_idx}'].cpu().numpy()
-                    ax.plot(vf_preds_i, linestyle='dashed', label=f'ensemble_mem_{ensemble_idx}')
-                ax.legend()
-                figs[f'{episode_num}'] = fig
-                # fig_list.append(fig)
-                # ax_list.append(ax)
-
-        info['Train/vf_error_validation'] = vf_error_validation
-        info['Train/vf_ensemble_mean_validation'] = vf_preds_info['mean'].mean().item()
-        info['Train/vf_ensemble_std_validation'] = vf_preds_info['std'].mean().item()
-
-        return info, figs
 
 
-        # if success_buffer is not None:
-        #     with torch.no_grad():
-        #         disc_returns_success = success_batch['disc_returns']
-        #         vf_success = self.vf({'obs': success_batch['observations']})
-        #         vf_success = disc_return_std * vf_success + disc_return_mean #unnormalize
-        #         vf_error_success = torch.abs(vf_success - disc_returns_success).mean()#torch.norm(vf_success - disc_returns_success, p=2, dim=-1)
-
-        #         disc_returns_batch = batch['disc_returns']
-        #         vf_batch = self.vf({'obs': batch['observations']})
-        #         vf_batch = disc_return_std * vf_batch + disc_return_mean #unnormalize
-        #         vf_error_batch = torch.abs(vf_batch - disc_returns_batch).mean() #torch.norm(vf_batch - disc_returns_batch, p=2, dim=-1)
-
-        #     vf_info_dict['Train/vf_error_success'] = vf_error_success.item()
-        #     vf_info_dict['Train/vf_error_batch'] = vf_error_batch.item()        
-            
-            # v_pred = self.vf({'obs': obs_batch})  # inference        
-    # if self.vf_target_mode == 'asymmetric_l2':
+        # v_pred = self.vf({'obs': obs_batch})  # inference        
+        # if self.vf_target_mode == 'asymmetric_l2':
         #     with torch.no_grad():
         #         v_target = self.target_qf(
         #             {'obs': obs_batch}, actions

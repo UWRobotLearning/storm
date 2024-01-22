@@ -34,14 +34,15 @@ vf:
     output_activation: null
     dropout_prob: 0.0 
     layer_norm: false
-  ensemble_size: 1
+  ensemble_size: 5
   aggregation: 'max'
 
 agent:
   name: 'BP'
   max_buffer_size: 1e6
-  num_pretrain_steps: 1000000
+  num_pretrain_steps: 200000
   train_batch_size: 256
+  train_val_split_ratio: 0.9
   policy_optimizer:
     __target__: torch.optim.Adam
     lr: 3e-4
@@ -55,19 +56,22 @@ agent:
   log_freq: 100
   checkpoint_freq: 5000
   eval_freq: 20000
-  eval_first_policy: false
-  num_eval_episodes: 5
+  eval_first_iter: false
+  validation_freq: 5000
+  num_eval_episodes: 3
   policy_use_tanh: ${train.policy.use_tanh}
-  num_warmstart_steps: 1000000
+  num_warmstart_steps: 200000
   num_action_samples: 1
   fixed_alpha: 0.2
   relabel_data: true
   load_pretrained_policy: false
-  pretrain_critic: true
+  # pretrain_critic: true
   vf_target_mode: 'td'
   discount: 0.99
   beta: 3.0
   expectile_tau: 0.7
   clip_values: true
-  normalize_rewards: true
-  normalize_states: true
+  normalize_rewards: false
+  normalize_states: false
+  normalize_returns: false
+  lambd: 1.0

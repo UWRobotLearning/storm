@@ -178,3 +178,4 @@ docs/setup.rst
 tmp_results/*
 runs/*
 robot_data/*
+wandb/*

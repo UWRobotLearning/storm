@@ -19,8 +19,6 @@ class MPCPolicy(Policy):
             # value_function = None,
             vf = None,
             qf = None,
-            V_min=-float('inf'), 
-            V_max=float('inf'),
             device=torch.device('cpu')):
         
         super().__init__(obs_dim, act_dim, config, device=device)
@@ -29,7 +27,7 @@ class MPCPolicy(Policy):
         # self.rollout = self.init_rollout(task_cls) 
         self.controller = self.init_controller(
             task_cls, dynamics_model_cls,
-            sampling_policy, vf ,qf, V_min, V_max)
+            sampling_policy, vf ,qf)
         self.prev_command_time = time.time()
         # self.dt = self.cfg.rollout.control_dt
         
@@ -67,8 +65,7 @@ class MPCPolicy(Policy):
 
     def init_controller(self, 
                         task_cls, dynamics_model_cls,
-                        sampling_policy, vf=None, qf=None,
-                        V_min=-float('inf'), V_max=float('inf')):
+                        sampling_policy, vf=None, qf=None):
         # world_params = self.cfg.world
         # rollout = self.init_rollout(task_cls)
         # rollout_params = self.cfg.rollout
@@ -100,7 +97,6 @@ class MPCPolicy(Policy):
             sampling_policy=sampling_policy,
             # value_function=value_function,
             vf=vf, qf=qf,
-            V_min=V_min, V_max=V_max,
             tensor_args=self.tensor_args)
         return controller
 
@@ -134,3 +130,7 @@ class MPCPolicy(Policy):
         
     def reset(self, reset_data=None):
         self.controller.reset(reset_data)
+    
+    def set_value_metrics(self, value_metrics=None):
+        self.controller.set_value_metrics(value_metrics)
+    

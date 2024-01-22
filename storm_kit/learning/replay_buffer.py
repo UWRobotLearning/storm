@@ -1,7 +1,9 @@
 from typing import Optional, Dict
 from collections import defaultdict
 import torch
+
 # import numpy as np
+
 class ReplayBuffer():
     def __init__(self, capacity:int, device:torch.device = torch.device('cpu')):
         self.capacity = capacity
@@ -52,23 +54,8 @@ class ReplayBuffer():
         self.curr_idx = (self.curr_idx + num_points) % self.capacity
         self.num_stored = min(self.num_stored + num_points, self.capacity)
 
-    # def add_batch(self, batch_data_dict: Dict[str, torch.Tensor]):
-    #     #Add a batch of datapoints to the replay buffer
-    #     for k,v in batch_data_dict.items():
-    #         if k not in self.buffers:
-    #             if v.ndim > 1:
-    #                 dim = v.shape[-1]
-    #                 self.buffers[k] = torch.empty(self.capacity, dim, device=self.device)
-    #             else:
-    #                 self.buffers[k] = torch.empty(self.capacity, device=self.device)
 
-    #         num_points_added = self.add_to_buffer(self.buffers[k], v)
-            
-    #     self.curr_idx = (self.curr_idx + num_points_added) % self.capacity
-    #     self.num_stored = min(self.num_stored + num_points_added, self.capacity)
-
-
-    def sample(self, batch_size): #, sample_next_state:bool=False):
+    def sample(self, batch_size):
         idxs = torch.randint(
             0, len(self), size=(batch_size,), device=self.device)
         batch = defaultdict(lambda:{})
@@ -147,6 +134,15 @@ class ReplayBuffer():
         self.buffers = {} #defaultdict(lambda:{})        
         self.curr_idx = 0
         self.num_stored = 0
+    
+    def to(self, device:torch.device):
+        if device == self.device:
+            return
+        else:
+            for k in self.keys():
+                self.buffers[k] = self.buffers[k].to(device) 
+            self.device = device
+
 
     def __len__(self):
         return self.num_stored
@@ -177,8 +173,30 @@ class ReplayBuffer():
         return str
 
 
+def train_val_split(dataset, split_ratio):
+    #split into training and validation episodes
+    #TODO: Randomize the trajectories
+    episode_list = [episode for episode in dataset.episode_iterator()]
+    num_episodes = len(episode_list)
+    num_train_episodes = int(split_ratio * num_episodes)
+    train_episodes = episode_list[0: num_train_episodes]
+    validation_episodes = episode_list[num_train_episodes:]
+    
+    episode_keys = list(dataset.keys())
+    train_batch = {k: torch.cat([ep[k] for ep in train_episodes]) for k in episode_keys}
+    validation_batch = {k: torch.cat([ep[k] for ep in validation_episodes]) for k in episode_keys}
+    
+    
+    train_buffer = ReplayBuffer(capacity=train_batch[episode_keys[0]].shape[0], device=dataset.device)
+    validation_buffer = ReplayBuffer(capacity=validation_batch[episode_keys[0]].shape[0], device=dataset.device)
+
+    train_buffer.add_batch(train_batch)
+    validation_buffer.add_batch(validation_batch)
+
+    return train_buffer, validation_buffer
+
 def qlearning_dataset(dataset):
-    #add next_state buffers
+    #add next_obs and next_state buffers
     num_points = len(dataset)
     assert num_points > 1
     new_dataset = ReplayBuffer(capacity=num_points, device=dataset.device)
@@ -287,6 +305,23 @@ def qlearning_dataset2(env, dataset=None, terminate_on_end=False, **kwargs):
         'rewards': np.array(reward_),
         'terminals': np.array(done_),
     }
+
+
+
+# def add_batch(self, batch_data_dict: Dict[str, torch.Tensor]):
+#     #Add a batch of datapoints to the replay buffer
+#     for k,v in batch_data_dict.items():
+#         if k not in self.buffers:
+#             if v.ndim > 1:
+#                 dim = v.shape[-1]
+#                 self.buffers[k] = torch.empty(self.capacity, dim, device=self.device)
+#             else:
+#                 self.buffers[k] = torch.empty(self.capacity, device=self.device)
+
+#         num_points_added = self.add_to_buffer(self.buffers[k], v)
+        
+#     self.curr_idx = (self.curr_idx + num_points_added) % self.capacity
+#     self.num_stored = min(self.num_stored + num_points_added, self.capacity)
 
 
 

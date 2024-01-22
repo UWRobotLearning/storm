@@ -4,8 +4,8 @@ import torch
 import torch.nn as nn
 import numpy as np
 from typing import Dict
-from storm_kit.learning.networks.utils import mlp
-from storm_kit.learning.learning_utils import VectorizedLinear
+from storm_kit.learning.networks.utils import mlp, ensemble_mlp
+# from storm_kit.learning.learning_utils import VectorizedLinear
 
 class QFunction(nn.Module):
     def __init__(
@@ -211,23 +211,34 @@ class EnsembleValueFunction(nn.Module):
         self.out_dim = 1
         self.hidden_dim = self.mlp_params['hidden_layers'][0]
         self.aggregation = self.config['aggregation']
-        self.net = nn.Sequential(
-            VectorizedLinear(obs_dim , self.hidden_dim, self.ensemble_size),
-            nn.ReLU(),
-            VectorizedLinear(self.hidden_dim, self.hidden_dim, self.ensemble_size),
-            nn.ReLU(),
-            VectorizedLinear(self.hidden_dim, self.hidden_dim, self.ensemble_size),
-            nn.ReLU(),
-            VectorizedLinear(self.hidden_dim, self.out_dim, self.ensemble_size),
-        ).to(self.device)
-        # init as in the EDAC paper
-        for layer in self.net[::2]:
-            torch.nn.init.constant_(layer.bias, 0.1)
+        self.layer_sizes = [self.obs_dim] + OmegaConf.to_object(self.mlp_params['hidden_layers']) + [self.out_dim]
 
-        torch.nn.init.uniform_(self.net[-1].weight, -3e-3, 3e-3)
-        torch.nn.init.uniform_(self.net[-1].bias, -3e-3, 3e-3)
+        self.net = ensemble_mlp(
+            ensemble_size=self.ensemble_size,
+            layer_sizes=self.layer_sizes, 
+            activation=self.mlp_params['activation'],
+            output_activation=self.mlp_params['output_activation'],
+            dropout_prob=self.mlp_params['dropout_prob'],
+            layer_norm=self.mlp_params['layer_norm'],
+            squeeze_output=True).to(self.device)
+        
+        
+        # self.net = nn.Sequential(
+        #     VectorizedLinear(obs_dim , self.hidden_dim, self.ensemble_size),
+        #     nn.ReLU(),
+        #     VectorizedLinear(self.hidden_dim, self.hidden_dim, self.ensemble_size),
+        #     nn.ReLU(),
+        #     VectorizedLinear(self.hidden_dim, self.hidden_dim, self.ensemble_size),
+        #     nn.ReLU(),
+        #     VectorizedLinear(self.hidden_dim, self.out_dim, self.ensemble_size),
+        # ).to(self.device)
 
-        # self.num_critics = num_critics
+        # # init as in the EDAC paper
+        # for layer in self.net[::2]:
+        #     torch.nn.init.constant_(layer.bias, 0.1)
+
+        # torch.nn.init.uniform_(self.net[-1].weight, -3e-3, 3e-3)
+        # torch.nn.init.uniform_(self.net[-1].bias, -3e-3, 3e-3)
 
     def all(self, obs_dict: Dict[str,torch.Tensor]):
         obs = obs_dict['obs']
@@ -242,17 +253,19 @@ class EnsembleValueFunction(nn.Module):
         # [num_critics, batch_size]
         values = self.net(obs).squeeze(-1)
 
-        return values
+        info = {'mean': values.mean(dim=0), 'std': values.std(dim=0)}
+
+        return values, info
 
 
     def forward(self, obs_dict: Dict[str, torch.Tensor]) -> torch.Tensor:
         # [..., batch_size, state_dim + action_dim]
-        values = self.all(obs_dict)
+        values, info = self.all(obs_dict)
         if self.aggregation == 'max':
             preds = torch.max(values, dim=0)[0]
         elif self.aggregation == 'min':
             preds = torch.min(values, dim=0)[0]
         elif self.aggregation == 'mean':
             preds = torch.mean(values, dim=0)
-        return preds
+        return preds, info
  
