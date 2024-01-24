@@ -64,6 +64,8 @@ class ArmTask(nn.Module):
         if robot_urdf is None:
             robot_urdf = cfg['model']['urdf_path']
 
+        self.ee_link_name = cfg.get('ee_link_name')
+
         urdf_path = join_path(get_assets_path(), robot_urdf)
         self.robot_model = DifferentiableRobotModel(urdf_path, device=self.device) #, dtype=self.dtype)
         self.n_dofs = self.robot_model._n_dofs
@@ -375,53 +377,61 @@ class ArmTask(nn.Module):
             q_vel = state_dict['q_vel'].to(device=self.device)
             q_acc = state_dict['q_acc'].to(device=self.device)
 
-            ee_pos_batch, ee_rot_batch, lin_jac_batch, ang_jac_batch = self.robot_model.compute_fk_and_jacobian(
-                q_pos.reshape(-1, q_pos.shape[-1]), self.cfg['ee_link_name'])
-            ee_quat_batch = matrix_to_quaternion(ee_rot_batch)
-            # ee_pos_batch = ee_pos_batch.view(*orig_size, -1)
-            # ee_rot_batch = ee_rot_batch.view(*orig_size, 3, 3)
-            # ee_quat_batch = ee_quat_batch.view(*orig_size, -1)
-            # lin_jac_batch = lin_jac_batch.view(*orig_size, 3, -1)
-            # ang_jac_batch = ang_jac_batch.view(*orig_size, 3, -1)
-            ee_pos_batch = ee_pos_batch.view(*q_pos.shape[0:-1], -1)
-            ee_rot_batch = ee_rot_batch.view(*q_pos.shape[0:-1], 3, 3)
-            ee_quat_batch = ee_quat_batch.view(*q_pos.shape[0:-1], -1)
-            lin_jac_batch = lin_jac_batch.view(*q_pos.shape[0:-1], 3, -1)
-            ang_jac_batch = ang_jac_batch.view(*q_pos.shape[0:-1], 3, -1)
+            # ee_pos_batch, ee_rot_batch, lin_jac_batch, ang_jac_batch, ee_lin_vel, ee_ang_vel = self.robot_model.compute_fk_and_jacobian(
+            #     q_pos.reshape(-1, q_pos.shape[-1]), q_vel.view(-1, self.n_dofs), self.cfg['ee_link_name'])
 
+            with record_function("arm_task: fk + jacobian"):
+                link_pose_dict, lin_jac, ang_jac = self.robot_model.compute_fk_and_jacobian(
+                    q_pos.view(-1, self.n_dofs), q_vel.view(-1, self.n_dofs),
+                    link_name=self.ee_link_name)
 
-            ee_jac_batch = torch.cat((ang_jac_batch, lin_jac_batch), dim=-2)
-            ee_vel_twist_batch = torch.matmul(ee_jac_batch, q_vel.unsqueeze(-1)).squeeze(-1)
-            ee_acc_twist_batch = torch.matmul(ee_jac_batch, q_acc.unsqueeze(-1)).squeeze(-1)
+            ee_pos, ee_rot = link_pose_dict[self.ee_link_name]
+
+            ee_quat = matrix_to_quaternion(ee_rot)
+            # ee_pos = ee_pos.view(*orig_size, -1)
+            # ee_rot = ee_rot.view(*orig_size, 3, 3)
+            # ee_quat = ee_quat.view(*orig_size, -1)
+            # lin_jac = lin_jac.view(*orig_size, 3, -1)
+            # ang_jac = ang_jac.view(*orig_size, 3, -1)
+            ee_pos = ee_pos.view(*q_pos.shape[0:-1], -1)
+            ee_rot = ee_rot.view(*q_pos.shape[0:-1], 3, 3)
+            ee_quat = ee_quat.view(*q_pos.shape[0:-1], -1)
+            lin_jac = lin_jac.view(*q_pos.shape[0:-1], 3, -1)
+            ang_jac = ang_jac.view(*q_pos.shape[0:-1], 3, -1)
+
+            ee_jac = torch.cat((ang_jac, lin_jac), dim=-2)
+            ee_vel_twist = torch.matmul(ee_jac, q_vel.unsqueeze(-1)).squeeze(-1)
+            ee_acc_twist = torch.matmul(ee_jac, q_acc.unsqueeze(-1)).squeeze(-1)
  
             # get link poses:
             link_pos_list = []
             link_rot_list = []
             for ki,k in enumerate(self.link_names):
-                link_pos, link_rot = self.robot_model.get_link_pose(k)
+                # link_pos, link_rot = self.robot_model.get_link_pose(k)
+                curr_link_pos, curr_link_rot = link_pose_dict[k]
                 # link_pos_seq[:,:,:,ki,:] = link_pos.view((self.num_instances, self.batch_size, self.horizon, 3))
                 # link_rot_seq[:,:,:,ki,:,:] = link_rot.view((self.num_instances, self.batch_size, self.horizon, 3,3))
                 # link_pos_seq[:,ki,:] = link_pos.view((self.num_instances, 1, 3))
                 # link_rot_seq[:,ki,:,:] = link_rot.view((self.num_instances, 1, 3,3))
-                link_pos_list.append(link_pos.unsqueeze(1))
-                link_rot_list.append(link_rot.unsqueeze(1))
+                link_pos_list.append(curr_link_pos.unsqueeze(1))
+                link_rot_list.append(curr_link_rot.unsqueeze(1))
             
-            link_pos_seq = torch.cat(link_pos_list, dim=2)
-            link_rot_seq = torch.cat(link_rot_list, dim=2)
+            link_pos = torch.cat(link_pos_list, dim=2)
+            link_rot = torch.cat(link_rot_list, dim=2)
 
             new_state_dict = {}
 
             for k in state_dict.keys():
                 new_state_dict[k] = state_dict[k] #.clone()
             
-            new_state_dict['ee_pos'] =  ee_pos_batch #.clone() 
-            new_state_dict['ee_rot'] = ee_rot_batch #.clone()
-            new_state_dict['ee_quat'] = ee_quat_batch #.clone()
-            new_state_dict['ee_jacobian'] = ee_jac_batch #.clone()
-            new_state_dict['ee_vel_twist'] = ee_vel_twist_batch #.clone()
-            new_state_dict['ee_acc_twist'] = ee_acc_twist_batch #.clone()
-            new_state_dict['link_pos'] = link_pos_seq #.clone()
-            new_state_dict['link_rot'] = link_rot_seq #.clone()
+            new_state_dict['ee_pos'] =  ee_pos #.clone() 
+            new_state_dict['ee_rot'] = ee_rot #.clone()
+            new_state_dict['ee_quat'] = ee_quat #.clone()
+            new_state_dict['ee_jacobian'] = ee_jac #.clone()
+            new_state_dict['ee_vel_twist'] = ee_vel_twist #.clone()
+            new_state_dict['ee_acc_twist'] = ee_acc_twist #.clone()
+            new_state_dict['link_pos'] = link_pos #.clone()
+            new_state_dict['link_rot'] = link_rot #.clone()
 
             # self.prev_state_buff = self.prev_state_buff.roll(-1, dims=1)
             # self.prev_state_buff[:,-1,:] = new_state_dict['state_seq'].clone()

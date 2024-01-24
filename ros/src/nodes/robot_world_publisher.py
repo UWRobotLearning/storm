@@ -102,12 +102,13 @@ class RobotWorldPublisher():
             self.rate.sleep()
 
     def get_robot_collision_spheres(self, robot_state):
-        _,_,_,_ = self.robot_model.compute_fk_and_jacobian(
-            robot_state['q_pos'], link_name=self.ee_link_name)
+        link_pose_dict = self.robot_model.compute_forward_kinematics(
+            robot_state['q_pos'], robot_state['q_vel']) # link_name=self.ee_link_name)
+        
         link_pos_seq, link_rot_seq = [], []
-
         for _,k in enumerate(self.link_names):
-            link_pos, link_rot = self.robot_model.get_link_pose(k)
+            # link_pos, link_rot = self.robot_model.get_link_pose(k)
+            link_pos, link_rot = link_pose_dict[k]
             link_pos_seq.append(link_pos.unsqueeze(1))
             link_rot_seq.append(link_rot.unsqueeze(1))
 

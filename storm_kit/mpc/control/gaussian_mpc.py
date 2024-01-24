@@ -281,10 +281,11 @@ class GaussianMPC(Controller):
         
         cl_act_seq = None
         act_seq = self.sample_action_sequences(state=state)
-        state_dict, rollout_info = self.dynamics_model.compute_rollouts(
-            state, act_seq, sampling_policy=self.sampling_policy,
-            num_policy_rollouts=num_policy_rollouts,
-        )
+        with record_function('mpc:dynamics_model_rollout'):
+            state_dict, rollout_info = self.dynamics_model.compute_rollouts(
+                state, act_seq, sampling_policy=self.sampling_policy,
+                num_policy_rollouts=num_policy_rollouts,
+            )
         cl_act_seq = rollout_info['cl_act_seq']
         
         if act_seq is None: act_seq = cl_act_seq
@@ -297,10 +298,10 @@ class GaussianMPC(Controller):
 
         # full_state_dict = self.task.compute_full_state(state_dict)
         # import pdb; pdb.set_trace()
-        with record_function("compute_cost"):
+        with record_function("gaussian_mpc:compute_cost"):
             cost_seq, cost_terms = self.task.compute_cost(state_dict, act_seq)
 
-        with record_function("compute_termination"):
+        with record_function("gaussian_mpc:compute_termination"):
             term_seq, term_cost, term_info = self.task.compute_termination(state_dict, act_seq)
 
         cost_terms = {**cost_terms, **term_info}
@@ -310,13 +311,12 @@ class GaussianMPC(Controller):
         q_preds = None
         v_preds = None
         if self.vf is not None:
-            with record_function("value_fn_inference"):
+            with record_function("gaussian_mpc:value_fn_inference"):
                 obs = self.task.compute_observations(state_dict, compute_full_state=False, cost_terms=cost_terms)
                 # q_preds = self.qf({'obs': obs}, act_seq).clamp(min=self.V_min, max=self.V_max) #, max=self.V_max
                 v_preds, _ = self.vf({'obs': obs.view(-1, obs.shape[-1])})#.clamp(min=self.V_min, max=self.V_max)
                 v_preds = v_preds.view(self.state_batch_size, self.num_particles, self.horizon)
                 v_preds = self.V_std * v_preds + self.V_mean #unnormalize
-                # print(v_preds, self.V_mean)
 
         sim_trajs = dict(
             actions=act_seq,

@@ -5,6 +5,8 @@ rollout:
   max_acc: ${task.task.max_acc} #100.0 
   max_jerk: ${task.task.max_jerk}
   n_dofs: ${task.n_dofs}
+  ee_link_name: ${task.ee_link_name}
+
 
   model:
     # any link that is not specified as learnable will be initialized from urdf
@@ -41,9 +43,9 @@ rollout:
   cost:
     goal_pose:
       vec_weight: [1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
-      weight: [5.0, 20.0] #[10.0, 50.0] #[50.0, 100.0]
+      weight: [5.0, 15.0] #[10.0, 50.0] #[50.0, 100.0]
       cost_type: 'se3_twist'
-      norm_type: 'logcosh'
+      norm_type: 'l2'
       hinge_val: -1
       convergence_val: [0.0, 0.0] # orientation, position
       logcosh_alpha: [5.0, 5.0] #orientation, position (shaping used only for logcosh)
@@ -75,7 +77,7 @@ rollout:
       # hinge_val: -1.0
       
     manipulability:
-      weight: 2.0 #3.0 #0.5 #30.0 #10.0 #100.0 #0.05 #0.5 #1.0
+      weight: 3.0 #3.0 #0.5 #30.0 #10.0 #100.0 #0.05 #0.5 #1.0
       thresh: 0.1 #0.1 #0.05 #0.03
 
     joint_l2:
@@ -83,7 +85,7 @@ rollout:
       norm_type: 'l2'
 
     stop_cost:
-      weight: 2.0 #50.0 #50.0 #10.0 #10.0 
+      weight: 5.0 #50.0 #50.0 #10.0 #10.0 
       max_nlimit: 10.0 #1.5 #0.2
 
     stop_cost_acc:
@@ -95,7 +97,7 @@ rollout:
       order: 1
 
     primitive_collision:
-      weight: 100.0
+      weight: 200.0
       distance_threshold_world: 0.03
       distance_threshold_self: 0.03
 
@@ -104,7 +106,7 @@ rollout:
     #   distance_threshold: 0.05
 
     state_bound:
-      weight: 100.0 
+      weight: 200.0 
       bound_thresh: 0.03
 
     retract_state : [0.00, 0.0, 0.00, -1.5, 0.00, 2.0, 0.0] #check

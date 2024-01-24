@@ -208,14 +208,16 @@ class URDFKinematicModel(nn.Module):
         
     @torch.jit.export
     def rollout_open_loop(self, start_state_dict: Dict[str, torch.Tensor], act_seq: torch.Tensor) -> Dict[str, torch.Tensor]:
-        # batch_size, horizon, d_act = act_seq.shape
-        # curr_dt = self.dt if dt is None else dt
-        # curr_horizon = self.horizon
-        # get input device:
-        # inp_device = start_state.device
+        
         inp_device = act_seq.device
-        # start_state = start_state.to(self.device, dtype=self.dtype)
         act_seq = act_seq.to(self.device, dtype=self.dtype)
+        batch_size = act_seq.shape[1]
+        state_batch_size = act_seq.shape[0]
+
+        if batch_size != self.batch_size or state_batch_size != self.state_batch_size:
+            self.batch_size = batch_size
+            self.state_batch_size = state_batch_size
+            self.allocate_buffers(self.state_batch_size, self.batch_size)
 
         start_q_pos = start_state_dict[self.robot_keys[0]]
         start_q_vel = start_state_dict[self.robot_keys[1]]
@@ -225,13 +227,15 @@ class URDFKinematicModel(nn.Module):
         curr_robot_state = torch.cat((start_q_pos, start_q_vel, start_q_acc, start_t), dim=-1)
         curr_robot_state = curr_robot_state.unsqueeze(1)
 
+        self.prev_state_buffer = self.prev_state_buffer.roll(-1, dims=1)
+        self.prev_state_buffer[:,-1,:] = curr_robot_state
+
         # # add start state to prev state buffer:
         # if self.initial_step:
             # self.prev_state_buffer = torch.zeros((self.num_instances, 10, self.d_state), device=self.device, dtype=self.dtype)
         # self.prev_state_buffer[:,:,:] = curr_robot_state.unsqueeze(1)
             # self.initial_step = False
-        self.prev_state_buffer = self.prev_state_buffer.roll(-1, dims=1)
-        self.prev_state_buffer[:,-1,:] = curr_robot_state.squeeze(1)
+
 
         # compute dt w.r.t previous data?
         state_seq = self.state_seq
@@ -377,19 +381,28 @@ class URDFKinematicModel(nn.Module):
         # # q_jerk_seq = torch.einsum('bij, li->blj', q_jerk_seq, self._fd_matrix_jerk)
         q_jerk_seq = torch.div(q_jerk_seq, self.traj_dt[:, None])
 
-        with record_function("fk + jacobian"):
-            ee_pos_seq, ee_rot_seq, lin_jac_seq, ang_jac_seq = self.robot_model.compute_fk_and_jacobian(
-                q_pos_seq.view(-1, self.n_dofs),
+        # with record_function("urdf_kinematic_model: fk + jacobian"):
+        #     ee_pos_seq, ee_rot_seq, lin_jac_seq, ang_jac_seq, ee_lin_vel, ee_ang_vel = self.robot_model.compute_fk_and_jacobian(
+        #         q_pos_seq.view(-1, self.n_dofs), q_vel_seq.view(-1, self.n_dofs),
+        #         link_name=self.ee_link_name)
+        with record_function("urdf_kinematic_model: fk + jacobian"):
+            link_pose_dict, lin_jac_seq, ang_jac_seq = self.robot_model.compute_fk_and_jacobian(
+                q_pos_seq.view(-1, self.n_dofs), q_vel_seq.view(-1, self.n_dofs),
                 link_name=self.ee_link_name)
 
         # get link poses:
-        for ki,k in enumerate(self.link_names):
-            link_pos, link_rot = self.robot_model.get_link_pose(k)
+        # for ki,k in enumerate(self.link_names):
+        #     link_pos, link_rot = self.robot_model.get_link_pose(k)
+        # for (k, (link_pos, link_rot)) in link_pos_dict.items():
+        for (ki, k) in enumerate(self.link_names):
+            link_pos, link_rot = link_pose_dict[k]
             link_pos_seq[:,:,:,ki,:] = link_pos.view((curr_state_batch_size, curr_batch_size, num_traj_points, 3))
             link_rot_seq[:,:,:,ki,:,:] = link_rot.view((curr_state_batch_size, curr_batch_size, num_traj_points, 3, 3))            
             # link_pos_seq[...,ki,:] = link_pos.view((curr_batch_size, num_traj_points, 3))
             # link_rot_seq[...,ki,:,:] = link_rot.view((curr_batch_size, num_traj_points, 3, 3))
         
+        ee_pos_seq, ee_rot_seq = link_pose_dict[self.ee_link_name]
+
         ee_pos_seq = ee_pos_seq.view((curr_state_batch_size, curr_batch_size, num_traj_points, 3))
         ee_rot_seq = ee_rot_seq.view((curr_state_batch_size, curr_batch_size, num_traj_points, 3, 3))
         lin_jac_seq = lin_jac_seq.view((curr_state_batch_size, curr_batch_size, num_traj_points, 3, self.n_dofs))
@@ -403,7 +416,7 @@ class URDFKinematicModel(nn.Module):
         ee_vel_twist_seq = torch.matmul(ee_jacobian_seq, q_vel_seq.unsqueeze(-1)).squeeze(-1)
         # this is a first order approximation of ee acceleation i.e ignoreing \dot{J}
         # TODO: Test this against finite differencing and/or RNE
-        ee_acc_twist_seq = torch.matmul(ee_jacobian_seq, q_acc_seq.unsqueeze(-1)).squeeze(-1) 
+        ee_acc_twist_seq = torch.matmul(ee_jacobian_seq, q_acc_seq.unsqueeze(-1)).squeeze(-1)
 
         state_dict = {
             # 'state_seq': state_seq, 

@@ -156,8 +156,8 @@ def logMapSO3(rot:torch.Tensor, epsilon:float=1.0e-14) -> torch.Tensor:
     omegahat = (rot - rot.transpose(-1, -2)) / ((2.0 * torch.sin(theta)) + epsilon)
     return theta * omegahat
 
-
-def expMapso3(omegahat): #, epsilon=1.0e-14):
+@torch.jit.script
+def expMapso3(omegahat:torch.Tensor, epsilon:float=1.0e-14):
     # assert omegahat.shape[0] == 3
     # assert omegahat.shape[1] == 3
     omega = getVec3FromSkewSymMat(omegahat) #, epsilon)

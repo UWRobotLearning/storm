@@ -2,6 +2,7 @@ from typing import Dict
 from omegaconf import open_dict
 import torch
 from torch.distributions import Normal, MultivariateNormal, TransformedDistribution
+from torch.profiler import record_function
 import time
 from storm_kit.learning.policies import Policy
 from storm_kit.mpc.control import MPPI
@@ -45,9 +46,12 @@ class MPCPolicy(Policy):
         return dist, value, aux_info
 
     def get_action(self, obs_dict, deterministic=False): #, num_samples=1):
+        # st = time.time()
         state_dict = obs_dict['states']
-        curr_action_seq, _, _ = self.controller.sample(
-            state_dict, shift_steps=1, deterministic=deterministic)#, calc_val=False, num_samples=num_samples)
+        with record_function('mpc_policy:get_action'):
+            curr_action_seq, _, _ = self.controller.sample(
+                state_dict, shift_steps=1, deterministic=deterministic)#, calc_val=False, num_samples=num_samples)
+        # print('policy get action time', time.time()-st)
         action = curr_action_seq[:, 0]
         info = {}
         return action, info
@@ -109,7 +113,7 @@ class MPCPolicy(Policy):
            rollout_params['horizon'] = self.cfg['mppi']['horizon']
            rollout_params['batch_size'] = self.cfg['mppi']['num_particles']
            rollout_params['dt_traj_params'] = rollout_params['model']['dt_traj_params']
-                
+
         task = task_cls(cfg = rollout_params, world_params = world_params, device=self.device)
         dynamics_model = dynamics_model_cls(
             join_path(get_assets_path(), rollout_params['model']['urdf_path']),

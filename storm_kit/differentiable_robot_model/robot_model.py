@@ -214,11 +214,11 @@ class DifferentiableRobotModel(torch.nn.Module):
             )
 
         # update the state of the joints
-        for i in range(q.shape[1]):
-            idx = self._controlled_joints[i]
-            self._bodies[idx].update_joint_state(
-                q[:, i].unsqueeze(1), qd[:, i].unsqueeze(1)
-            )
+        # for i in range(q.shape[1]):
+        #     idx = self._controlled_joints[i]
+        #     self._bodies[idx].update_joint_state(
+        #         q[:, i].unsqueeze(1), qd[:, i].unsqueeze(1)
+        #     )
 
         # we assume a non-moving base
         parent_body = self._bodies[0]
@@ -233,63 +233,76 @@ class DifferentiableRobotModel(torch.nn.Module):
         # )
 
         # propagate the new joint state through the kinematic chain to update bodies position/velocities
-        with record_function("robot_model/fk/for_loop"):
+        with record_function("robot_model:fk/for_loop"):
 
             # for i in range(1, len(self._bodies)):
             for i, (body, parent_body) in enumerate(zip(self._bodies[1:], self._bodies[0:-1]), 1):
+
+                if i in self._body_idx_to_controlled_joint_idx_map:
+                    idx = self._body_idx_to_controlled_joint_idx_map[i]
+                    # self._bodies[i].update_joint_state(q[:,idx].unsqueeze(1), qd[:,idx].unsqueeze(1))
+                    body.update_joint_state(q[:,idx].unsqueeze(1), qd[:,idx].unsqueeze(1))
 
                 # body = self._bodies[i]
                 # parent_name = self._urdf_model.get_name_of_parent_body(body.name)
                 # find the joint that has this link as child
                 # parent_body = self._bodies[self._name_to_idx_map[parent_name]]
 
+                #### The steps marked with X correspond to calculation of link velocities in 
+                # body frame. We are ommiting these for now, and they can be later included 
+                # if link velocities are required
+                #             
                 # transformation operator from child link to parent link
                 childToParentT = body.joint_pose
-                # transformation operator from parent link to child link
-                parentToChildT = childToParentT.inverse()
+                
+                # # X: transformation operator from parent link to child link
+                # with record_function('robot_model:fk/for_loop/transform_inverse'):
+                #     parentToChildT = childToParentT.inverse()
 
                 # the position and orientation of the body in world coordinates, with origin at the joint
-                body.pose = parent_body.pose.multiply_transform(childToParentT)
+                with record_function('robot_model:fk/for_loop/multiply_transform'):
+                    body.pose = parent_body.pose.multiply_transform(childToParentT)
 
-                # we rotate the velocity of the parent's body into the child frame
-                new_vel = parent_body.vel.transform(parentToChildT)
+                # # X: we rotate the velocity of the parent's body into the child frame
+                # with record_function('robot_model:fk/for_loop/vel_transform'):
+                #     new_vel = parent_body.vel.transform(parentToChildT)
 
-                # this body's angular velocity is combination of the velocity experienced at it's parent's link
-                # + the velocity created by this body's joint
-                body.vel = body.joint_vel.add_motion_vec(new_vel)
-
+                # # X this body's angular velocity is combination of the velocity experienced at it's parent's link
+                # # + the velocity created by this body's joint
+                # with record_function('robot_model:fk/for_loop/add_motion_vec'):
+                #     body.vel = body.joint_vel.add_motion_vec(new_vel)
 
     # @tensor_check
     # @torch.jit.export
-    def compute_forward_kinematics_all_links(
-        self, q: torch.Tensor
-    ) -> Dict[str, torch.Tensor]:
-        r"""
+    # def compute_forward_kinematics_all_links(
+    #     self, q: torch.Tensor
+    # ) -> Dict[str, torch.Tensor]:
+    #     r"""
 
-        Args:
-            q: joint angles [batch_size x n_dofs]
-            link_name: name of link
+    #     Args:
+    #         q: joint angles [batch_size x n_dofs]
+    #         link_name: name of link
 
-        Returns: translation and rotation of the link frame
+    #     Returns: translation and rotation of the link frame
 
-        """
-        # Create joint state dictionary
-        q_dict = {}
-        for i, body_idx in enumerate(self._controlled_joints):
-            q_dict[self._bodies[body_idx].name] = q[:, i].unsqueeze(1)
+    #     """
+    #     # Create joint state dictionary
+    #     q_dict = {}
+    #     for i, body_idx in enumerate(self._controlled_joints):
+    #         q_dict[self._bodies[body_idx].name] = q[:, i].unsqueeze(1)
 
-        # Call forward kinematics on root node
-        pose_dict = self._bodies[0].forward_kinematics(q_dict)
+    #     # Call forward kinematics on root node
+    #     pose_dict = self._bodies[0].forward_kinematics(q_dict)
 
-        return {
-            link: (pose_dict[link].translation(), pose_dict[link].rotation()) #.get_quaternion()
-            for link in pose_dict.keys()
-        }
+    #     return {
+    #         link: (pose_dict[link].translation(), pose_dict[link].rotation()) #.get_quaternion()
+    #         for link in pose_dict.keys()
+    #     }
 
     # @tensor_check
     @torch.jit.export
     def compute_forward_kinematics(
-        self, q: torch.Tensor, link_name: str, 
+        self, q: torch.Tensor, qd:torch.Tensor #, link_name: str, 
     ) -> Tuple[torch.Tensor, torch.Tensor]: #recursive: bool = False
         r"""
 
@@ -306,13 +319,25 @@ class DifferentiableRobotModel(torch.nn.Module):
         #     return self.compute_forward_kinematics_all_links(q)[link_name]
 
         # else:
-        qd = torch.zeros_like(q)
-        self.update_kinematic_state(q, qd)
 
-        pose = self._bodies[self._name_to_idx_map[link_name]].pose
-        pos = pose.translation()
-        rot = pose.rotation() #.get_quaternion()
-        return pos, rot
+        # qd = torch.zeros_like(q)
+        with record_function('robot_model:update_kinematic_state'):
+            self.update_kinematic_state(q, qd)
+
+        link_pose_dict = {}
+        for link_name in self._link_names:
+            pose = self._bodies[self._name_to_idx_map[link_name]].pose
+            pos = pose.translation() #.to(inp_device)
+            rot = pose.rotation() #.to(inp_device)#get_quaternion()        
+            link_pose_dict[link_name] = (pos, rot)
+        return link_pose_dict
+
+        # body = self._bodies[self._name_to_idx_map[link_name]]
+        # pose = body.pose
+        # vel = body.vel
+        # pos = pose.translation()
+        # rot = pose.rotation() #.get_quaternion()
+        # return pos, rot
 
     @torch.jit.export
     def get_link_pose(self, link_name: str)->Tuple[torch.Tensor, torch.Tensor]:
@@ -744,15 +769,16 @@ class DifferentiableRobotModel(torch.nn.Module):
     
     @torch.jit.export
     def compute_fk_and_jacobian(
-            self, q: torch.Tensor, link_name: str
-    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+            self, q: torch.Tensor, qd:torch.Tensor, link_name: str
+    ) -> Tuple[Dict[str, torch.Tensor], torch.Tensor, torch.Tensor]:
 
-        # assert len(q.shape) == 2
-        # batch_size = q.shape[0]
         
-        with record_function("robot_model/fk"):
-            ee_pos, ee_rot = self.compute_forward_kinematics(q, link_name)
+        with record_function("robot_model:fk"):
+            # ee_pos, ee_rot = self.compute_forward_kinematics(q, qd) #, link_name)
+            link_pose_dict = self.compute_forward_kinematics(q, qd) #, link_name)
 
+        ee_pos = link_pose_dict[link_name][0]
+        ee_rot = link_pose_dict[link_name][1]
 
         # e_pose = self._bodies[self._name_to_idx_map[link_name]].pose
         # p_e = e_pose.translation()
@@ -763,7 +789,7 @@ class DifferentiableRobotModel(torch.nn.Module):
 
         parent_joint_id = self._bodies[self._name_to_idx_map[link_name]].joint_id
         
-        with record_function("robot_model/jac"):
+        with record_function("robot_model:jac"):
             # while link_name != self._bodies[0].name:
             for i, idx in enumerate(self._controlled_joints):
                 # if joint_id in self._controlled_joints:
@@ -782,7 +808,9 @@ class DifferentiableRobotModel(torch.nn.Module):
                 # link_name = self._urdf_model.get_name_of_parent_body(link_name)
                 # joint_id = self._bodies[self._name_to_idx_map[link_name]].joint_id
 
-        return ee_pos, ee_rot, lin_jac, ang_jac
+        # return ee_pos, ee_rot, lin_jac, ang_jac, ee_lin_vel, ee_ang_vel
+        return link_pose_dict, lin_jac, ang_jac
+
 
     def _get_parent_object_of_param(self, link_name: str, parameter_name: str):
         body_idx = self._name_to_idx_map[link_name]

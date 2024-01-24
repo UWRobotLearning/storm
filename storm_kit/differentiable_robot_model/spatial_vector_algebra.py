@@ -7,6 +7,7 @@ from __future__ import annotations
 from typing import Optional, Tuple
 import torch
 import torch.nn.functional as F
+from torch.profiler import record_function
 
 import math
 from storm_kit.differentiable_robot_model import utils
@@ -206,7 +207,8 @@ class SpatialMotionVec(object):
             the motion vector (self) transformed by the coordinate transform
         """
         new_ang = (transform.rotation() @ self.ang.unsqueeze(2)).squeeze(2)
-        new_lin = (transform.trans_cross_rot() @ self.ang.unsqueeze(2)).squeeze(2)
+        with record_function('trans_cross_rot'):
+            new_lin = (transform.trans_cross_rot() @ self.ang.unsqueeze(2)).squeeze(2)
         new_lin += (transform.rotation() @ self.lin.unsqueeze(2)).squeeze(2)
         return SpatialMotionVec(new_lin, new_ang, device=self._device)
 
@@ -220,7 +222,6 @@ class SpatialMotionVec(object):
     #         device=self._device
     #     )
 
-    @torch.jit.export
     def dot(self, smv:SpatialMotionVec)->torch.Tensor:
         tmp1 = torch.sum(self.ang * smv.ang, dim=-1)
         tmp2 = torch.sum(self.lin * smv.lin, dim=-1)

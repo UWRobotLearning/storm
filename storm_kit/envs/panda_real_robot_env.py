@@ -144,6 +144,7 @@ class PandaRealRobotEnv():
         return command_dict
 
     def step(self, actions:torch.Tensor):
+        
         if not self.headless:
             self.render()
 

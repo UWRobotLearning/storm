@@ -128,8 +128,9 @@ class MPCNode():
                 }
 
                 #get mpc command
-                st=time.time()
+                # st=time.time()
                 action, policy_info = self.policy.get_action(policy_input, deterministic=True)
+                # print(time.time()-st)
                 self.state, _ = self.env.step(action)
                 # next_state = info['state']
                 # self.state = copy.deepcopy(next_state) 

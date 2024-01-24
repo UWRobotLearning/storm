@@ -15,6 +15,8 @@ import matplotlib.pyplot as plt
 from collections import defaultdict
 import numpy as np
 import math
+from torch.profiler import profile, record_function, ProfilerActivity
+
 
 def _gen_dir_name():
     now_str = datetime.now().strftime('%m-%d-%y_%H.%M.%S')
@@ -334,13 +336,18 @@ def run_episode(
 
         traj_data = defaultdict(list)
         total_return, discounted_total_return = 0.0, 0.0
+
         for i in range(max_episode_steps):
             with torch.no_grad():
                 policy_input = {
                     'obs': torch.as_tensor(obs).float(),
                     'states': state}
-                                
+                # with profile(activities=[ProfilerActivity.CPU, ProfilerActivity.CUDA]) as prof:
                 action, policy_info = policy.get_action(policy_input, deterministic=deterministic)
+
+                # if i == 2:
+                #     print(prof.key_averages().table(sort_by="cuda_time_total", row_limit=30))
+                #     exit()
 
                 #step tells me about next state
                 next_obs, next_reward, next_done, info = env.step(
@@ -385,6 +392,7 @@ def run_episode(
             'discounted_return': discounted_total_return,
             'traj_length': i+1
             }
+
         
         return traj_data, traj_info
 
