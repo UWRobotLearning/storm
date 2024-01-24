@@ -31,7 +31,7 @@ def main(cfg: DictConfig):
 
     for buffer_name, buffer in buffer_dict.items():
         print('Analyzing buffer {}'.format(buffer_name))
-        buffer, success_buffer, buffer_info = preprocess_dataset(buffer, None, task, cfg.train.agent)
+        buffer, validation_buffer, success_buffer, buffer_info = preprocess_dataset(buffer, None, task, cfg.train.agent)
         for episode in buffer.episode_iterator():
             episode_metrics = task.compute_metrics(episode)
             plot_episode(episode, block=False)

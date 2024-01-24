@@ -7,6 +7,7 @@ from operator import mul
 from storm_kit.differentiable_robot_model.spatial_vector_algebra import matrix_to_quaternion, quaternion_to_matrix, euler_angles_to_matrix, matrix_to_euler_angles, quat_multiply
 from storm_kit.mpc.cost import NormCost, PoseCost
 from storm_kit.tasks.arm_task import ArmTask
+import numpy as np
 
 class ArmReacher(ArmTask):
     """
@@ -165,31 +166,34 @@ class ArmReacher(ArmTask):
         ee_pos = state_dict['ee_pos']
         ee_rot = state_dict['ee_rot']
         ee_vel = state_dict['ee_vel_twist']
-        ee_quat = matrix_to_quaternion(ee_rot)
+        # ee_quat = state_dict['ee_quat']
+        # ee_quat = matrix_to_quaternion(ee_rot)
         q_vel = state_dict['q_vel']
         if ee_pos.ndim == 2:
             goal_ee_pos = self.goal_ee_pos.reshape_as(ee_pos)
             goal_ee_rot = self.goal_ee_rot.reshape_as(ee_rot)
-            goal_ee_quat = self.goal_ee_quat.reshape_as(ee_quat)
+            # goal_ee_quat = self.goal_ee_quat.reshape_as(ee_quat)
         elif ee_pos.ndim == 3:
             goal_ee_pos = self.goal_ee_pos.unsqueeze(1).reshape_as(ee_pos)
             goal_ee_rot = self.goal_ee_rot.unsqueeze(1).reshape_as(ee_rot)
-            goal_ee_quat = self.goal_ee_quat.unsqueeze(1).reshape_as(ee_quat)
-
+            # goal_ee_quat = self.goal_ee_quat.unsqueeze(1).reshape_as(ee_quat)
         elif ee_pos.ndim == 4:
             goal_ee_pos = self.goal_ee_pos.unsqueeze(1).unsqueeze(1).repeat(1, ee_pos.shape[1], ee_pos.shape[2], 1)
             goal_ee_rot = self.goal_ee_rot.unsqueeze(1).unsqueeze(1).repeat(1, ee_rot.shape[1], ee_rot.shape[2], 1, 1)
-            goal_ee_quat = self.goal_ee_quat.unsqueeze(1).unsqueeze(1).repeat(1, ee_quat.shape[1], ee_quat.shape[2], 1)
+            # goal_ee_quat = self.goal_ee_quat.unsqueeze(1).unsqueeze(1).repeat(1, ee_quat.shape[1], ee_quat.shape[2], 1)
 
-        conj_quat = ee_quat
-        conj_quat[..., 1:] *= -1.0
-        quat_res = quat_multiply(goal_ee_quat, conj_quat)
+        # conj_quat = ee_quat
+        # conj_quat[..., 1:] *= -1.0
+        # quat_res = quat_multiply(goal_ee_quat, conj_quat)
 
         dist_err = 100*torch.norm(ee_pos - goal_ee_pos, p=2, dim=-1) #l2 err in cm
-        rot_err = 2.0 * torch.acos(quat_res[..., 0]) #rotation error in degrees
-        twist_norm = torch.norm(ee_vel, p=2, dim=-1)
+        # rot_err = 2.0 * torch.acos(quat_res[..., 0]) #rotation error in degrees
 
-        success = (dist_err < 1.0) & (rot_err < 1.0) & (twist_norm <0.2)
+        rotation_diff = torch.matmul(ee_rot, goal_ee_rot.transpose(-1,-2))
+        trace = rotation_diff.diagonal(offset=0, dim1=-1, dim2=-2).sum(-1)
+        rot_err = torch.rad2deg(torch.acos((trace - 1.)/2.0))
+        twist_norm = torch.norm(ee_vel, p=2, dim=-1)
+        success = (dist_err < 1.0) & (rot_err < 1.0) & (twist_norm < 0.01)
         return success
 
 
@@ -203,21 +207,26 @@ class ArmReacher(ArmTask):
         state_dict = self.compute_full_state(state_dict)
 
         ee_pos, ee_rot = state_dict['ee_pos'], state_dict['ee_rot']
-        ee_quat = matrix_to_quaternion(ee_rot)
+        # ee_quat = matrix_to_quaternion(ee_rot)
 
         ee_goal_pos = ee_goal[:, 0:3]
         ee_goal_quat = ee_goal[:, 3:]
 
-        # ee_goal_rot = quaternion_to_matrix(ee_goal_quat)
+        ee_goal_rot = quaternion_to_matrix(ee_goal_quat)
         # ee_pos, ee_rot, lin_jac_batch, ang_jac_batch = self.robot_model.compute_fk_and_jacobian(
         #     q_pos, self.cfg['ee_link_name'])
         
-        conj_quat = ee_quat
-        conj_quat[..., 1:] *= -1.0
-        quat_res = quat_multiply(ee_goal_quat, conj_quat)
+        # conj_quat = ee_quat
+        # conj_quat[..., 1:] *= -1.0
+        # quat_res = quat_multiply(ee_goal_quat, conj_quat)
 
         dist_err = 100*torch.norm(ee_pos - ee_goal_pos, p=2, dim=-1) #l2 err in cm
-        rot_err = 2.0 * torch.acos(quat_res[..., 0]) #rotation error in degrees
+        # rot_err = torch.rad2deg(2.0 * torch.acos(quat_res[..., 0])) #rotation error in degrees
+        rotation_diff = torch.matmul(ee_rot, ee_goal_rot.transpose(-1,-2))
+        trace = rotation_diff.diagonal(offset=0, dim1=-1, dim2=-2).sum(-1)
+        rot_err = torch.rad2deg(torch.acos((trace - 1.)/2.0))
+
+
         #Last Step Error
         dist_err_final = dist_err[-1].item()
         rot_err_final = rot_err[-1].item()
@@ -239,12 +248,15 @@ class ArmReacher(ArmTask):
         ee_path_length = 100 * torch.sum(deltas).item() #ee path length in cm
     
         #max ee vel
+        ee_vel_twist = torch.norm(state_dict['ee_vel_twist'], p=2, dim=-1)
+        ee_vel_twist_final = ee_vel_twist[-1].item()
 
         #termination
         term, term_cost, term_info = self.compute_termination(state_dict)
         world_collision_violation = term_info['in_coll_world'].sum(-1).nonzero().numel() if 'in_coll_world' in term_info else 0
         self_collision_violation = term_info['in_coll_self'].sum(-1).nonzero().numel() if 'in_coll_self' in term_info else 0
         bounds_violation = torch.logical_not(term_info['in_bounds']).sum(-1).nonzero().numel() if 'in_bounds' in term_info else 0
+        success = term_info['success'].nonzero().numel() if 'success' in term_info else 0
 
         #Last 10 step avg error
         # last_n_dist_err =  torch.mean(dist_err[-10:]).item()
@@ -268,11 +280,13 @@ class ArmReacher(ArmTask):
             'total_cost': total_cost,
             'dist_err_final': dist_err_final,
             'rot_err_final': rot_err_final,
+            'ee_vel_twist_final': ee_vel_twist_final,
             'avg_manip_score': avg_manip_score,
             'ee_path_length': ee_path_length,
             'world_collision': world_collision_violation,
             'self_collision': self_collision_violation,
-            'bounds_violation': bounds_violation}
+            'bounds_violation': bounds_violation,
+            'success': success}
             # 'last_10_dist_err': last_n_dist_err,
             # 'last_10_dist_err_rel': last_n_dist_err_rel,
             # 'max_q_vel': max_q_vel,

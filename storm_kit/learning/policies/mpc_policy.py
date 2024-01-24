@@ -131,6 +131,6 @@ class MPCPolicy(Policy):
     def reset(self, reset_data=None):
         self.controller.reset(reset_data)
     
-    def set_value_metrics(self, value_metrics=None):
-        self.controller.set_value_metrics(value_metrics)
+    def set_prediction_metrics(self, value_metrics=None):
+        self.controller.set_prediction_metrics(value_metrics)
     

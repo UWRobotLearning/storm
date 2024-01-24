@@ -2,14 +2,12 @@ from typing import Optional, Dict
 from collections import defaultdict
 import torch
 
-# import numpy as np
-
 class ReplayBuffer():
     def __init__(self, capacity:int, device:torch.device = torch.device('cpu')):
         self.capacity = capacity
         self.device = device
         
-        self.buffers = {} #defaultdict(lambda:{})        
+        self.buffers = {}        
         self.curr_idx = 0
         self.num_stored = 0
 
@@ -58,11 +56,30 @@ class ReplayBuffer():
     def sample(self, batch_size):
         idxs = torch.randint(
             0, len(self), size=(batch_size,), device=self.device)
-        batch = defaultdict(lambda:{})
+        batch = {}
         for k, v in self.buffers.items():
             batch[k] = v[idxs]
         return batch
     
+    def batch_iterator(self, batch_size):
+        num = len(self)
+        idxs = torch.randperm(num) #for _ in range(ensemble_size)
+        for i in range(0, num, batch_size):
+            j = min(num, i + batch_size)
+
+            if (j - i) < batch_size and i != 0:
+                # drop incomplete last batch
+                return
+
+            batch_size = j - i
+            batch_indices = idxs[i:j]
+            
+            batch = {}
+            for k, v in self.buffers.items():
+                batch[k] = v[batch_indices]
+
+            yield batch 
+
     def episode_iterator(self, ignores=("metadata",)):
         """
         Returns an iterator over episodes.

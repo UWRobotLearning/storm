@@ -130,9 +130,10 @@ class GaussianMPC(Controller):
         # used as all particles might be the same in this case
         if self.num_ol_particles == 0 and not self.use_cl_std:
             self.normalize_returns = False
-        
-        print('[GaussianMPC]:\nNum Particles = {0}\nNum OL Particles = {1} \nNum CL Particles = {2}\nNum Null Particles = {3}\nSampling Policy Loaded = {4}'.format(
-            self.num_particles, self.num_ol_particles, self.num_cl_particles, self.num_null_particles, self.sampling_policy is not None
+
+        print('[GaussianMPC]:\nNum Particles = {0}\nNum OL Particles = {1} \nNum CL Particles = {2}\nNum Null Particles = {3}\nSampling Policy Loaded = {4} \nValue Function Loaded = {5}'.format(
+            self.num_particles, self.num_ol_particles, self.num_cl_particles, self.num_null_particles, self.sampling_policy is not None,
+            self.vf is not None
         ))
 
         self.sample_shape = torch.Size([self.num_nonzero_particles - 2])
@@ -151,7 +152,7 @@ class GaussianMPC(Controller):
         self.Z_seq = torch.zeros(self.state_batch_size, 1, self.horizon, self.d_action, **self.tensor_args)
         self.d_state = self.dynamics_model.d_state
         self.reset_distribution()
-        self.set_value_metrics(None)
+        self.set_prediction_metrics(None)
 
         if self.num_null_particles > 0:
             self.null_act_seqs = torch.zeros(self.state_batch_size, self.num_null_particles, self.horizon, self.d_action, **self.tensor_args) 
@@ -315,6 +316,7 @@ class GaussianMPC(Controller):
                 v_preds, _ = self.vf({'obs': obs.view(-1, obs.shape[-1])})#.clamp(min=self.V_min, max=self.V_max)
                 v_preds = v_preds.view(self.state_batch_size, self.num_particles, self.horizon)
                 v_preds = self.V_std * v_preds + self.V_mean #unnormalize
+                # print(v_preds, self.V_mean)
 
         sim_trajs = dict(
             actions=act_seq,
@@ -430,13 +432,13 @@ class GaussianMPC(Controller):
         if reset_data is not None:
             self.task.update_params(reset_data)
             if 'value_metrics' in reset_data:
-                self.set_value_metrics(reset_data['value_metrics'])
+                self.set_prediction_metrics(reset_data['value_metrics'])
         
         if self.sampling_policy is not None:
             self.sampling_policy.reset(reset_data)
         self.dynamics_model.reset(reset_data)
 
-    def set_value_metrics(self, value_metrics=None):
+    def set_prediction_metrics(self, value_metrics=None):
         self.V_min, self.V_max=-float('inf'), float('inf')
         self.V_mean, self.V_std = 0.0, 1.0
         if value_metrics is not None:

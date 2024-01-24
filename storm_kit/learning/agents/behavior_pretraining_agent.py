@@ -65,6 +65,7 @@ class BPAgent(nn.Module):
         self.vf_target_mode = self.cfg.get('vf_target_mode', 'asymmetric_l2')
         self.expecile_tau = self.cfg.get('expecile_tau', 0.7)
         self.lambd = self.cfg.get('lambd', 1.0)
+        self.randomize_ensemble_targets = self.cfg.get('randomize_ensemble_targets', True)
 
     def update(
             self, batch:Dict[str, torch.Tensor], 
@@ -249,23 +250,34 @@ class BPAgent(nn.Module):
         td_targets = torch.zeros_like(r_c_batch)
         with torch.no_grad():
             if self.lambd > 0:
-                last_vs, _ = self.target_vf({'obs': last_observations})  # inference (normalized space)
+                last_vs, _ = self.target_vf.all({'obs': last_observations})  # inference (normalized space)
                 last_vs = normalization_stats['disc_return_std'] * last_vs + normalization_stats['disc_return_mean'] #un-normalize
                 mc_targets = (returns + (1. - last_terminals) * (self.discount**remaining_steps) * last_vs)#.clamp(min=self.V_min, max=self.V_max)
 
             if self.lambd < 1:    
-                v_next, _ = self.target_vf({'obs': next_obs_batch}) #inference (normalized space)
+                v_next, _ = self.target_vf.all({'obs': next_obs_batch}) #inference (normalized space)
                 v_next = normalization_stats['disc_return_std'] * v_next + normalization_stats['disc_return_mean'] #un-normalize         
                 td_targets = (r_c_batch +  (1. - done_batch) * self.discount * v_next)#.clamp(min=self.V_min, max=self.V_max)
         v_target = td_targets*(1.-self.lambd) + mc_targets*self.lambd
         # adv = v_target - v_pred
         
         vf_all, vf_pred_info = self.vf.all({'obs': obs_batch}) #inference (normalized space)
-        v_target = v_target.unsqueeze(0).repeat(vf_all.shape[0],1)
+        # v_target = v_target.unsqueeze(0).repeat(vf_all.shape[0],1)                
         v_target = (v_target - disc_return_mean) / disc_return_std  #Normalize targets 
 
         vf_loss = F.mse_loss(vf_all, v_target, reduction='none') #loss (normalized space)
-        vf_loss = vf_loss.sum(0).mean() #sum along ensemble dimension and mean along batch
+        
+        if self.randomize_ensemble_targets:
+            #create random mask 
+            # x = torch.randn_like(v_target)
+            # mask = x.ge(0.5)
+            # non_zero = mask.sum(-1)
+            vf_loss = vf_loss * self.mask.float()
+            vf_loss = vf_loss.sum(-1)
+            vf_loss = (vf_loss / self.non_zero) #mean along batch
+            vf_loss = vf_loss.sum(0) #sum along ensemble dimension
+        else:
+            vf_loss = vf_loss.sum(0).mean() #sum along ensemble dimension and mean along batch
 
         # avg_v_value = torch.max(vf_all, dim=0)[0].mean() 
         avg_target_value = v_target.mean()
@@ -295,8 +307,14 @@ class BPAgent(nn.Module):
 
         return state
  
-    def setup(self, max_steps:int):
+    def setup(self, max_steps:int, batch_size:int, ensemble_size:int=1):
         self.policy_lr_schedule = CosineAnnealingLR(self.policy_optimizer, max_steps)
+        if ensemble_size > 1:
+            x = torch.randn(ensemble_size, batch_size, device=self.device)
+            self.mask = x.ge(0.5)
+        else:
+            self.mask = torch.ones(ensemble_size, batch_size, device=self.device).bool()
+        self.non_zero = self.mask.sum(-1)
         self.setup_agent_called = True
  
     def compute_validation_metrics(
@@ -325,7 +343,8 @@ class BPAgent(nn.Module):
                 for ensemble_idx in range(num_members):
                     vf_preds_i = episode[f'vf_preds_{ensemble_idx}'].cpu().numpy()
                     ax.plot(vf_preds_i, linestyle='dashed', label=f'ensemble_mem_{ensemble_idx}')
-                ax.legend()
+                if episode_num == 0:
+                    ax.legend()
                 figs[f'{episode_num}'] = fig
                 # fig_list.append(fig)
                 # ax_list.append(ax)

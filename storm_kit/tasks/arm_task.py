@@ -304,7 +304,7 @@ class ArmTask(nn.Module):
         #     bound_dist = cost_terms['bound_dist']
         
         obs = torch.cat(
-            (ee_pos_batch, ee_rot_batch, ee_vel_twist), dim=-1) #q_pos_batch,q_vel_batch, 
+            (ee_pos_batch, ee_rot_batch, ee_vel_twist), dim=-1) # , q_pos_batch,q_vel_batch, 
 
         return obs
 
@@ -349,7 +349,10 @@ class ArmTask(nn.Module):
             info['in_bounds'] = bound_cost_info['in_bounds'].view(*orig_size, -1)
             info['bound_dist'] = bound_cost_info['bound_dist'].view(*orig_size, -1)
 
-        
+
+        success = self.compute_success(state_dict).flatten()
+        termination = torch.logical_or(termination, success)
+        info['success'] = success
         # termination = torch.logical_or(collision_violation, bounds_violation)
         # termination_cost = coll_cost +  bound_cost
 
@@ -361,7 +364,6 @@ class ArmTask(nn.Module):
         #         self_coll_cost = self_coll_cost.view(self.num_instances, self.batch_size, self.horizon)
         #         termination += self_coll_cost > 0.
 
-        # termination = (termination > 0).float()
         termination = termination.float().view(orig_size)
         term_cost = term_cost.view(orig_size)
 
@@ -393,7 +395,6 @@ class ArmTask(nn.Module):
             ee_acc_twist_batch = torch.matmul(ee_jac_batch, q_acc.unsqueeze(-1)).squeeze(-1)
  
             # get link poses:
-            st4=time.time()
             link_pos_list = []
             link_rot_list = []
             for ki,k in enumerate(self.link_names):

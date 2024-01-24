@@ -326,9 +326,11 @@ def run_episode(
             obs, reset_info = env.reset(rng=rng)
             state = reset_info['state']
             reset_data = reset_info['reset_data']
+            done = reset_info['done']
             policy.reset(reset_data)
         except:
             obs = env.reset()
+            done = False
 
         traj_data = defaultdict(list)
         total_return, discounted_total_return = 0.0, 0.0
@@ -339,17 +341,14 @@ def run_episode(
                     'states': state}
                                 
                 action, policy_info = policy.get_action(policy_input, deterministic=deterministic)
-                #     #mujoco
-                #     next_obs, reward, done, info = env.step(
-                #         action.cpu().numpy(), compute_cost=True, compute_termination=compute_termination)
-                # except:
-                #     #storm (isaacgym)
-                next_obs, reward, done, info = env.step(
+
+                #step tells me about next state
+                next_obs, next_reward, next_done, info = env.step(
                     action, compute_cost=compute_cost, compute_termination=compute_termination)
 
                 next_state = info['state'] if 'state' in info else None
-                total_return += reward
-                discounted_total_return += reward * discount**i
+                total_return += next_reward
+                discounted_total_return += next_reward * discount**i
 
             timeout = i == max_episode_steps - 1
             terminal = done and (not timeout)
@@ -357,7 +356,7 @@ def run_episode(
             traj_data['observations'].append(obs)
             traj_data['actions'].append(action)
             traj_data['next_observations'].append(next_obs)
-            traj_data['rewards'].append(reward)
+            traj_data['rewards'].append(next_reward)
             traj_data['terminals'].append(bool(terminal))
             traj_data['timeouts'].append(bool(timeout))
             if reset_data is not None:
@@ -372,8 +371,9 @@ def run_episode(
             # traj_data['qvel'].append(qvel)
 
             if done or timeout: break
-            obs = next_obs
+            obs = copy.deepcopy(next_obs)
             state = copy.deepcopy(next_state)
+            done = next_done
 
         for k in traj_data:
             if torch.is_tensor(traj_data[k][0]):
@@ -464,13 +464,14 @@ def preprocess_dataset(train_dataset, env, task=None, cfg=None, normalize_score_
     #extract dataset of "success states" from train_dataset
     #TODO: Maybe this should just be a dataset of trajectories with 
     # terminals in them 
-    success_dataset=None
-    if "success" in train_dataset.keys():
-        success_idxs = train_dataset["success"] > 0
-        success_dataset = ReplayBuffer(capacity=len(train_dataset["success"].nonzero()), device=train_dataset.device)
-        success_batch = {k: v[success_idxs] for (k,v) in train_dataset.items()}
-        success_dataset.add_batch(success_batch)
-    
+    terminal_dataset=None
+    if "terminals" in train_dataset.keys():
+        terminal_idxs = train_dataset["terminals"] > 0
+        terminal_dataset = ReplayBuffer(capacity=len(train_dataset["terminals"].nonzero()), device=train_dataset.device)
+        terminal_batch = {k: v[terminal_idxs] for (k,v) in train_dataset.items()}
+        terminal_dataset.add_batch(terminal_batch)
+
+
     info["return_min"] = min(train_dataset["returns"]).item()
     info["return_max"] = max(train_dataset["returns"]).item()
     info["return_mean"] = train_dataset["returns"].mean().item()
@@ -490,7 +491,7 @@ def preprocess_dataset(train_dataset, env, task=None, cfg=None, normalize_score_
         info['normalized_return_mean'] = normalized_returns.mean()
         info['normalized_return_std'] = normalized_returns.std()
     
-    return train_dataset, validation_dataset, success_dataset, info
+    return train_dataset, validation_dataset, terminal_dataset, info
 
 
 

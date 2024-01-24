@@ -10,6 +10,7 @@ from torch.profiler import profile, record_function, ProfilerActivity
 import time
 import gym
 from storm_kit.learning.policies import MPCPolicy, GaussianPolicy, JointControlWrapper
+from storm_kit.learning.value_functions import EnsembleValueFunction
 from storm_kit.learning.replay_buffer import ReplayBuffer
 from storm_kit.learning.learning_utils import plot_episode, evaluate_policy
 from storm_kit.envs.gym_env_wrapper import GymEnvWrapper
@@ -100,6 +101,29 @@ def main(cfg: DictConfig):
             policy_loaded = False
             print('Pretrained Policy Not Loaded Successfully')
 
+    #Load pretrained critic
+    pretrained_vf = None
+    normalization_stats=None
+    if cfg.eval.load_critic:
+        #load pretrained critic weights
+        pretrained_vf = EnsembleValueFunction(
+            obs_dim=obs_dim, config=cfg.train.vf, device=cfg.rl_device)
+        checkpoint_path = Path(f'./tmp_results/{cfg.task_name}/BP/models/agent_checkpoint.pt')
+        print('Loading agent checkpoint from {}'.format(checkpoint_path))
+        try:
+            checkpoint = torch.load(checkpoint_path)
+
+            vf_state_dict = checkpoint['vf_state_dict']
+            remove_prefix = 'vf.'
+            vf_state_dict = {k[len(remove_prefix):] if k.startswith(remove_prefix) else k: v for k, v in vf_state_dict.items()}
+            pretrained_vf.load_state_dict(vf_state_dict)
+            pretrained_vf.eval()
+            normalization_stats = checkpoint['normalization_stats']
+            print('Loaded Pretrained VF Successfully')
+        except:
+            print('Pretrained VF Not Loaded Successfully')
+
+
     if eval_pretrained and policy_loaded:
         print('Evaluating Pretrained Policy')
         policy = pretrained_policy
@@ -107,8 +131,10 @@ def main(cfg: DictConfig):
         print('Evaluating MPC Policy. Loaded Pretrained?: {}'.format(policy_loaded))
         policy = MPCPolicy(
             obs_dim=obs_dim, act_dim=act_dim, config=cfg.mpc,
-            task_cls=task_cls, dynamics_model_cls=dyn_model_cls, 
-            sampling_policy=pretrained_policy, device=cfg.rl_device)
+            task_cls=task_cls, dynamics_model_cls=dyn_model_cls,
+            sampling_policy=pretrained_policy, vf=pretrained_vf, 
+            device=cfg.rl_device)
+        policy.set_prediction_metrics(normalization_stats)
 
     st=time.time()
     num_episodes = cfg.eval.num_episodes
