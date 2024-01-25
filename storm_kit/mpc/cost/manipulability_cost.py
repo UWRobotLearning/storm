@@ -20,7 +20,7 @@
 # LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
 # FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 # DEALINGS IN THE SOFTWARE.#
-
+from typing import Dict, Tuple
 import torch
 import torch.nn as nn
 from torch.profiler import record_function
@@ -29,24 +29,25 @@ eps = 0.01
 
 
 class ManipulabilityCost(nn.Module):
+    info: Dict[str, torch.Tensor]
     def __init__(
             self, 
             # ndofs: int, 
-            weight = None, 
-            device = torch.device('cpu'), 
-            float_dtype = torch.float32, 
+            weight:torch.Tensor, 
+            device:torch.device = torch.device('cpu'), 
+            # float_dtype = torch.float32, 
             thresh:float = 0.1):
         
         super(ManipulabilityCost, self).__init__() 
         self.device = device
-        self.float_dtype = float_dtype
-        self.weight = torch.as_tensor(weight, device=device, dtype=float_dtype)
+        # self.float_dtype = float_dtype
+        self.weight = torch.as_tensor(weight, device=device) #, dtype=float_dtype)
         # self.ndofs = ndofs
         self.thresh = thresh
         self.info = {}
         # self.i_mat = torch.ones((6,1), device=self.device, dtype=self.float_dtype)
     
-    def forward(self, jac_batch:torch.Tensor) -> torch.Tensor:
+    def forward(self, jac_batch:torch.Tensor) -> Tuple[torch.Tensor, Dict[str, torch.Tensor]]:
         inp_device = jac_batch.device
 
         with torch.cuda.amp.autocast(enabled=False):

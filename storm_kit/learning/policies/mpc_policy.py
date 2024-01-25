@@ -46,12 +46,12 @@ class MPCPolicy(Policy):
         return dist, value, aux_info
 
     def get_action(self, obs_dict, deterministic=False): #, num_samples=1):
-        # st = time.time()
+        st = time.time()
         state_dict = obs_dict['states']
         with record_function('mpc_policy:get_action'):
             curr_action_seq, _, _ = self.controller.sample(
                 state_dict, shift_steps=1, deterministic=deterministic)#, calc_val=False, num_samples=num_samples)
-        # print('policy get action time', time.time()-st)
+        print('policy get action time', time.time()-st)
         action = curr_action_seq[:, 0]
         info = {}
         return action, info
@@ -99,7 +99,6 @@ class MPCPolicy(Policy):
             task=task,
             dynamics_model=dynamics_model,
             sampling_policy=sampling_policy,
-            # value_function=value_function,
             vf=vf, qf=qf,
             tensor_args=self.tensor_args)
         return controller

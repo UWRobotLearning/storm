@@ -29,31 +29,32 @@ qf:
 
 vf:
   mlp_params:
-    hidden_layers: [256, 128, 64] 
+    hidden_layers: [256, 128] 
     activation: torch.nn.ReLU 
     output_activation: null
     dropout_prob: 0.0 
     layer_norm: false #set to true
-  ensemble_size: 50
+  ensemble_size: 10
   aggregation: 'max'
+  prior_factor: 0.0
 
 agent:
   name: 'BP'
   max_buffer_size: 1e6
-  num_train_epochs: 1000
+  num_train_epochs: 200
   # num_pretrain_steps: 200000
   train_batch_size: 256
-  terminal_batch_size: 64
+  terminal_batch_size: 32
   train_val_split_ratio: 0.95
   policy_optimizer:
     __target__: torch.optim.Adam
-    lr: 3e-4
+    lr: 5e-4
   qf_optimizer:
     __target__: torch.optim.Adam
-    lr: 3e-4
+    lr: 5e-4
   vf_optimizer:
     __target__: torch.optim.Adam
-    lr: 3e-4
+    lr: 5e-4
   polyak_tau: 5e-3
   log_freq: 100
   checkpoint_freq: 1

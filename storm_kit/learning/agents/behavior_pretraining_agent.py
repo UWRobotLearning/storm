@@ -135,40 +135,39 @@ class BPAgent(nn.Module):
 
         action_diff = torch.norm(new_actions - act_batch, dim=-1).mean()
         
-        if step_num < self.num_warmstart_steps:
-            policy_loss = bc_loss.mean()
-        else:
-            #compute advantage weighted behavior cloning loss
-            if self.vf is not None and self.vf_target_mode=='asymmetric_l2':
-                #IQL loss
-                if 'adv' in batch: adv = batch['adv']
-                else:
-                    v_target = self.target_qf(
-                        {'obs': obs_batch}, act_batch)
-                    v_pred = self.vf({'obs': obs_batch})  # inference
-                    adv = v_target - v_pred
-                weight = torch.exp(self.beta * adv.detach()).clamp(max=100.)
-            else:
-                #CRR loss
-                q_pred = self.qf(
-                    {'obs': obs_batch}, act_batch)
-                action_samples = torch.stack([policy_out.sample() for _ in range(self.num_adv_samples)], dim=0)
-                repeat_obs = torch.repeat_interleave(obs_batch.unsqueeze(0), self.num_adv_samples, 0)
-                v_pred = self.qf(
-                    {'obs': repeat_obs}, action_samples)
-                if self.advantage_mode == 'mean':
-                    advantage = q_pred - v_pred.mean(dim=0)
-                elif self.advantage_mode == 'max':
-                    advantage = q_pred - v_pred.max(dim=0)[0]
+        # if step_num < self.num_warmstart_steps:
+        policy_loss = bc_loss.mean()
+        # else:
+        #     #compute advantage weighted behavior cloning loss
+        #     if self.vf is not None and self.vf_target_mode=='asymmetric_l2':
+        #         #IQL loss
+        #         if 'adv' in batch: adv = batch['adv']
+        #         else:
+        #             v_target = self.target_qf(
+        #                 {'obs': obs_batch}, act_batch)
+        #             v_pred = self.vf({'obs': obs_batch})  # inference
+        #             adv = v_target - v_pred
+        #         weight = torch.exp(self.beta * adv.detach()).clamp(max=100.)
+        #     else:
+        #         #CRR loss
+        #         q_pred = self.qf(
+        #             {'obs': obs_batch}, act_batch)
+        #         action_samples = torch.stack([policy_out.sample() for _ in range(self.num_adv_samples)], dim=0)
+        #         repeat_obs = torch.repeat_interleave(obs_batch.unsqueeze(0), self.num_adv_samples, 0)
+        #         v_pred = self.qf(
+        #             {'obs': repeat_obs}, action_samples)
+        #         if self.advantage_mode == 'mean':
+        #             advantage = q_pred - v_pred.mean(dim=0)
+        #         elif self.advantage_mode == 'max':
+        #             advantage = q_pred - v_pred.max(dim=0)[0]
                 
-                if self.weight_mode == 'exp':
-                    weight = torch.exp(advantage / self.beta)
-                elif self.weight_mode == 'binary':
-                    weight = (advantage > 0).float()
-                weight = torch.clamp_max(weight, 20).detach()
+        #         if self.weight_mode == 'exp':
+        #             weight = torch.exp(advantage / self.beta)
+        #         elif self.weight_mode == 'binary':
+        #             weight = (advantage > 0).float()
+        #         weight = torch.clamp_max(weight, 20).detach()
             
-            policy_loss = torch.mean(weight * bc_loss.mean(-1))
-
+        #     policy_loss = torch.mean(weight * bc_loss.mean(-1))
 
         policy_info_dict = {
             'Train/bc_loss': bc_loss.mean().item(),

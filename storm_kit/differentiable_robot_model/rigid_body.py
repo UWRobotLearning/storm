@@ -29,7 +29,6 @@ class DifferentiableRigidBody(torch.nn.Module):
     joint_limits: Dict[str, float]
     name: str
 
-
     # _parents: Optional["DifferentiableRigidBody"]
     # _children: List["DifferentiableRigidBody"]
 

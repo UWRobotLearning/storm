@@ -106,7 +106,7 @@ class CoordinateTransform(object):
             q[n, :] *= 0.5 / math.sqrt(tn * M[n, 3, 3])
         return q
 
-    def to_matrix(self):
+    def to_matrix(self)->torch.Tensor:
         batch_size = self._rot.shape[0]
 
         mat = torch.zeros((batch_size, 6, 6), device=self._device)
@@ -124,7 +124,7 @@ class CoordinateTransform(object):
         mat[:, 3:, 3:] = self._rot.transpose(-2, -1)
         return mat
 
-    def to_matrix_transpose(self):
+    def to_matrix_transpose(self)->torch.Tensor:
         batch_size = self._rot.shape[0]
 
         mat = torch.zeros((batch_size, 6, 6), device=self._device)

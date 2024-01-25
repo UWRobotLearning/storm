@@ -151,7 +151,7 @@ def main(cfg: DictConfig):
     train_dataset = qlearning_dataset(train_dataset)
     if val_dataset is not None: val_dataset.to(cfg.rl_device)
     # if val_dataset is not None: val_dataset = qlearning_dataset(val_dataset)
-    if terminal_dataset is not None: terminal_dataset.to(cfg.rl_device) 
+    if terminal_dataset is not None: terminal_dataset = qlearning_dataset(terminal_dataset).to(cfg.rl_device)
     print(dataset_info)
 
     env = GymEnvWrapper(env, task)

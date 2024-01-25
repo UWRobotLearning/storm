@@ -97,7 +97,7 @@ class DifferentiableRobotModel(torch.nn.Module):
     _bodies: List[DifferentiableRigidBody]
     _joint_limits: List[Dict[str, float]]
     _link_names: List[str]
-
+    _link_pose_dict: Dict[str, Tuple[torch.Tensor, torch.Tensor]]
 
     def __init__(self, urdf_path:str, name:str="", device:torch.device=torch.device('cpu')):
 
@@ -158,7 +158,6 @@ class DifferentiableRobotModel(torch.nn.Module):
         for i in range(len(self._bodies)):
             self._link_names.append(self._bodies[i].name)
 
-
         # Once all bodies are loaded, connect each body to its parent
         # for body in self._bodies[1:]:
         #     parent_body_name = self._urdf_model.get_name_of_parent_body(body.name)
@@ -171,12 +170,19 @@ class DifferentiableRobotModel(torch.nn.Module):
             torch.zeros([self._batch_size, 3, self._n_dofs], device=self._device),
         )
 
+        self._link_pose_dict = {}
+        for name in self._link_names:
+            self._link_pose_dict[name] = (
+                torch.zeros(self._batch_size, 3, device=self._device),
+                torch.zeros(self._batch_size, 3, 3, device=self._device)
+            )
+
     def delete_lxml_objects(self):
         self._urdf_model = None
     
     def load_lxml_objects(self):
         self._urdf_model = URDFRobotModel(
-            urdf_path=self.urdf_path, device=self.device) #, dtype=self.dtype
+            urdf_path=self.urdf_path, device=self._device) #, dtype=self.dtype
         # )
 
     def allocate_buffers(self, batch_size:int):
@@ -184,7 +190,7 @@ class DifferentiableRobotModel(torch.nn.Module):
 
     # @tensor_check
     @torch.jit.export
-    def update_kinematic_state(self, q: torch.Tensor, qd: torch.Tensor):
+    def update_kinematic_state(self, q: torch.Tensor, qd: torch.Tensor)->None:
         r"""
 
         Updates the kinematic state of the robot
@@ -303,7 +309,7 @@ class DifferentiableRobotModel(torch.nn.Module):
     @torch.jit.export
     def compute_forward_kinematics(
         self, q: torch.Tensor, qd:torch.Tensor #, link_name: str, 
-    ) -> Tuple[torch.Tensor, torch.Tensor]: #recursive: bool = False
+    ) -> Dict[str, Tuple[torch.Tensor, torch.Tensor]]: #recursive: bool = False
         r"""
 
         Args:
@@ -324,7 +330,7 @@ class DifferentiableRobotModel(torch.nn.Module):
         with record_function('robot_model:update_kinematic_state'):
             self.update_kinematic_state(q, qd)
 
-        link_pose_dict = {}
+        link_pose_dict = self._link_pose_dict
         for link_name in self._link_names:
             pose = self._bodies[self._name_to_idx_map[link_name]].pose
             pos = pose.translation() #.to(inp_device)
@@ -769,8 +775,8 @@ class DifferentiableRobotModel(torch.nn.Module):
     
     @torch.jit.export
     def compute_fk_and_jacobian(
-            self, q: torch.Tensor, qd:torch.Tensor, link_name: str
-    ) -> Tuple[Dict[str, torch.Tensor], torch.Tensor, torch.Tensor]:
+            self, q:torch.Tensor, qd:torch.Tensor, link_name: str
+    ) -> Tuple[Dict[str, Tuple[torch.Tensor, torch.Tensor]], torch.Tensor, torch.Tensor]:
 
         
         with record_function("robot_model:fk"):
@@ -879,10 +885,7 @@ class DifferentiableRobotModel(torch.nn.Module):
 
         """
 
-        link_names = []
-        for i in range(len(self._bodies)):
-            link_names.append(self._bodies[i].name)
-        return link_names
+        return self._link_names
 
     def print_link_names(self) -> None:
         r"""

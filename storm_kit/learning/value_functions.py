@@ -211,6 +211,7 @@ class EnsembleValueFunction(nn.Module):
         self.out_dim = 1
         self.hidden_dim = self.mlp_params['hidden_layers'][0]
         self.aggregation = self.config['aggregation']
+        self.prior_factor = self.config['prior_factor']
         self.layer_sizes = [self.obs_dim] + OmegaConf.to_object(self.mlp_params['hidden_layers']) + [self.out_dim]
 
         self.net = ensemble_mlp(
@@ -221,24 +222,23 @@ class EnsembleValueFunction(nn.Module):
             dropout_prob=self.mlp_params['dropout_prob'],
             layer_norm=self.mlp_params['layer_norm'],
             squeeze_output=True).to(self.device)
-        
-        
-        # self.net = nn.Sequential(
-        #     VectorizedLinear(obs_dim , self.hidden_dim, self.ensemble_size),
-        #     nn.ReLU(),
-        #     VectorizedLinear(self.hidden_dim, self.hidden_dim, self.ensemble_size),
-        #     nn.ReLU(),
-        #     VectorizedLinear(self.hidden_dim, self.hidden_dim, self.ensemble_size),
-        #     nn.ReLU(),
-        #     VectorizedLinear(self.hidden_dim, self.out_dim, self.ensemble_size),
-        # ).to(self.device)
+    
+        if self.prior_factor > 0.:
+            self.prior_net = ensemble_mlp(
+            ensemble_size=self.ensemble_size,
+            layer_sizes=self.layer_sizes, 
+            activation=self.mlp_params['activation'],
+            output_activation=self.mlp_params['output_activation'],
+            dropout_prob=self.mlp_params['dropout_prob'],
+            layer_norm=self.mlp_params['layer_norm'],
+            squeeze_output=True).to(self.device).requires_grad_(False)
 
-        # # init as in the EDAC paper
+        # # # init as in the EDAC paper
         # for layer in self.net[::2]:
         #     torch.nn.init.constant_(layer.bias, 0.1)
 
-        # torch.nn.init.uniform_(self.net[-1].weight, -3e-3, 3e-3)
-        # torch.nn.init.uniform_(self.net[-1].bias, -3e-3, 3e-3)
+        # torch.nn.init.uniform_(self.net[-2].weight, -3e-3, 3e-3)
+        # torch.nn.init.uniform_(self.net[-2].bias, -3e-3, 3e-3)
 
     def all(self, obs_dict: Dict[str,torch.Tensor]):
         obs = obs_dict['obs']
@@ -252,6 +252,8 @@ class EnsembleValueFunction(nn.Module):
         assert obs.shape[0] == self.ensemble_size
         # [num_critics, batch_size]
         values = self.net(obs).squeeze(-1)
+        if self.prior_factor > 0.:
+            values += self.prior_factor * self.prior_net(obs).squeeze(-1)
 
         info = {'mean': values.mean(dim=0), 'std': values.std(dim=0)}
 

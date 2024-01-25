@@ -27,13 +27,19 @@ import torch.nn as nn
 from torch.profiler import record_function
 
 from ...differentiable_robot_model import DifferentiableRobotModel
+from storm_kit.differentiable_robot_model.spatial_vector_algebra import matrix_to_quaternion
 from .integration_utils import build_int_matrix, build_fd_matrix, tensor_step_acc, tensor_step_vel, tensor_step_pos, tensor_step_jerk
 from storm_kit.learning.policies import Policy
 
 class URDFKinematicModel(nn.Module):
     link_names: List[str]
     robot_keys: List[str]
-    
+    joint_lim_dicts: List[Dict[str, float]]
+    _integrate_matrix: torch.Tensor
+    _fd_matrix: torch.Tensor
+    _fd_matrix_jerk: torch.Tensor
+    dt_traj_params: torch.Tensor
+
     def __init__(
         self, 
         urdf_path: str, 
@@ -52,8 +58,8 @@ class URDFKinematicModel(nn.Module):
         device: torch.device = torch.device('cpu')):
         
         super().__init__()
-        self.urdf_path = urdf_path
-        self.robot_keys = robot_keys
+        self.urdf_path:str = urdf_path
+        self.robot_keys:List[str] = robot_keys
         self.device = device
         self.dtype = torch.float32
         # self.dt = dt
@@ -62,13 +68,13 @@ class URDFKinematicModel(nn.Module):
         self.batch_size:int = batch_size
         self.horizon:int = horizon
         self.num_traj_points:int = horizon 
-        self.link_names = link_names
+        self.link_names:List[str] = link_names
 
-        self.robot_model = DifferentiableRobotModel(urdf_path, device=self.device)
+        self.robot_model = torch.jit.script(DifferentiableRobotModel(urdf_path, device=self.device))
         #self.robot_model.half()
-        self.n_dofs = self.robot_model._n_dofs
-        self.d_state = 3 * self.n_dofs + 1
-        self.d_action = self.n_dofs
+        self.n_dofs:int = self.robot_model._n_dofs
+        self.d_state:int = 3 * self.n_dofs + 1
+        self.d_action:int = self.n_dofs
         # self.max_acc = max_acc
         # self.max_jerk = max_jerk
 
@@ -89,7 +95,7 @@ class URDFKinematicModel(nn.Module):
         self.Z = torch.tensor([0.], device=self.device, dtype=self.dtype) #torch.zeros(batch_size, self.n_dofs, device=self.device, dtype=self.dtype)
         self._integrate_matrix = build_int_matrix(self.num_traj_points, device=self.device, dtype=self.dtype, diagonal=-1)
         # self._integrate_matrix = self._integrate_matrix.unsqueeze(0).repeat(self.num_instances, 1, 1)
-        self.control_space = control_space
+        self.control_space:str = control_space
         
         if control_space == 'acc':
             self.step_fn = tensor_step_acc
@@ -402,9 +408,12 @@ class URDFKinematicModel(nn.Module):
             # link_rot_seq[...,ki,:,:] = link_rot.view((curr_batch_size, num_traj_points, 3, 3))
         
         ee_pos_seq, ee_rot_seq = link_pose_dict[self.ee_link_name]
+        ee_quat_seq = matrix_to_quaternion(ee_rot_seq)
+
 
         ee_pos_seq = ee_pos_seq.view((curr_state_batch_size, curr_batch_size, num_traj_points, 3))
         ee_rot_seq = ee_rot_seq.view((curr_state_batch_size, curr_batch_size, num_traj_points, 3, 3))
+        ee_quat_seq = ee_quat_seq.view((curr_state_batch_size, curr_batch_size, num_traj_points, 4))
         lin_jac_seq = lin_jac_seq.view((curr_state_batch_size, curr_batch_size, num_traj_points, 3, self.n_dofs))
         ang_jac_seq = ang_jac_seq.view((curr_state_batch_size, curr_batch_size, num_traj_points, 3, self.n_dofs))
         # ee_pos_seq = ee_pos_seq.view((curr_batch_size, num_traj_points, 3))
@@ -426,6 +435,7 @@ class URDFKinematicModel(nn.Module):
             'q_jerk': q_jerk_seq,
             'ee_pos': ee_pos_seq,
             'ee_rot': ee_rot_seq,
+            'ee_quat': ee_quat_seq,
             'ee_jacobian': ee_jacobian_seq,
             'ee_vel_twist': ee_vel_twist_seq,
             'ee_acc_twist': ee_acc_twist_seq,

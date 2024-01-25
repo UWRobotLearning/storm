@@ -112,15 +112,16 @@ def main(cfg: DictConfig):
         print('Loading agent checkpoint from {}'.format(checkpoint_path))
         try:
             checkpoint = torch.load(checkpoint_path)
-
             vf_state_dict = checkpoint['vf_state_dict']
             remove_prefix = 'vf.'
             vf_state_dict = {k[len(remove_prefix):] if k.startswith(remove_prefix) else k: v for k, v in vf_state_dict.items()}
             pretrained_vf.load_state_dict(vf_state_dict)
             pretrained_vf.eval()
             normalization_stats = checkpoint['normalization_stats']
+            vf_loaded = True
             print('Loaded Pretrained VF Successfully')
         except:
+            vf_loaded = False
             print('Pretrained VF Not Loaded Successfully')
 
 
@@ -132,7 +133,7 @@ def main(cfg: DictConfig):
         policy = MPCPolicy(
             obs_dim=obs_dim, act_dim=act_dim, config=cfg.mpc,
             task_cls=task_cls, dynamics_model_cls=dyn_model_cls,
-            sampling_policy=pretrained_policy, vf=pretrained_vf, 
+            sampling_policy=pretrained_policy, vf=pretrained_vf if vf_loaded else None, 
             device=cfg.rl_device)
         policy.set_prediction_metrics(normalization_stats)
 

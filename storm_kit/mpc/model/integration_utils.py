@@ -20,6 +20,7 @@
 # LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
 # FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 # DEALINGS IN THE SOFTWARE.#
+from typing import Optional
 import torch
 
 def build_fd_matrix(horizon:int, device:torch.device=torch.device('cpu'), order:int=1, full_rank:bool=False):
@@ -59,10 +60,9 @@ def build_fd_matrix(horizon:int, device:torch.device=torch.device('cpu'), order:
 
     return fd_mat
 
-
 def build_int_matrix(
-        horizon:int, diagonal:int=0, device='cpu', 
-        dtype=torch.float32, order:int=1, traj_dt=None):
+        horizon:int, diagonal:int=0, device:torch.device=torch.device('cpu'), 
+        dtype=torch.float32, order:int=1, traj_dt:Optional[torch.Tensor]=None)->torch.Tensor:
     
     integrate_matrix = torch.tril(torch.ones((horizon, horizon), device=device, dtype=dtype), diagonal=diagonal)
     chain_list = [torch.eye(horizon, device=device, dtype=dtype)]

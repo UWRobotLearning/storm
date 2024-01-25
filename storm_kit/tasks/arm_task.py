@@ -67,7 +67,7 @@ class ArmTask(nn.Module):
         self.ee_link_name = cfg.get('ee_link_name')
 
         urdf_path = join_path(get_assets_path(), robot_urdf)
-        self.robot_model = DifferentiableRobotModel(urdf_path, device=self.device) #, dtype=self.dtype)
+        self.robot_model = torch.jit.script(DifferentiableRobotModel(urdf_path, device=self.device)) #, dtype=self.dtype)
         self.n_dofs = self.robot_model._n_dofs
         self.link_names = cfg.get('robot_link_names')
         if self.link_names is None:
@@ -81,7 +81,7 @@ class ArmTask(nn.Module):
         # self.null_cost = ProjectedDistCost(ndofs=self.n_dofs, device=device, 
         #                                    **cfg['cost']['null_space'])
         
-        self.manipulability_cost = ManipulabilityCost(device=self.device, **cfg['cost']['manipulability'])
+        self.manipulability_cost = torch.jit.script(ManipulabilityCost(device=self.device, **cfg['cost']['manipulability']))
         self.zero_q_vel_cost = torch.jit.script(NormCost(**self.cfg['cost']['zero_q_vel'], device=self.device))
         self.zero_q_acc_cost = torch.jit.script(NormCost(**self.cfg['cost']['zero_q_acc'], device=self.device))
         self.zero_q_jerk_cost = torch.jit.script(NormCost(**self.cfg['cost']['zero_q_jerk'], device=self.device))
@@ -91,16 +91,16 @@ class ArmTask(nn.Module):
         
         if self.dt_traj_params is not None:
             if self.cfg['cost']['stop_cost']['weight'] > 0:
-                self.stop_cost = StopCost(**cfg['cost']['stop_cost'],
+                self.stop_cost = torch.jit.script(StopCost(**cfg['cost']['stop_cost'],
                                             horizon=self.horizon,
                                             device=self.device,
-                                            dt_traj_params=self.dt_traj_params)
+                                            dt_traj_params=self.dt_traj_params))
             
             if self.cfg['cost']['stop_cost_acc']['weight'] > 0:        
-                self.stop_cost_acc = StopCost(**cfg['cost']['stop_cost_acc'],
+                self.stop_cost_acc = torch.jit.script(StopCost(**cfg['cost']['stop_cost_acc'],
                                             horizon=self.horizon,
                                             device=self.device,
-                                            dt_traj_params=self.dt_traj_params)
+                                            dt_traj_params=self.dt_traj_params))
 
         self.retract_state = torch.tensor([self.cfg['cost']['retract_state']], device=device)
 
@@ -140,9 +140,9 @@ class ArmTask(nn.Module):
             self.state_lower_bounds.unsqueeze(0), 
             self.state_upper_bounds.unsqueeze(0)], dim=0).T
         
-        self.bound_cost = BoundCost(**cfg['cost']['state_bound'],
+        self.bound_cost = torch.jit.script(BoundCost(**cfg['cost']['state_bound'],
                                     bounds=self.bounds,
-                                    device=self.device)
+                                    device=self.device))
 
         # self.link_pos_seq = torch.zeros((self.num_instances, self.num_links, 3), device=self.device)
         # self.link_rot_seq = torch.zeros((self.num_instances, self.num_links, 3, 3), device=self.device)
@@ -280,8 +280,11 @@ class ArmTask(nn.Module):
         q_vel_batch = state_dict['q_vel']
         q_acc_batch = state_dict['q_acc']
         ee_pos_batch = state_dict['ee_pos']
-        ee_rot_batch = state_dict['ee_rot'].flatten(-2,-1)
+        ee_rot_batch = state_dict['ee_rot']
+        ee_quat_batch = state_dict['ee_quat']
         ee_vel_twist = state_dict['ee_vel_twist']
+
+        # ee_rot_obs = ee_rot_batch[..., 0:2].flatten(-2,-1)
 
         # q_pos_lower = self.state_lower_bounds[0:self.n_dofs]
         # q_pos_upper = self.state_upper_bounds[0:self.n_dofs]
@@ -306,7 +309,7 @@ class ArmTask(nn.Module):
         #     bound_dist = cost_terms['bound_dist']
         
         obs = torch.cat(
-            (ee_pos_batch, ee_rot_batch, ee_vel_twist), dim=-1) # , q_pos_batch,q_vel_batch, 
+            (100*ee_pos_batch, ee_rot_batch.flatten(-2,-1), ee_vel_twist), dim=-1) # ,  q_pos_batch,q_vel_batch, 
 
         return obs
 
@@ -329,7 +332,7 @@ class ArmTask(nn.Module):
         term_cost = torch.zeros(orig_size, device=self.device).flatten()
 
         if self.cfg['cost']['primitive_collision']['weight'] > 0:
-            with record_function('primitive_collision'):
+            with record_function('arm_task:primitive_collision_cost'):
                 link_pos_batch, link_rot_batch = state_dict['link_pos'], state_dict['link_rot']
                 link_pos_batch = link_pos_batch.view(-1, self.num_links, 3)
                 link_rot_batch = link_rot_batch.view(-1, self.num_links, 3, 3)
@@ -341,7 +344,7 @@ class ArmTask(nn.Module):
                 term_cost += coll_cost
                 info = coll_cost_info
 
-        with record_function('bound_cost'):
+        with record_function('arm_task:bound_cost'):
             state_batch = torch.cat((q_pos_batch, q_vel_batch, q_acc_batch), dim=-1).view(-1, 3*self.n_dofs)
             bound_cost, bound_cost_info = self.bound_cost.forward(state_batch)
             in_bounds = bound_cost_info['in_bounds']#[..., 0:2*self.n_dofs] #only use qpos and qvel
@@ -351,10 +354,10 @@ class ArmTask(nn.Module):
             info['in_bounds'] = bound_cost_info['in_bounds'].view(*orig_size, -1)
             info['bound_dist'] = bound_cost_info['bound_dist'].view(*orig_size, -1)
 
-
-        success = self.compute_success(state_dict).flatten()
-        termination = torch.logical_or(termination, success)
-        info['success'] = success
+        with record_function('arm_task:compute_success'):
+            success = self.compute_success(state_dict).flatten()
+            termination = torch.logical_or(termination, success)
+            info['success'] = success
         # termination = torch.logical_or(collision_violation, bounds_violation)
         # termination_cost = coll_cost +  bound_cost
 
@@ -422,16 +425,16 @@ class ArmTask(nn.Module):
             new_state_dict = {}
 
             for k in state_dict.keys():
-                new_state_dict[k] = state_dict[k] #.clone()
+                new_state_dict[k] = state_dict[k]
             
-            new_state_dict['ee_pos'] =  ee_pos #.clone() 
-            new_state_dict['ee_rot'] = ee_rot #.clone()
-            new_state_dict['ee_quat'] = ee_quat #.clone()
-            new_state_dict['ee_jacobian'] = ee_jac #.clone()
-            new_state_dict['ee_vel_twist'] = ee_vel_twist #.clone()
-            new_state_dict['ee_acc_twist'] = ee_acc_twist #.clone()
-            new_state_dict['link_pos'] = link_pos #.clone()
-            new_state_dict['link_rot'] = link_rot #.clone()
+            new_state_dict['ee_pos'] =  ee_pos 
+            new_state_dict['ee_rot'] = ee_rot
+            new_state_dict['ee_quat'] = ee_quat
+            new_state_dict['ee_jacobian'] = ee_jac
+            new_state_dict['ee_vel_twist'] = ee_vel_twist
+            new_state_dict['ee_acc_twist'] = ee_acc_twist
+            new_state_dict['link_pos'] = link_pos
+            new_state_dict['link_rot'] = link_rot
 
             # self.prev_state_buff = self.prev_state_buff.roll(-1, dims=1)
             # self.prev_state_buff[:,-1,:] = new_state_dict['state_seq'].clone()
