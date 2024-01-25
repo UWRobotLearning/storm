@@ -333,11 +333,12 @@ class ArmTask(nn.Module):
 
         if self.cfg['cost']['primitive_collision']['weight'] > 0:
             with record_function('arm_task:primitive_collision_cost'):
-                link_pos_batch, link_rot_batch = state_dict['link_pos'], state_dict['link_rot']
-                link_pos_batch = link_pos_batch.view(-1, self.num_links, 3)
-                link_rot_batch = link_rot_batch.view(-1, self.num_links, 3, 3)
-
-                coll_cost, coll_cost_info = self.primitive_collision_cost.forward(link_pos_batch, link_rot_batch)
+                # link_pos_batch, link_rot_batch = state_dict['link_pos'], state_dict['link_rot']
+                # link_pos_batch = link_pos_batch.view(-1, self.num_links, 3)
+                # link_rot_batch = link_rot_batch.view(-1, self.num_links, 3, 3)
+                link_pose_dict = state_dict['link_pose_dict']
+                # coll_cost, coll_cost_info = self.primitive_collision_cost.forward(link_pos_batch, link_rot_batch)
+                coll_cost, coll_cost_info = self.primitive_collision_cost.forward(link_pose_dict)
                 collision_violation = torch.logical_or(coll_cost_info['in_coll_world'], coll_cost_info['in_coll_self'])
                 collision_violation = collision_violation.sum(-1)
                 termination = torch.logical_or(termination, collision_violation)
@@ -407,20 +408,20 @@ class ArmTask(nn.Module):
             ee_acc_twist = torch.matmul(ee_jac, q_acc.unsqueeze(-1)).squeeze(-1)
  
             # get link poses:
-            link_pos_list = []
-            link_rot_list = []
-            for ki,k in enumerate(self.link_names):
-                # link_pos, link_rot = self.robot_model.get_link_pose(k)
-                curr_link_pos, curr_link_rot = link_pose_dict[k]
-                # link_pos_seq[:,:,:,ki,:] = link_pos.view((self.num_instances, self.batch_size, self.horizon, 3))
-                # link_rot_seq[:,:,:,ki,:,:] = link_rot.view((self.num_instances, self.batch_size, self.horizon, 3,3))
-                # link_pos_seq[:,ki,:] = link_pos.view((self.num_instances, 1, 3))
-                # link_rot_seq[:,ki,:,:] = link_rot.view((self.num_instances, 1, 3,3))
-                link_pos_list.append(curr_link_pos.unsqueeze(1))
-                link_rot_list.append(curr_link_rot.unsqueeze(1))
+            # link_pos_list = []
+            # link_rot_list = []
+            # for ki,k in enumerate(self.link_names):
+            #     # link_pos, link_rot = self.robot_model.get_link_pose(k)
+            #     curr_link_pos, curr_link_rot = link_pose_dict[k]
+            #     # link_pos_seq[:,:,:,ki,:] = link_pos.view((self.num_instances, self.batch_size, self.horizon, 3))
+            #     # link_rot_seq[:,:,:,ki,:,:] = link_rot.view((self.num_instances, self.batch_size, self.horizon, 3,3))
+            #     # link_pos_seq[:,ki,:] = link_pos.view((self.num_instances, 1, 3))
+            #     # link_rot_seq[:,ki,:,:] = link_rot.view((self.num_instances, 1, 3,3))
+            #     link_pos_list.append(curr_link_pos.unsqueeze(1))
+            #     link_rot_list.append(curr_link_rot.unsqueeze(1))
             
-            link_pos = torch.cat(link_pos_list, dim=2)
-            link_rot = torch.cat(link_rot_list, dim=2)
+            # link_pos = torch.cat(link_pos_list, dim=2)
+            # link_rot = torch.cat(link_rot_list, dim=2)
 
             new_state_dict = {}
 
@@ -433,8 +434,9 @@ class ArmTask(nn.Module):
             new_state_dict['ee_jacobian'] = ee_jac
             new_state_dict['ee_vel_twist'] = ee_vel_twist
             new_state_dict['ee_acc_twist'] = ee_acc_twist
-            new_state_dict['link_pos'] = link_pos
-            new_state_dict['link_rot'] = link_rot
+            new_state_dict['link_pose_dict'] = link_pose_dict
+            # new_state_dict['link_pos'] = link_pos
+            # new_state_dict['link_rot'] = link_rot
 
             # self.prev_state_buff = self.prev_state_buff.roll(-1, dims=1)
             # self.prev_state_buff[:,-1,:] = new_state_dict['state_seq'].clone()

@@ -23,6 +23,7 @@
 import copy
 import torch
 from torch.profiler import record_function
+from typing import Dict, Tuple
 
 from ...differentiable_robot_model.spatial_vector_algebra import CoordinateTransform, rpy_angles_to_matrix, multiply_transform, transform_point
 from ...geom.sdf.primitives import sdf_capsule_to_sphere
@@ -78,6 +79,8 @@ class RobotWorldCollisionPrimitive(RobotWorldCollision):
         self.device = device
         robot_collision = RobotSphereCollision(robot_collision_params, batch_size=robot_batch_size, device=self.device)
         world_collision = WorldPrimitiveCollision(world_collision_params, batch_size=world_batch_size, bounds=bounds, grid_resolution=grid_resolution, device=self.device)
+        self.robot_links = robot_collision_params['link_names']
+
         super().__init__(robot_collision, world_collision)
         self.robot_batch_size = robot_batch_size
         self.allocate_buffers(self.robot_batch_size)
@@ -89,7 +92,9 @@ class RobotWorldCollisionPrimitive(RobotWorldCollision):
     #     self.batch_size = batch_size
     #     self.robot_coll.build_batch_features(clone_objs=clone_points, batch_size=batch_size)
 
-    def check_robot_sphere_collisions(self, link_trans, link_rot):
+    # def check_robot_sphere_collisions(self, link_trans, link_rot):
+    def check_robot_sphere_collisions(self, link_pose_dict:Dict[str, Tuple[torch.Tensor, torch.Tensor]]):
+
         """get signed distance from stored grid [very fast]
 
         Args:
@@ -99,14 +104,15 @@ class RobotWorldCollisionPrimitive(RobotWorldCollision):
         Returns:
             tensor: signed distance [b,1]
         """        
-        batch_size = link_trans.shape[0]
+        batch_size = link_pose_dict[self.robot_links[0]][0].shape[0]
         #allocate new buffers if needed
         if self.robot_batch_size != batch_size:
             self.robot_batch_size = batch_size
             self.allocate_buffers(self.robot_batch_size)
 
         with record_function('robot_world:update_batch_collision_objs'):
-            self.robot_coll.update_batch_robot_collision_objs(link_trans, link_rot)
+            # self.robot_coll.update_batch_robot_collision_objs(link_trans, link_rot)
+            self.robot_coll.update_batch_robot_collision_objs(link_pose_dict)
 
         with record_function('robot_world:get_batch_robot_link_spheres'):
             w_link_spheres = self.robot_coll.get_batch_robot_link_spheres()

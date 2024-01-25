@@ -105,16 +105,22 @@ class RobotWorldPublisher():
         link_pose_dict = self.robot_model.compute_forward_kinematics(
             robot_state['q_pos'], robot_state['q_vel']) # link_name=self.ee_link_name)
         
-        link_pos_seq, link_rot_seq = [], []
-        for _,k in enumerate(self.link_names):
-            # link_pos, link_rot = self.robot_model.get_link_pose(k)
-            link_pos, link_rot = link_pose_dict[k]
-            link_pos_seq.append(link_pos.unsqueeze(1))
-            link_rot_seq.append(link_rot.unsqueeze(1))
+        # link_pos_seq, link_rot_seq = [], []
+        # for _,k in enumerate(self.link_names):
+        #     # link_pos, link_rot = self.robot_model.get_link_pose(k)
+        #     link_pos, link_rot = link_pose_dict[k]
+        #     link_pos_seq.append(link_pos.unsqueeze(1))
+        #     link_rot_seq.append(link_rot.unsqueeze(1))
 
-        link_pos_seq = torch.cat(link_pos_seq, axis=1)
-        link_rot_seq = torch.cat(link_rot_seq, axis=1)
-        self.collision_model.update_batch_robot_collision_objs(link_pos_seq, link_rot_seq)
+        # link_pos_seq = torch.cat(link_pos_seq, axis=1)
+        # link_rot_seq = torch.cat(link_rot_seq, axis=1)
+        # self.collision_model.update_batch_robot_collision_objs(link_pos_seq, link_rot_seq)
+        for link_name in self.link_names:
+            link_pos  = link_pose_dict[link_name][0].unsqueeze(1)
+            link_rot = link_pose_dict[link_name][1].unsqueeze(1)
+            link_pose_dict[link_name] = (link_pos, link_rot)
+
+        self.collision_model.update_batch_robot_collision_objs(link_pose_dict)
         spheres = self.collision_model.get_batch_robot_link_spheres()
         spheres_list = []
         for k in spheres:

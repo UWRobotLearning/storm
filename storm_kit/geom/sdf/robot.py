@@ -23,7 +23,7 @@
 
 import copy
 import yaml
-from typing import Dict, List
+from typing import Dict, List, Tuple
 
 import torch
 import trimesh
@@ -451,19 +451,21 @@ class RobotSphereCollision:
     #     '''
     #     return True
 
-    def update_robot_collision_objs(self, links_pos, links_rot):
-        '''update pose of link spheres
+    # def update_robot_collision_objs(self, links_pos, links_rot):
+    #     '''update pose of link spheres
 
-        Args:
-        links_pos: nx3
-        links_rot: nx3x3
-        '''
-        # transform link points:
-        for i in range(len(self._link_spheres)):
-            self._w_link_spheres[i][:,:3] = transform_point(self._link_spheres[:,:3], links_rot[i,:,:], links_pos[i,:,:])
+    #     Args:
+    #     links_pos: nx3
+    #     links_rot: nx3x3
+    #     '''
+    #     # transform link points:
+    #     for i in range(len(self._link_spheres)):
+    #         self._w_link_spheres[i][:,:3] = transform_point(self._link_spheres[:,:3], links_rot[i,:,:], links_pos[i,:,:])
         
 
-    def update_batch_robot_collision_objs(self, links_pos, links_rot):
+    # def update_batch_robot_collision_objs(self, links_pos, links_rot):
+    def update_batch_robot_collision_objs(self, link_pose_dict:Dict[str, Tuple[torch.Tensor, torch.Tensor]]):
+
         '''update pose of link spheres
 
         Args:
@@ -471,15 +473,20 @@ class RobotSphereCollision:
         links_rot: bxnx3x3
         '''
 
-        curr_batch_size = links_pos.shape[0]
+        # curr_batch_size = links_pos.shape[0]
+        link_names = list(self._w_batch_link_spheres.keys())
+        curr_batch_size = link_pose_dict[link_names[0]][0].shape[0]
         if curr_batch_size != self.batch_size:
             self.batch_size = curr_batch_size
             self.allocate_buffers(self.batch_size)
 
         # for i in range(len(self.w_batch_link_spheres)):
-        for i,link in enumerate(self._w_batch_link_spheres.keys()):
-            self._w_batch_link_spheres[link][...,:3] = transform_point(
-                self._batch_link_spheres[link][...,:3], links_rot[:,i,:,:], links_pos[:,i,:].unsqueeze(-2))
+        for i,link_name in enumerate(self._w_batch_link_spheres.keys()):
+            link_pos, link_rot = link_pose_dict[link_name]
+            # self._w_batch_link_spheres[link_name][...,:3] = transform_point(
+            #     self._batch_link_spheres[link_name][...,:3], link_rot[:,i,:,:], link_pos[:,i,:].unsqueeze(-2))
+            self._w_batch_link_spheres[link_name][...,:3] = transform_point(
+                self._batch_link_spheres[link_name][...,:3], link_rot, link_pos.unsqueeze(-2))
 
 
 
@@ -517,7 +524,7 @@ class RobotSphereCollision:
         dist = find_link_distance(self.w_batch_link_spheres, self._collision_ignore_dict, self._link_to_idx, self._idx_to_link, self.dist_buff)
         return dist
     
-    def compute_link_distances(self, w_batch_link_spheres):
+    def compute_link_distances(self, w_batch_link_spheres:Dict[str, torch.Tensor]):
         dist = find_link_distance(w_batch_link_spheres, self._collision_ignore_dict, self._idx_to_link, self.dist_buff)
         return dist
 

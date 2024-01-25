@@ -30,7 +30,7 @@ class PandaRealRobotEnv():
         self.headless = headless
         self.safe_mode = safe_mode
         self.auto_reset_on_episode_end = auto_reset_on_episode_end
-        rospy.init_node("panda_real_robot_env", anonymous=True, disable_signals=True)    
+        rospy.init_node("panda_real_robot_env", anonymous=True, disable_signals=False)    
 
         self.joint_states_topic = rospy.get_param('~joint_states_topic', 'joint_states')
         self.joint_command_topic = rospy.get_param('~joint_command_topic', 'franka_motion_control/joint_command')

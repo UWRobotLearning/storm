@@ -53,9 +53,10 @@ class PrimitiveCollisionCost(nn.Module):
         self.distance_threshold_self = distance_threshold_self
 
     
-    def forward(self, link_pos_batch:torch.Tensor, link_rot_batch:torch.Tensor)->Tuple[torch.Tensor, Dict[str, torch.Tensor]]:
+    # def forward(self, link_pos_batch:torch.Tensor, link_rot_batch:torch.Tensor)->Tuple[torch.Tensor, Dict[str, torch.Tensor]]:
+    def forward(self, link_pose_dict:Dict[str, Tuple[torch.Tensor, torch.Tensor]])->Tuple[torch.Tensor, Dict[str, torch.Tensor]]:
         
-        inp_device = link_pos_batch.device
+        # inp_device = link_pos_batch.device
         # batch_size = link_pos_batch.shape[0]
         # horizon = link_pos_batch.shape[1]
         # n_links = link_pos_batch.shape[-2]
@@ -64,7 +65,8 @@ class PrimitiveCollisionCost(nn.Module):
         # link_rot_batch = link_rot_batch.view(batch_size * horizon, n_links, 3, 3)
         
         with record_function("primitive_collision_cost:check_sphere_collision"):
-            world_coll_dist, self_coll_dist, w_link_spheres = self.robot_world_coll.check_robot_sphere_collisions(link_pos_batch, link_rot_batch)
+            # world_coll_dist, self_coll_dist, w_link_spheres = self.robot_world_coll.check_robot_sphere_collisions(link_pos_batch, link_rot_batch)
+            world_coll_dist, self_coll_dist, w_link_spheres = self.robot_world_coll.check_robot_sphere_collisions(link_pose_dict)
 
         #world collision cost
         # world_coll_dist_inflated = world_coll_dist + self.distance_threshold_world
@@ -108,7 +110,7 @@ class PrimitiveCollisionCost(nn.Module):
             # 'w_link_spheres': w_link_spheres,
         }
 
-        return cost.to(inp_device), info
+        return cost, info #.to(inp_device)
 
 
 

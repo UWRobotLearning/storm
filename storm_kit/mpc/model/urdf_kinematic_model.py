@@ -400,13 +400,19 @@ class URDFKinematicModel(nn.Module):
         # for ki,k in enumerate(self.link_names):
         #     link_pos, link_rot = self.robot_model.get_link_pose(k)
         # for (k, (link_pos, link_rot)) in link_pos_dict.items():
-        for (ki, k) in enumerate(self.link_names):
-            link_pos, link_rot = link_pose_dict[k]
-            link_pos_seq[:,:,:,ki,:] = link_pos.view((curr_state_batch_size, curr_batch_size, num_traj_points, 3))
-            link_rot_seq[:,:,:,ki,:,:] = link_rot.view((curr_state_batch_size, curr_batch_size, num_traj_points, 3, 3))            
+        # for (ki, k) in enumerate(self.link_names):
+        #     link_pos, link_rot = link_pose_dict[k]
+        #     link_pos_seq[:,:,:,ki,:] = link_pos.view((curr_state_batch_size, curr_batch_size, num_traj_points, 3))
+        #     link_rot_seq[:,:,:,ki,:,:] = link_rot.view((curr_state_batch_size, curr_batch_size, num_traj_points, 3, 3))            
             # link_pos_seq[...,ki,:] = link_pos.view((curr_batch_size, num_traj_points, 3))
             # link_rot_seq[...,ki,:,:] = link_rot.view((curr_batch_size, num_traj_points, 3, 3))
-        
+
+        # for link_name in self.link_names:
+        #     print(link_pose_dict[link_name][0].shape)
+            # link_pos  = link_pose_dict[link_name][0].view((curr_batch_size, num_traj_points, 3))
+            # link_rot = link_pose_dict[link_name][1].view((curr_batch_size, num_traj_points, 3,3))
+            # link_pose_dict[link_name] = (link_pos, link_rot)
+
         ee_pos_seq, ee_rot_seq = link_pose_dict[self.ee_link_name]
         ee_quat_seq = matrix_to_quaternion(ee_rot_seq)
 
@@ -439,8 +445,9 @@ class URDFKinematicModel(nn.Module):
             'ee_jacobian': ee_jacobian_seq,
             'ee_vel_twist': ee_vel_twist_seq,
             'ee_acc_twist': ee_acc_twist_seq,
-            'link_pos': link_pos_seq,
-            'link_rot': link_rot_seq,
+            # 'link_pos': link_pos_seq,
+            # 'link_rot': link_rot_seq,
+            'link_pose_dict': link_pose_dict,
             'prev_state': self.prev_state_buffer,
             'tstep': tstep_seq}
         
