@@ -29,32 +29,33 @@ qf:
 
 vf:
   mlp_params:
-    hidden_layers: [256, 128] 
+    hidden_layers: [256, 256] 
     activation: torch.nn.ReLU 
-    output_activation: null
-    dropout_prob: 0.0 
-    layer_norm: false #set to true
-  ensemble_size: 10
+    output_activation: null #torch.nn.Sigmoid
+    dropout_prob: 0.01
+    layer_norm: true
+  ensemble_size: 20
   aggregation: 'max'
   prior_factor: 0.0
+  w_init: 0.0 #3e-3
 
 agent:
   name: 'BP'
   max_buffer_size: 1e6
-  num_train_epochs: 200
+  num_train_epochs: 300
   # num_pretrain_steps: 200000
   train_batch_size: 256
-  terminal_batch_size: 32
+  terminal_batch_size: 16
   train_val_split_ratio: 0.95
   policy_optimizer:
     __target__: torch.optim.Adam
-    lr: 5e-4
+    lr: 3e-4
   qf_optimizer:
     __target__: torch.optim.Adam
-    lr: 5e-4
+    lr: 3e-4
   vf_optimizer:
     __target__: torch.optim.Adam
-    lr: 5e-4
+    lr: 3e-4
   polyak_tau: 5e-3
   log_freq: 100
   checkpoint_freq: 1
@@ -71,9 +72,9 @@ agent:
   discount: 0.99
   beta: 3.0
   expectile_tau: 0.7
-  clip_values: true
+  clip_values: false
   normalize_rewards: false
-  normalize_states: false
+  normalize_observations: true 
   normalize_returns: true
   randomize_ensemble_targets: true
   lambd: 0.0

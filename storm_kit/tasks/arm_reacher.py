@@ -97,7 +97,7 @@ class ArmReacher(ArmTask):
         # goal_rot_err = torch.matmul(
         #     ee_goal_rot.transpose(-1,-2), ee_rot).flatten(-2,-1)
         obs = torch.cat(
-            (obs, 100*ee_goal_pos, ee_goal_rot.flatten(-2,-1), translation_res, rotation_res), dim=-1) #  goal_pos_err, goal_rot_err ,
+            (obs, translation_res, rotation_res), dim=-1) # ee_goal_pos, ee_goal_rot.flatten(-2,-1),  goal_pos_err, goal_rot_err ,
 
         return obs
 
@@ -132,7 +132,6 @@ class ArmReacher(ArmTask):
                 goal_ee_rot = self.goal_ee_rot.unsqueeze(1).unsqueeze(1).repeat(1, ee_rot.shape[1], ee_rot.shape[2], 1, 1)
 
             with record_function("pose_cost"):
-
                 goal_cost, goal_cost_info = self.goal_cost.forward(
                     ee_pos.view(-1, 3), ee_rot.view(-1, 3, 3),
                     goal_ee_pos.view(-1, 3), goal_ee_rot.view(-1, 3, 3))
@@ -388,7 +387,7 @@ class ArmReacher(ArmTask):
     
     @property
     def obs_dim(self)->int:
-        return super().obs_dim + 18
+        return super().obs_dim + 6
 
     @property
     def action_lims(self)->Tuple[torch.Tensor, torch.Tensor]:

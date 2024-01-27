@@ -75,7 +75,7 @@ task:
     default_ee_target: [0.6, 0.0, 0.15, 0.0, 0.707, 0.707, 0.0]
     # default_ee_target: [0.6, 0.0, 0.5, 0.0, 0.707, 0.707, 0.0]
     # default_ee_target: [0.4, -0.3, 0.5, 0.0, 0.707, 0.707, 0.0]
-    target_position_noise: [0.2, 0.2, 0.0] #xyz (meters)
+    target_position_noise: [0.0, 0.2, 0.0] #xyz (meters)
     target_rotation_noise: [0.0, 0.0, 0.0] #radians
 
   cost:

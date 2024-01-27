@@ -1,3 +1,4 @@
+from collections import defaultdict
 import csv, os, sys
 import copy
 from datetime import datetime
@@ -11,8 +12,8 @@ from torch.utils.data import TensorDataset, DataLoader
 import torchaudio
 from scipy import signal
 from storm_kit.learning.replay_buffer import ReplayBuffer, train_val_split
+import seaborn as sns
 import matplotlib.pyplot as plt
-from collections import defaultdict
 import numpy as np
 import math
 from torch.profiler import profile, record_function, ProfilerActivity
@@ -461,11 +462,10 @@ def preprocess_dataset(train_dataset, env, task=None, cfg=None, normalize_score_
     info['r_c_mean'] = rew_or_cost.mean().item()
     info['r_c_std'] = rew_or_cost.std().item()
     # Set range of value functions
-    Vmax, Vmin = float('inf'), -float('inf')
     # TODO: Check if this is right since we should take episode length into account too
-    if cfg.clip_values:
-        Vmax = max(0.0, rew_or_cost.max()/(1.-discount)).item()
-        Vmin = min(0.0, rew_or_cost.min()/(1.-discount), Vmax-1.0/(1-discount))
+    # if cfg.clip_values:
+    Vmax = max(0.0, rew_or_cost.max()/(1.-discount)).item()
+    Vmin = min(0.0, rew_or_cost.min()/(1.-discount), Vmax-1.0/(1-discount))
     info['V_max'] = Vmax
     info['V_min'] = Vmin
     
@@ -478,8 +478,7 @@ def preprocess_dataset(train_dataset, env, task=None, cfg=None, normalize_score_
         terminal_dataset = ReplayBuffer(capacity=len(train_dataset["terminals"].nonzero()), device=train_dataset.device)
         terminal_batch = {k: v[terminal_idxs] for (k,v) in train_dataset.items()}
         terminal_dataset.add_batch(terminal_batch)
-
-
+    #Get ranges of returns/disc returns
     info["return_min"] = min(train_dataset["returns"]).item()
     info["return_max"] = max(train_dataset["returns"]).item()
     info["return_mean"] = train_dataset["returns"].mean().item()
@@ -487,13 +486,18 @@ def preprocess_dataset(train_dataset, env, task=None, cfg=None, normalize_score_
     info["disc_return_max"] = max(train_dataset["disc_returns"]).item()
     info["disc_return_min"] = min(train_dataset["disc_returns"]).item()
     info["disc_return_mean"] = train_dataset["disc_returns"].mean().item()
-    info["disc_return_std"] = train_dataset["disc_returns"].std().item()
-
+    info["disc_return_std"] = train_dataset["disc_returns"].std().item() + 1e-12
     info['ep_return_min'] = min(ep_returns)
     info['ep_return_max'] = max(ep_returns)
     info['ep_disc_return_min'] = min(ep_disc_returns)
     info['ep_disc_return_max'] = max(ep_disc_returns)
     
+    #Get stats of observations (for normalization)
+    info['obs_mean'] = train_dataset["observations"].mean(0)
+    info['obs_std'] = train_dataset["observations"].std(0) + 1e-12
+    info['obs_max'] = train_dataset["observations"].max(0)[0]
+    info['obs_min'] = train_dataset["observations"].min(0)[0]
+
     if normalize_score_fn is not None:
         normalized_returns = normalize_score_fn(np.array(train_dataset['returns']))
         info['normalized_return_mean'] = normalized_returns.mean()
@@ -594,6 +598,8 @@ def plot_episode(episode, block=False):
         returns = returns.cpu().numpy()
     if disc_returns is not None and torch.is_tensor(disc_returns):
         disc_returns = disc_returns.cpu().numpy()
+    if ee_goal is not None and torch.is_tensor(ee_goal):
+        ee_goal = ee_goal.cpu().numpy()
 
 
     fig, ax = plt.subplots(3,1)

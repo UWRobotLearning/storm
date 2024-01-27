@@ -24,8 +24,6 @@ class BPAgent(nn.Module):
         target_policy=None,
         target_qf=None,
         target_vf=None,
-        V_min=-float('inf'),
-        V_max=float('inf'),
         device=torch.device('cpu'), 
     ):
         super().__init__()
@@ -49,7 +47,6 @@ class BPAgent(nn.Module):
         
         self.setup_agent_called = False
  
-        self.V_min, self.V_max = V_min, V_max
         self.num_action_samples = self.cfg['num_action_samples']
         self.fixed_alpha = self.cfg.get('fixed_alpha', 0.2)
         self.num_eval_episodes = self.cfg.get('num_eval_episodes', 1)
@@ -232,7 +229,7 @@ class BPAgent(nn.Module):
 
     def compute_vf_loss(
             self, batch:Dict[str, torch.Tensor], 
-            step_num:int, normalization_stats:Dict[str, float] = {'disc_return_mean': 0.0, 'disc_return_std': 1.0}):
+            step_num:int, normalization_stats:Dict[str, float] = {'disc_return_mean': 0.0, 'disc_return_std': 1.0, 'obs_mean': None, 'obs_std': None}):
         
         r_c_batch = batch['costs'] if 'costs' in batch else batch['rewards']
         obs_batch = batch['observations']
@@ -249,20 +246,31 @@ class BPAgent(nn.Module):
         td_targets = torch.zeros_like(r_c_batch)
         with torch.no_grad():
             if self.lambd > 0:
-                last_vs, _ = self.target_vf.all({'obs': last_observations})  # inference (normalized space)
-                last_vs = normalization_stats['disc_return_std'] * last_vs + normalization_stats['disc_return_mean'] #un-normalize
+                last_inp = self.get_normalized_input(last_observations, normalization_stats)
+                last_vs, _ = self.target_vf.all(last_inp)  # inference (normalized space)
+                # last_vs = normalization_stats['disc_return_std'] * last_vs + normalization_stats['disc_return_mean'] #un-normalize
+                last_vs = self.unnormalize_value_estimates(last_vs, normalization_stats)
+                # last_vs += normalization_stats['disc_return_mean'] #un-normalize
                 mc_targets = (returns + (1. - last_terminals) * (self.discount**remaining_steps) * last_vs)#.clamp(min=self.V_min, max=self.V_max)
 
-            if self.lambd < 1:    
-                v_next, _ = self.target_vf.all({'obs': next_obs_batch}) #inference (normalized space)
-                v_next = normalization_stats['disc_return_std'] * v_next + normalization_stats['disc_return_mean'] #un-normalize         
+            if self.lambd < 1:
+                next_inp = self.get_normalized_input(next_obs_batch, normalization_stats)    
+                v_next, _ = self.target_vf.all(next_inp) #inference (normalized space)
+                # v_next = normalization_stats['disc_return_std'] * v_next + normalization_stats['disc_return_mean'] #un-normalize         
+                v_next = self.unnormalize_value_estimates(v_next, normalization_stats) #un-normalize         
+                # v_next += normalization_stats['disc_return_mean'] #un-normalize         
                 td_targets = (r_c_batch +  (1. - done_batch) * self.discount * v_next)#.clamp(min=self.V_min, max=self.V_max)
+        
         v_target = td_targets*(1.-self.lambd) + mc_targets*self.lambd
         # adv = v_target - v_pred
         
-        vf_all, vf_pred_info = self.vf.all({'obs': obs_batch}) #inference (normalized space)
+        inp = self.get_normalized_input(obs_batch, normalization_stats) 
+        vf_all, vf_pred_info = self.vf.all(inp) #inference (normalized space)
         # v_target = v_target.unsqueeze(0).repeat(vf_all.shape[0],1)                
-        v_target = (v_target - disc_return_mean) / disc_return_std  #Normalize targets 
+        # v_target = (v_target - disc_return_mean) # / disc_return_std  #Normalize targets 
+        v_target = self.normalize_value_estimates(v_target, normalization_stats)
+
+
 
         vf_loss = F.mse_loss(vf_all, v_target, reduction='none') #loss (normalized space)
         
@@ -294,6 +302,31 @@ class BPAgent(nn.Module):
         
         return vf_loss, None, vf_info_dict
         
+    def get_normalized_input(self, obs, normalization_stats):
+        # obs_mean, obs_std = normalization_stats['obs_mean'], normalization_stats['obs_std']
+        # if obs_mean is not None:
+        #     obs -= obs_mean
+        # # if obs_std is not None:
+        # #     obs /= obs_std
+
+        obs_max, obs_min = normalization_stats['obs_max'], normalization_stats['obs_min']
+        obs_range = (obs_max - obs_min) + 1e-12
+        obs = (obs - obs_min) / obs_range 
+        # if obs_std is not None:
+        #     obs /= obs_std
+        return {'obs': obs}
+
+    def normalize_value_estimates(self, values, normalization_stats):
+        V_min, V_max = normalization_stats['V_min'], normalization_stats['V_max']
+        V_range = (V_max - V_min) + 1e-12
+        values = (values - V_min) / V_range
+        return values
+
+    def unnormalize_value_estimates(self, values, normalization_stats):
+        V_min, V_max = normalization_stats['V_min'], normalization_stats['V_max']
+        V_range = V_max - V_min
+        values =  values * V_range + V_min 
+        return values
 
     def state_dict(self):
         state = {}
@@ -324,9 +357,13 @@ class BPAgent(nn.Module):
         
         info = {}
         with torch.no_grad():
-            obs = validation_buffer['observations']
-            vf_preds, vf_preds_info = self.vf.all({'obs': obs})
-            vf_preds = normalization_stats['disc_return_std'] * vf_preds + normalization_stats['disc_return_mean'] #un-normalize
+            obs = validation_buffer['observations'].clone()
+            inp = self.get_normalized_input(obs, normalization_stats)
+            vf_preds, vf_preds_info = self.vf.all(inp) #inference (normalized)
+            # vf_preds = normalization_stats['disc_return_std'] * vf_preds + normalization_stats['disc_return_mean'] #un-normalize
+            # vf_preds += normalization_stats['disc_return_mean'] #un-normalize
+            vf_preds = self.unnormalize_value_estimates(vf_preds, normalization_stats) #un-normalize
+
             disc_returns = validation_buffer['disc_returns'].unsqueeze(0).repeat(vf_preds.shape[0], 1) #ensemble x num_points
             vf_error_validation = torch.abs(vf_preds - disc_returns).mean().item() #sum across trajectory and moean along ensemble
             num_members = vf_preds.shape[0]

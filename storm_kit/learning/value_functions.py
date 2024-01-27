@@ -212,7 +212,10 @@ class EnsembleValueFunction(nn.Module):
         self.hidden_dim = self.mlp_params['hidden_layers'][0]
         self.aggregation = self.config['aggregation']
         self.prior_factor = self.config['prior_factor']
+        self.w_init = self.config['w_init']
         self.layer_sizes = [self.obs_dim] + OmegaConf.to_object(self.mlp_params['hidden_layers']) + [self.out_dim]
+
+
 
         self.net = ensemble_mlp(
             ensemble_size=self.ensemble_size,
@@ -221,7 +224,7 @@ class EnsembleValueFunction(nn.Module):
             output_activation=self.mlp_params['output_activation'],
             dropout_prob=self.mlp_params['dropout_prob'],
             layer_norm=self.mlp_params['layer_norm'],
-            squeeze_output=True).to(self.device)
+            squeeze_output=False).to(self.device)
     
         if self.prior_factor > 0.:
             self.prior_net = ensemble_mlp(
@@ -231,7 +234,7 @@ class EnsembleValueFunction(nn.Module):
             output_activation=self.mlp_params['output_activation'],
             dropout_prob=self.mlp_params['dropout_prob'],
             layer_norm=self.mlp_params['layer_norm'],
-            squeeze_output=True).to(self.device).requires_grad_(False)
+            squeeze_output=False).to(self.device).requires_grad_(False)
 
         # # # init as in the EDAC paper
         # for layer in self.net[::2]:
@@ -239,6 +242,14 @@ class EnsembleValueFunction(nn.Module):
 
         # torch.nn.init.uniform_(self.net[-2].weight, -3e-3, 3e-3)
         # torch.nn.init.uniform_(self.net[-2].bias, -3e-3, 3e-3)
+        if self.w_init > 0:
+            last_linear = -2 if self.mlp_params['output_activation'] is not None else -1
+            self.net[last_linear].weight.data.uniform_(-self.w_init, self.w_init)
+            self.net[last_linear].bias.data.fill_(0.0)
+        # self.last_fc.weight.data.uniform_(-init_w, init_w)
+        # self.last_fc.bias.data.fill_(0)
+
+
 
     def all(self, obs_dict: Dict[str,torch.Tensor]):
         obs = obs_dict['obs']
@@ -269,5 +280,7 @@ class EnsembleValueFunction(nn.Module):
             preds = torch.min(values, dim=0)[0]
         elif self.aggregation == 'mean':
             preds = torch.mean(values, dim=0)
+        elif self.aggregation == 'median':
+            preds = torch.median(values, dim=0)[0]
         return preds, info
  

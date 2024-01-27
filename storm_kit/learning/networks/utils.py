@@ -39,9 +39,12 @@ def ensemble_mlp(ensemble_size:int, layer_sizes:List, activation:str='torch.nn.R
     layers = []
     for i in range(num_layers - 2):
         layers.append(VectorizedLinear(layer_sizes[i], layer_sizes[i+1], ensemble_size=ensemble_size))
-        layers.append(eval(activation)())
         if dropout_prob > 0.0:
             layers.append(nn.Dropout(p=dropout_prob))
+        if layer_norm:
+            layers.append(nn.LayerNorm(layer_sizes[i+1]))
+        layers.append(eval(activation)())
+
     layers.append(VectorizedLinear(layer_sizes[-2], layer_sizes[-1], ensemble_size=ensemble_size))
     if output_activation is not None:
         layers.append(eval(output_activation)())

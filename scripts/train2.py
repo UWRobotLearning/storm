@@ -125,7 +125,7 @@ def get_task_and_dataset(task_name:str, cfg=None): #log max_episode_steps
 
     return env, task, replay_buffer
 
-def get_mpc_policy(cfg, policy=None, vf=None, qf=None, value_metrics=None):
+def get_mpc_policy(cfg, policy=None, vf=None, qf=None, prediction_metrics=None):
     task_name = cfg.task_name
     task_details = task_map[task_name]
     task_cls = task_details['task_cls']    
@@ -135,7 +135,7 @@ def get_mpc_policy(cfg, policy=None, vf=None, qf=None, value_metrics=None):
         task_cls=task_cls, dynamics_model_cls=dynamics_model_cls, 
         sampling_policy=policy, vf=vf, qf=qf,
         device=cfg.rl_device)
-    mpc_policy.set_prediction_metrics(value_metrics)
+    mpc_policy.set_prediction_metrics(prediction_metrics)
     return mpc_policy
 
 @hydra.main(config_name="config", config_path="../content/configs/gym")
@@ -169,12 +169,23 @@ def main(cfg: DictConfig):
         print('Env does not have seed')
     obs_dim, act_dim = dataset['observations'].shape[-1], dataset['actions'].shape[-1]
 
-    normalization_stats = {"disc_return_mean": 0.0, "disc_return_std": 1.0}
-    if cfg.train.agent.normalize_returns:
-        normalization_stats = {
-            "disc_return_mean": dataset_info["disc_return_mean"],
-            "disc_return_std": dataset_info["disc_return_std"] + 1e-12}
+    normalization_stats = {
+        "disc_return_mean": 0.0, "disc_return_std": 1.0, 
+        "Vmax": float('inf'), "Vmin": -float('inf'),
+        "obs_mean": None, "obs_std": None, 
+        "obs_max": float('inf'), "obs_min": -float('inf')}
 
+    if cfg.train.agent.normalize_returns:
+        normalization_stats["disc_return_mean"] = dataset_info["disc_return_mean"]
+        normalization_stats["disc_return_std"] = dataset_info["disc_return_std"]
+        normalization_stats['V_min'], normalization_stats['V_max'] = dataset_info['V_min'], dataset_info['V_max']
+    
+    if cfg.train.agent.normalize_observations:
+        normalization_stats["obs_mean"] = dataset_info['obs_mean'].to(cfg.rl_device)
+        normalization_stats["obs_std"] = dataset_info["obs_std"].to(cfg.rl_device)
+        normalization_stats["obs_max"] = dataset_info['obs_max'].to(cfg.rl_device)
+        normalization_stats["obs_min"] = dataset_info["obs_min"].to(cfg.rl_device)
+        
     policy = GaussianPolicy(
         obs_dim=obs_dim, act_dim=act_dim, config=cfg.train.policy, device=cfg.rl_device) #task=task,
     target_policy = copy.deepcopy(policy).requires_grad_(False)
@@ -188,11 +199,10 @@ def main(cfg: DictConfig):
     target_vf = copy.deepcopy(vf).requires_grad_(False)
 
     #initialize mpc policy
-    V_min, V_max = dataset_info['V_min'], dataset_info['V_max']
-    value_metrics = {
-        'V_min': dataset_info['V_min'], 'V_max': dataset_info['V_max'],
-        'V_mean':  normalization_stats["disc_return_mean"], 'V_std': normalization_stats['disc_return_std']}
-    mpc_policy = get_mpc_policy(cfg, policy=None, vf=vf, qf=qf, value_metrics=value_metrics)
+    # value_metrics = {
+    #     'V_min': dataset_info['V_min'], 'V_max': dataset_info['V_max'],
+    #     'V_mean':  normalization_stats["disc_return_mean"], 'V_std': normalization_stats['disc_return_std']}
+    mpc_policy = get_mpc_policy(cfg, policy=None, vf=vf, qf=qf, prediction_metrics=normalization_stats)
 
     # Run behavior pretraining
     # num_train_steps = int(cfg.train.agent['num_pretrain_steps'])
@@ -200,7 +210,7 @@ def main(cfg: DictConfig):
     agent = BPAgent(
         cfg.train.agent, policy=policy, qf=None, vf=vf, 
         target_policy=target_policy, target_qf=None, target_vf=target_vf,
-        V_min=V_min, V_max=V_max, device=cfg.rl_device
+        device=cfg.rl_device
     )
 
     log_metrics = defaultdict(list)

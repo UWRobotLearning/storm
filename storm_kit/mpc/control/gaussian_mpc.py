@@ -313,10 +313,18 @@ class GaussianMPC(Controller):
         if self.vf is not None:
             with record_function("gaussian_mpc:value_fn_inference"):
                 obs = self.task.compute_observations(state_dict, compute_full_state=False, cost_terms=cost_terms)
+                #normalize obs
+                # if self.obs_mean is not None:
+                #     obs -= self.obs_mean
+                # if self.obs_std is not None:
+                #     obs /= self.obs_std
+                obs = self.normalize_observations(obs)
                 # q_preds = self.qf({'obs': obs}, act_seq).clamp(min=self.V_min, max=self.V_max) #, max=self.V_max
-                v_preds, _ = self.vf({'obs': obs.view(-1, obs.shape[-1])})#.clamp(min=self.V_min, max=self.V_max)
+                v_preds, _ = self.vf({'obs': obs.view(-1, obs.shape[-1])})#.clamp(min=self.V_min, max=self.V_max) #inference
                 v_preds = v_preds.view(self.state_batch_size, self.num_particles, self.horizon)
-                v_preds = self.V_std * v_preds + self.V_mean #unnormalize
+                v_preds = self.unnormalize_value_predictions(v_preds)
+                # v_preds = self.V_std * v_preds + self.V_mean #unnormalize
+                # v_preds += self.V_mean
 
         sim_trajs = dict(
             actions=act_seq,
@@ -329,8 +337,6 @@ class GaussianMPC(Controller):
         )
 
         return sim_trajs
-
-
 
 
 
@@ -431,25 +437,37 @@ class GaussianMPC(Controller):
         self.reset_distribution()
         if reset_data is not None:
             self.task.update_params(reset_data)
-            if 'value_metrics' in reset_data:
-                self.set_prediction_metrics(reset_data['value_metrics'])
-        
+            if 'normalization_stats' in reset_data:
+                self.set_prediction_metrics(reset_data['normalization_stats'])
         if self.sampling_policy is not None:
             self.sampling_policy.reset(reset_data)
         self.dynamics_model.reset(reset_data)
 
-    def set_prediction_metrics(self, value_metrics=None):
+    def set_prediction_metrics(self, prediction_metrics=None):
         self.V_min, self.V_max=-float('inf'), float('inf')
         self.V_mean, self.V_std = 0.0, 1.0
-        if value_metrics is not None:
-            if 'V_max' in value_metrics:
-                self.V_max = value_metrics['V_max']
-            if 'V_min' in value_metrics:
-                self.V_min = value_metrics['V_min']
-            if 'V_mean' in value_metrics:
-                self.V_mean = value_metrics['V_mean']
-            if 'V_max' in value_metrics:
-                self.V_std = value_metrics['V_std']
+        self.obs_mean, self.obs_std = None, None
+        if prediction_metrics is not None:
+            self.V_max = prediction_metrics['V_max'] if 'V_max' in prediction_metrics else float('inf')
+            self.V_min = prediction_metrics['V_min'] if 'V_min' in prediction_metrics else float('-inf')
+            self.V_mean = prediction_metrics['disc_return_mean'] if 'disc_return_mean' in prediction_metrics else 0.0
+            self.V_std = prediction_metrics['disc_return_std'] if 'disc_return_std' in prediction_metrics else 1.0
+            self.obs_mean = prediction_metrics['obs_mean'] if 'obs_mean' in prediction_metrics else None
+            self.obs_std = prediction_metrics['obs_std'] if 'obs_std' in prediction_metrics else None
+            self.obs_max = prediction_metrics['obs_max'] if 'obs_max' in prediction_metrics else float('inf')
+            self.obs_min = prediction_metrics['obs_min'] if 'obs_min' in prediction_metrics else float('-inf')
+
+
+    def unnormalize_value_predictions(self, v_preds):
+        V_range = (self.V_max - self.V_min)
+        v_preds = v_preds * V_range + self.V_min
+        return v_preds
+
+    def normalize_observations(self, obs):
+        obs_range = (self.obs_max - self.obs_min) + 1e-12
+        obs = (obs - self.obs_min) / obs_range
+        return obs
+
 
     def compute_value(self, state): #, trajectories=None):
         # if trajectories is None:
@@ -563,4 +581,4 @@ class GaussianMPC(Controller):
     #         rollout_time=0.0
     #     )
 
-        return sim_trajs
+        # return sim_trajs
