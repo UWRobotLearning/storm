@@ -35,7 +35,7 @@ from storm_kit.differentiable_robot_model.spatial_vector_algebra import matrix_t
 from storm_kit.mpc.cost import NormCost, StopCost, FiniteDifferenceCost 
 from storm_kit.mpc.cost.bound_cost import BoundCost
 from storm_kit.mpc.cost.manipulability_cost import ManipulabilityCost
-from storm_kit.mpc.cost import CollisionCost, VoxelCollisionCost, PrimitiveCollisionCost
+from storm_kit.mpc.cost import CollisionCost, PrimitiveCollisionCost #VoxelCollisionCost
 from storm_kit.mpc.cost.robot_self_collision_cost import RobotSelfCollisionCost
 from storm_kit.mpc.model.integration_utils import build_fd_matrix
 

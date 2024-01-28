@@ -50,5 +50,5 @@ setup(
 
     keywords='isaac_gym, robot_control',  # Optional
     packages=find_packages(where=''),  # Required
-    python_requires='>=3.5, <4',
+    python_requires='>=3.8, <4',
 )

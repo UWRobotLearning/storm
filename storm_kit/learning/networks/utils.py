@@ -38,7 +38,8 @@ def ensemble_mlp(ensemble_size:int, layer_sizes:List, activation:str='torch.nn.R
     assert num_layers >= 2, 'MLP requires at least two dims (input and output)'
     layers = []
     for i in range(num_layers - 2):
-        layers.append(VectorizedLinear(layer_sizes[i], layer_sizes[i+1], ensemble_size=ensemble_size))
+        linear_layer = VectorizedLinear(layer_sizes[i], layer_sizes[i+1], ensemble_size=ensemble_size)
+        layers.append(linear_layer)
         if dropout_prob > 0.0:
             layers.append(nn.Dropout(p=dropout_prob))
         if layer_norm:

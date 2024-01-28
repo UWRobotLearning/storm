@@ -35,7 +35,7 @@ from .manipulability_cost import ManipulabilityCost
 
 from .collision_cost import CollisionCost
 from .primitive_collision_cost import PrimitiveCollisionCost
-from .voxel_collision_cost import VoxelCollisionCost
+# from .voxel_collision_cost import VoxelCollisionCost
 
 
 __all__ = ['NormCost', 'FiniteDifferenceCost', 'PoseCost', \

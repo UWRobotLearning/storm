@@ -3,15 +3,21 @@
 ### System Dependencies:
 - Conda version >= 4.9
 - NVIDIA driver >= 460.32
-- Cuda toolkit >= 11.0
+- Cuda toolkit >= 11.8
 
 Steps:
 
-1. Create a new conda environment with: conda env create -f environment.yml
+1. Create a new conda environment with: `conda create -n storm_kit_v2 python=3.8`
 
-2. Install python bindings for isaacgym: https://developer.nvidia.com/isaac-gym
+2. Install PyTorch: https://pytorch.org/
 
-3. run the following command from this directory: pip install -e . 
+3. Install dependencies `conda env update -f environment.yml`
+
+4. Install python bindings for Isaac Gym Preview 4: https://developer.nvidia.com/isaac-gym
+
+5. Install IsaacGymEnvs: https://github.com/NVIDIA-Omniverse/IsaacGymEnvs
+
+6. Run the following command from current directory: `pip install -e . `
 
 ### Running Example
 

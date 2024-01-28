@@ -26,7 +26,7 @@ import yaml
 from typing import Dict, List, Tuple
 
 import torch
-import trimesh
+# import trimesh
 
 from ...differentiable_robot_model.spatial_vector_algebra import CoordinateTransform, rpy_angles_to_matrix, multiply_transform, transform_point
 from ...differentiable_robot_model.urdf_utils import URDFRobotModel
@@ -108,157 +108,157 @@ class RobotCapsuleCollision:
         raise NotImplementedError
 
 
-class RobotMeshCollision: 
-    """ This class holds a batched collision model with meshes loaded using trimesh. 
-    Points are sampled from the mesh which can be used for collision checking.
-    """
-    def __init__(self, robot_collision_params, batch_size=1, tensor_args={'device':"cpu", 'dtype':torch.float32}):
-        # read capsules
-        self.batch_size = batch_size
-        self.tensor_args = tensor_args
-        # keep track of their pose in world frame
+# class RobotMeshCollision: 
+#     """ This class holds a batched collision model with meshes loaded using trimesh. 
+#     Points are sampled from the mesh which can be used for collision checking.
+#     """
+#     def __init__(self, robot_collision_params, batch_size=1, tensor_args={'device':"cpu", 'dtype':torch.float32}):
+#         # read capsules
+#         self.batch_size = batch_size
+#         self.tensor_args = tensor_args
+#         # keep track of their pose in world frame
         
-        #self.link_points = None
-        self._batch_link_points = None
-        self._link_points = None
-        self._link_collision_trans = None
-        self._link_collision_rot = None
-        self._batch_link_collision_trans = None
-        self._batch_link_collision_rot = None
+#         #self.link_points = None
+#         self._batch_link_points = None
+#         self._link_points = None
+#         self._link_collision_trans = None
+#         self._link_collision_rot = None
+#         self._batch_link_collision_trans = None
+#         self._batch_link_collision_rot = None
 
-        self._robot_collision_trans = None
-        self._robot_collision_rot = None
+#         self._robot_collision_trans = None
+#         self._robot_collision_rot = None
 
-        self._batch_robot_collision_trans = None
-        self._batch_robot_collision_rot = None
+#         self._batch_robot_collision_trans = None
+#         self._batch_robot_collision_rot = None
 
-        self.w_link_points = None
-        self.w_batch_link_points = None
+#         self.w_link_points = None
+#         self.w_batch_link_points = None
         
-        self.l_T_c = CoordinateTransform(tensor_args=self.tensor_args['device'])
-        self.robot_collision_params = robot_collision_params
-        self.load_robot_collision_model(robot_collision_params)
+#         self.l_T_c = CoordinateTransform(tensor_args=self.tensor_args['device'])
+#         self.robot_collision_params = robot_collision_params
+#         self.load_robot_collision_model(robot_collision_params)
         
         
-    def load_robot_collision_model(self, robot_collision_params):
+#     def load_robot_collision_model(self, robot_collision_params):
         
-        robot_links = robot_collision_params['link_objs']
-        robot_urdf = robot_collision_params['urdf']
-        n_pts = robot_collision_params['sample_points']
+#         robot_links = robot_collision_params['link_objs']
+#         robot_urdf = robot_collision_params['urdf']
+#         n_pts = robot_collision_params['sample_points']
 
-        # read robot urdf
-        robot_urdf = URDFRobotModel(robot_urdf, self.tensor_args)
+#         # read robot urdf
+#         robot_urdf = URDFRobotModel(robot_urdf, self.tensor_args)
         
-        # read meshes, sample points and store
+#         # read meshes, sample points and store
         
         
-        # we store as [n_link, 7]
-        self._link_points = torch.empty((len(robot_links), n_pts, 3), **self.tensor_args)
-        self._link_collision_trans = torch.empty((len(robot_links), 3), **self.tensor_args)
-        self._link_collision_rot = torch.empty((len(robot_links), 3, 3), **self.tensor_args)
+#         # we store as [n_link, 7]
+#         self._link_points = torch.empty((len(robot_links), n_pts, 3), **self.tensor_args)
+#         self._link_collision_trans = torch.empty((len(robot_links), 3), **self.tensor_args)
+#         self._link_collision_rot = torch.empty((len(robot_links), 3, 3), **self.tensor_args)
         
-        for j_idx, j in enumerate(robot_links):
-            # read mesh
-            mesh_fname, mesh_origin = robot_urdf.get_link_collision_mesh(j)
+#         for j_idx, j in enumerate(robot_links):
+#             # read mesh
+#             mesh_fname, mesh_origin = robot_urdf.get_link_collision_mesh(j)
             
-            # sample points
-            mesh = trimesh.load_mesh(mesh_fname)
-            mesh_centroid = mesh.centroid 
-            mesh.vertices = mesh.vertices - mesh_centroid #* 0.0
-            points = torch.tensor(trimesh.sample.sample_surface(mesh, n_pts)[0], **self.tensor_args)
-            #points = torch.tensor(trimesh.sample.volume_mesh(mesh, n_pts), **self.tensor_args)
+#             # sample points
+#             mesh = trimesh.load_mesh(mesh_fname)
+#             mesh_centroid = mesh.centroid 
+#             mesh.vertices = mesh.vertices - mesh_centroid #* 0.0
+#             points = torch.tensor(trimesh.sample.sample_surface(mesh, n_pts)[0], **self.tensor_args)
+#             #points = torch.tensor(trimesh.sample.volume_mesh(mesh, n_pts), **self.tensor_args)
 
             
-            # transform points from mesh frame to link frame:
-            pose = mesh_origin
-            # create a transform from pose offset:
-            trans = torch.tensor(pose[0:3], **self.tensor_args).unsqueeze(0)
-            rpy = torch.tensor(pose[3:], **self.tensor_args).unsqueeze(0)
+#             # transform points from mesh frame to link frame:
+#             pose = mesh_origin
+#             # create a transform from pose offset:
+#             trans = torch.tensor(pose[0:3], **self.tensor_args).unsqueeze(0)
+#             rpy = torch.tensor(pose[3:], **self.tensor_args).unsqueeze(0)
             
-            # rotation matrix from euler:
-            rot = rpy_angles_to_matrix(rpy)
-            mesh_cent = torch.as_tensor(mesh_centroid, **self.tensor_args).unsqueeze(0)#.unsqueeze(0)
+#             # rotation matrix from euler:
+#             rot = rpy_angles_to_matrix(rpy)
+#             mesh_cent = torch.as_tensor(mesh_centroid, **self.tensor_args).unsqueeze(0)#.unsqueeze(0)
 
 
-            trans = trans + (mesh_cent @ rot.transpose(-1,-2))
+#             trans = trans + (mesh_cent @ rot.transpose(-1,-2))
 
-            l_T_c = CoordinateTransform(trans=trans, rot=rot, device=self.tensor_args['device'])
+#             l_T_c = CoordinateTransform(trans=trans, rot=rot, device=self.tensor_args['device'])
 
             
                         
-            #points = l_T_c.transform_point(points)
+#             #points = l_T_c.transform_point(points)
 
-            # store points
+#             # store points
 
-            self._link_points[j_idx, :,:] = points
+#             self._link_points[j_idx, :,:] = points
 
-            # store tranform:
-            self._link_collision_rot[j_idx,:,:] = l_T_c.rotation().squeeze(0)
-            self._link_collision_trans[j_idx,:] = l_T_c.translation().squeeze(0)
+#             # store tranform:
+#             self._link_collision_rot[j_idx,:,:] = l_T_c.rotation().squeeze(0)
+#             self._link_collision_trans[j_idx,:] = l_T_c.translation().squeeze(0)
         
-    def build_batch_features(self, clone_points=False, clone_pose=True, batch_size=None):
-        if(batch_size is not None):
-            self.batch_size = batch_size
-        if(clone_points):
+#     def build_batch_features(self, clone_points=False, clone_pose=True, batch_size=None):
+#         if(batch_size is not None):
+#             self.batch_size = batch_size
+#         if(clone_points):
             
-            self._batch_link_points = self._link_points.unsqueeze(0).repeat(self.batch_size, 1, 1,1).clone()
-        if(clone_pose):
-            self._batch_link_collision_trans = self._link_collision_trans.unsqueeze(0).repeat(self.batch_size, 1, 1).clone()
-            self._batch_link_collision_rot = self._link_collision_rot.unsqueeze(0).repeat(self.batch_size, 1, 1, 1).clone()
+#             self._batch_link_points = self._link_points.unsqueeze(0).repeat(self.batch_size, 1, 1,1).clone()
+#         if(clone_pose):
+#             self._batch_link_collision_trans = self._link_collision_trans.unsqueeze(0).repeat(self.batch_size, 1, 1).clone()
+#             self._batch_link_collision_rot = self._link_collision_rot.unsqueeze(0).repeat(self.batch_size, 1, 1, 1).clone()
     
-    def update_batch_robot_collision_pose(self, links_pos, links_rot):
-        """
-        Update link collision poses
-        Args:
-           link_pos: [batch, n_links , 3] 
-           link_rot: [batch, n_links , 3 , 3] 
+#     def update_batch_robot_collision_pose(self, links_pos, links_rot):
+#         """
+#         Update link collision poses
+#         Args:
+#            link_pos: [batch, n_links , 3] 
+#            link_rot: [batch, n_links , 3 , 3] 
 
-        """
+#         """
         
-        (self._batch_robot_collision_rot,
-         self._batch_robot_collision_trans) = multiply_transform(links_rot, links_pos,
-                                                                 self._batch_link_collision_rot,
-                                                                 self._batch_link_collision_trans)
-        return True
+#         (self._batch_robot_collision_rot,
+#          self._batch_robot_collision_trans) = multiply_transform(links_rot, links_pos,
+#                                                                  self._batch_link_collision_rot,
+#                                                                  self._batch_link_collision_trans)
+#         return True
         
-    def update_robot_collision_pose(self, links_pos, links_rot):
-        """
-        Update link collision poses
-        Args:
-           link_pos: [n_links, 3]
-           link_rot: [n_links, 3, 3]
+#     def update_robot_collision_pose(self, links_pos, links_rot):
+#         """
+#         Update link collision poses
+#         Args:
+#            link_pos: [n_links, 3]
+#            link_rot: [n_links, 3, 3]
 
-        """
+#         """
 
-        self._robot_collision_rot, self._robot_collision_trans = (
-            multiply_transform(links_rot, links_pos,
-                               self._link_collision_rot,
-                               self._link_collision_trans,
-                               ))
+#         self._robot_collision_rot, self._robot_collision_trans = (
+#             multiply_transform(links_rot, links_pos,
+#                                self._link_collision_rot,
+#                                self._link_collision_trans,
+#                                ))
         
         
-        return True
+#         return True
 
-    def update_robot_collision_points(self, links_pos, links_rot):
+#     def update_robot_collision_points(self, links_pos, links_rot):
 
-        self.update_robot_collision_pose(links_pos, links_rot)
+#         self.update_robot_collision_pose(links_pos, links_rot)
 
-        self.w_link_points = transform_point(self._link_points, self._robot_collision_rot, self._robot_collision_trans)
+#         self.w_link_points = transform_point(self._link_points, self._robot_collision_rot, self._robot_collision_trans)
         
 
-    def update_batch_robot_collision_points(self, links_pos, links_rot):
-        self.update_batch_robot_collision_pose(links_pos, links_rot)
-        self.w_batch_link_points = transform_point(self._batch_link_points,
-                                                   self._batch_robot_collision_rot,
-                                                   self._batch_robot_collision_trans.unsqueeze(-2))
-    def get_robot_link_objs(self):
-        raise NotImplementedError
-    def get_batch_robot_link_points(self):
-        return self.w_batch_link_points
-    def get_robot_link_points(self):
-        return self.w_link_points
-    def get_link_points(self):
-        return self._link_points
+#     def update_batch_robot_collision_points(self, links_pos, links_rot):
+#         self.update_batch_robot_collision_pose(links_pos, links_rot)
+#         self.w_batch_link_points = transform_point(self._batch_link_points,
+#                                                    self._batch_robot_collision_rot,
+#                                                    self._batch_robot_collision_trans.unsqueeze(-2))
+#     def get_robot_link_objs(self):
+#         raise NotImplementedError
+#     def get_batch_robot_link_points(self):
+#         return self.w_batch_link_points
+#     def get_robot_link_points(self):
+#         return self.w_link_points
+#     def get_link_points(self):
+#         return self._link_points
 
 class RobotSphereCollision:
     """ This class holds a batched collision model where the robot is represented as spheres.

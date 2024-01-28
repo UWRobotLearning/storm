@@ -5,6 +5,7 @@ import numpy as np
 import os
 import hydra
 import isaacgym
+import isaacgymenvs
 import torch
 from torch.profiler import profile, record_function, ProfilerActivity
 import time

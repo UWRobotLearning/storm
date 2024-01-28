@@ -239,15 +239,13 @@ class BPAgent(nn.Module):
         last_observations = batch['last_observations']
         returns = batch['disc_returns']
         remaining_steps = batch['remaining_steps']
-        disc_return_mean = normalization_stats['disc_return_mean']
-        disc_return_std = normalization_stats['disc_return_std']
 
         mc_targets = torch.zeros_like(r_c_batch)
         td_targets = torch.zeros_like(r_c_batch)
         with torch.no_grad():
             if self.lambd > 0:
                 last_inp = self.get_normalized_input(last_observations, normalization_stats)
-                last_vs, _ = self.target_vf.all(last_inp)  # inference (normalized space)
+                last_vs, _ = self.vf.all(last_inp)  # inference (normalized space)
                 # last_vs = normalization_stats['disc_return_std'] * last_vs + normalization_stats['disc_return_mean'] #un-normalize
                 last_vs = self.unnormalize_value_estimates(last_vs, normalization_stats)
                 # last_vs += normalization_stats['disc_return_mean'] #un-normalize
@@ -255,7 +253,7 @@ class BPAgent(nn.Module):
 
             if self.lambd < 1:
                 next_inp = self.get_normalized_input(next_obs_batch, normalization_stats)    
-                v_next, _ = self.target_vf.all(next_inp) #inference (normalized space)
+                v_next, _ = self.vf.all(next_inp) #inference (normalized space)
                 # v_next = normalization_stats['disc_return_std'] * v_next + normalization_stats['disc_return_mean'] #un-normalize         
                 v_next = self.unnormalize_value_estimates(v_next, normalization_stats) #un-normalize         
                 # v_next += normalization_stats['disc_return_mean'] #un-normalize         

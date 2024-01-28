@@ -23,15 +23,14 @@
 
 import cv2
 import numpy as np
-import trimesh
-from trimesh.voxel.creation import voxelize
+# import trimesh
+# from trimesh.voxel.creation import voxelize
 import torch
 from torch.profiler import record_function
 # import matplotlib
 # matplotlib.use('tkagg')
 
-import matplotlib.pyplot as plt
-
+# import matplotlib.pyplot as plt
 
 from ...differentiable_robot_model.spatial_vector_algebra import CoordinateTransform, rpy_angles_to_matrix, transform_point, quaternion_to_matrix
 from ...geom.geom_types import tensor_capsule, tensor_sphere, tensor_cube
@@ -328,114 +327,114 @@ class WorldPrimitiveCollision(WorldGridCollision):
         return dist
     
 
-class WorldPointCloudCollision(WorldGridCollision):
-    def __init__(self, label_map, bounds, grid_resolution=0.02, tensor_args={'device':"cpu", 'dtype':torch.float32}, batch_size=1):
-        super().__init__(batch_size, tensor_args, bounds, grid_resolution)
+# class WorldPointCloudCollision(WorldGridCollision):
+#     def __init__(self, label_map, bounds, grid_resolution=0.02, tensor_args={'device':"cpu", 'dtype':torch.float32}, batch_size=1):
+#         super().__init__(batch_size, tensor_args, bounds, grid_resolution)
 
-        self.label_map = label_map
-        self.camera_transform = None
-        self.scene_pc = None
-        self.scale = 1
-        self._flat_tensor = None
-        self.proj_pt_idx = None
-        self.trimesh_scene_voxel = None
-        self.ind_pt = None
+#         self.label_map = label_map
+#         self.camera_transform = None
+#         self.scene_pc = None
+#         self.scale = 1
+#         self._flat_tensor = None
+#         self.proj_pt_idx = None
+#         self.trimesh_scene_voxel = None
+#         self.ind_pt = None
 
-    def update_camera_transform(self, w_c_trans, w_R_c):
-        self.camera_transform = CoordinateTransform(trans=w_c_trans,
-                                                    rot=w_R_c,
-                                                    device=self.tensor_args['device'])#.inverse()
+#     def update_camera_transform(self, w_c_trans, w_R_c):
+#         self.camera_transform = CoordinateTransform(trans=w_c_trans,
+#                                                     rot=w_R_c,
+#                                                     device=self.tensor_args['device'])#.inverse()
         
-    def update_world_pc(self, pointcloud, seg_labels):
-        # Fill pointcloud in tensor:
-        orig_scene_pc = torch.as_tensor(pointcloud, **self.tensor_args)
-        # filter seg labels:
-        scene_labels = torch.as_tensor(seg_labels.astype(int), device=self.tensor_args['device'])
+#     def update_world_pc(self, pointcloud, seg_labels):
+#         # Fill pointcloud in tensor:
+#         orig_scene_pc = torch.as_tensor(pointcloud, **self.tensor_args)
+#         # filter seg labels:
+#         scene_labels = torch.as_tensor(seg_labels.astype(int), device=self.tensor_args['device'])
 
-        scene_pc_mask = torch.logical_and(scene_labels != self.label_map["robot"],
-                                          scene_labels != self.label_map["ground"])
+#         scene_pc_mask = torch.logical_and(scene_labels != self.label_map["robot"],
+#                                           scene_labels != self.label_map["ground"])
 
-        vis_mask = scene_pc_mask.flatten()
-        scene_pc = orig_scene_pc[vis_mask]
+#         vis_mask = scene_pc_mask.flatten()
+#         scene_pc = orig_scene_pc[vis_mask]
 
-        scene_pc = self.camera_transform.transform_point(scene_pc)
-        min_bound = self.bounds[0]
-        max_bound = self.bounds[1]
-        mask_bound = torch.logical_and(torch.all(scene_pc > min_bound, dim=-1), torch.all(scene_pc < max_bound, dim=-1))
-
-        
-        scene_pc = scene_pc[mask_bound]
-        self.scene_pc = scene_pc
-        
-        
-    def update_world_voxel(self, scene_pc):
-        
-        # Fill pointcloud in tensor:
-
-        # marching cubes:
-
-
-        scene_pc = trimesh.PointCloud(scene_pc.cpu().numpy())
-
-        pitch = self.grid_resolution #scene_pc.extents.max() / self.voxel_scale
-
-        self.pitch = pitch
-        scene_mesh = trimesh.voxel.ops.points_to_marching_cubes(scene_pc.vertices, pitch=pitch)
-        self.trimesh_scene_mesh = scene_mesh
-        scene_voxel = voxelize(scene_mesh, pitch=pitch,method='subdivide')
-        self.trimesh_scene_voxel = scene_voxel
-        scene_voxel_tensor = torch.tensor(scene_voxel.matrix, **self.tensor_args)
-        self.scene_voxel_matrix = scene_voxel_tensor
-        # this pushes the sdf to be only available close to the voxel grid
-        self.trimesh_bounds = torch.as_tensor(self.trimesh_scene_voxel.bounds, **self.tensor_args)
+#         scene_pc = self.camera_transform.transform_point(scene_pc)
+#         min_bound = self.bounds[0]
+#         max_bound = self.bounds[1]
+#         mask_bound = torch.logical_and(torch.all(scene_pc > min_bound, dim=-1), torch.all(scene_pc < max_bound, dim=-1))
 
         
-    def update_world_sdf(self, scene_pc):
-        self.update_world_voxel(scene_pc)
-        
-        sdf_grid = self._compute_sdfgrid()
-
-
-        self.scene_sdf_matrix = sdf_grid
-        self.scene_sdf = sdf_grid.flatten()
-        
-    def _update_trimesh_projection(self):
-        scene_voxel = self.trimesh_scene_voxel
-        scene_voxel_tensor = self.scene_voxel_matrix
-        ind_matrix = torch.tensor(scene_voxel._transform.inverse_matrix, **self.tensor_args).unsqueeze(0)
-        pt_matrix = torch.tensor(scene_voxel._transform.matrix, **self.tensor_args).unsqueeze(0)
-
-        self.proj_pt_idx = CoordinateTransform(trans=ind_matrix[:,:3,3], rot=ind_matrix[:,:3,:3], device=self.tensor_args['device'])
-
-        self.proj_idx_pt = CoordinateTransform(trans=pt_matrix[:,:3,3], rot=pt_matrix[:,:3,:3], device=self.tensor_args['device'])
-
-        num_voxels = torch.tensor([scene_voxel_tensor.shape[0], scene_voxel_tensor.shape[1],
-                                   scene_voxel_tensor.shape[2]],
-                                  **self.tensor_args)
-
-        
-        flat_tensor = torch.tensor([num_voxels[1:].prod(),# // (self.scale ** 2),
-                                    num_voxels[2],# // self.scale,
-                                    1], device=self.tensor_args['device'], dtype=torch.int64)
-        self.scene_voxels = torch.flatten(scene_voxel_tensor)
+#         scene_pc = scene_pc[mask_bound]
+#         self.scene_pc = scene_pc
         
         
-        self.num_voxels = num_voxels
-        self._flat_tensor = flat_tensor
+#     def update_world_voxel(self, scene_pc):
         
-    def get_signed_distance(self, pts):
-        dist = trimesh.proximity.signed_distance(self.trimesh_scene_mesh, pts.cpu().numpy())
-        return dist
+#         # Fill pointcloud in tensor:
+
+#         # marching cubes:
+
+
+#         scene_pc = trimesh.PointCloud(scene_pc.cpu().numpy())
+
+#         pitch = self.grid_resolution #scene_pc.extents.max() / self.voxel_scale
+
+#         self.pitch = pitch
+#         scene_mesh = trimesh.voxel.ops.points_to_marching_cubes(scene_pc.vertices, pitch=pitch)
+#         self.trimesh_scene_mesh = scene_mesh
+#         scene_voxel = voxelize(scene_mesh, pitch=pitch,method='subdivide')
+#         self.trimesh_scene_voxel = scene_voxel
+#         scene_voxel_tensor = torch.tensor(scene_voxel.matrix, **self.tensor_args)
+#         self.scene_voxel_matrix = scene_voxel_tensor
+#         # this pushes the sdf to be only available close to the voxel grid
+#         self.trimesh_bounds = torch.as_tensor(self.trimesh_scene_voxel.bounds, **self.tensor_args)
+
+        
+#     def update_world_sdf(self, scene_pc):
+#         self.update_world_voxel(scene_pc)
+        
+#         sdf_grid = self._compute_sdfgrid()
+
+
+#         self.scene_sdf_matrix = sdf_grid
+#         self.scene_sdf = sdf_grid.flatten()
+        
+#     def _update_trimesh_projection(self):
+#         scene_voxel = self.trimesh_scene_voxel
+#         scene_voxel_tensor = self.scene_voxel_matrix
+#         ind_matrix = torch.tensor(scene_voxel._transform.inverse_matrix, **self.tensor_args).unsqueeze(0)
+#         pt_matrix = torch.tensor(scene_voxel._transform.matrix, **self.tensor_args).unsqueeze(0)
+
+#         self.proj_pt_idx = CoordinateTransform(trans=ind_matrix[:,:3,3], rot=ind_matrix[:,:3,:3], device=self.tensor_args['device'])
+
+#         self.proj_idx_pt = CoordinateTransform(trans=pt_matrix[:,:3,3], rot=pt_matrix[:,:3,:3], device=self.tensor_args['device'])
+
+#         num_voxels = torch.tensor([scene_voxel_tensor.shape[0], scene_voxel_tensor.shape[1],
+#                                    scene_voxel_tensor.shape[2]],
+#                                   **self.tensor_args)
+
+        
+#         flat_tensor = torch.tensor([num_voxels[1:].prod(),# // (self.scale ** 2),
+#                                     num_voxels[2],# // self.scale,
+#                                     1], device=self.tensor_args['device'], dtype=torch.int64)
+#         self.scene_voxels = torch.flatten(scene_voxel_tensor)
+        
+        
+#         self.num_voxels = num_voxels
+#         self._flat_tensor = flat_tensor
+        
+#     def get_signed_distance(self, pts):
+#         dist = trimesh.proximity.signed_distance(self.trimesh_scene_mesh, pts.cpu().numpy())
+#         return dist
     
-    def get_scene_pts_from_voxelgrid(self):
+#     def get_scene_pts_from_voxelgrid(self):
 
-        pts = self.trimesh_scene_voxel.points
-        return pts
+#         pts = self.trimesh_scene_voxel.points
+#         return pts
 
-    def get_scene_mesh_from_voxelgrid(self):
+#     def get_scene_mesh_from_voxelgrid(self):
         
-        mesh = self.trimesh_scene_voxel.as_boxes() # marching_cubes
-        return mesh
+#         mesh = self.trimesh_scene_voxel.as_boxes() # marching_cubes
+#         return mesh
         
 class WorldImageCollision(WorldCollision):
     def __init__(self, bounds, tensor_args={'device':"cpu", 'dtype':torch.float32}):

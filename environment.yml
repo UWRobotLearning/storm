@@ -20,48 +20,39 @@
 ## FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 ## DEALINGS IN THE SOFTWARE.##
 
-name: storm_kit
+name: storm_kit_v2
 channels:
-  - pytorch
   - conda-forge
+  - defaults
 dependencies:
-  - python=3.7
-  - cudatoolkit=11.2
-  - pytorch
-  - torchvision
-  - torchaudio
-  - pyzmq
-  - numpy
-  - pytest
-  - colorlog
-  - pandas
-  - tabulate
-  - pip
-  - sk-video
+  - gcc
+  - gxx
   - matplotlib
+  - numpy
+  - pip
+  - pytest
   - quaternion
   - pip:
-    - pytorch3d
-    - ghalton
-    - argcomplete
-    - click
+    # - pytorch3d
     - cloudpickle
-    - imageio-ffmpeg
-    - pyyaml
-    - scipy
-    - tqdm
-    - urdfpy
-    - wheel
+    - git+https://github.com/fmder/ghalton.git
     - hydra-core
-    - urdf_parser_py
-    - sphinx-rtd-theme
-    - sphinx
-    - sphinx-autodoc-annotation
-    - hydra-core
-    - urdf_parser_py
-    - numpy-quaternion
+    # - argcomplete
+    # - click
+    - omegaconf
     - opencv-python
     - open3d
-    - m2r2
-    - netifaces
+    - pyyaml
+    - scipy
+    - seaborn
+    - tqdm
+    - urdfpy
+    - urdf_parser_py
+    - wheel
+    # - sphinx-rtd-theme
+    # - sphinx
+    # - sphinx-autodoc-annotation
+    # - numpy-quaternion
+    # - m2r2
+    # - netifaces
 

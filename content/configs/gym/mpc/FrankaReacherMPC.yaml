@@ -41,7 +41,7 @@ rollout:
   cost:
     goal_pose:
       vec_weight: [1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
-      weight: [0.0, 0.0] #[10.0, 50.0] #[50.0, 100.0]
+      weight: [5.0, 15.0] #[10.0, 50.0] #[50.0, 100.0]
       cost_type: 'se3_twist'
       norm_type: 'l2'
       hinge_val: -1
@@ -118,7 +118,7 @@ mppi:
   init_cov          : 0.1 #0.005 #.5 #.5
   gamma             : 0.99 
   td_lam            : 1.0
-  n_iters           : 2
+  n_iters           : 1
   step_size_mean    : 0.98
   step_size_cov     : 0.7
   beta              : 0.01

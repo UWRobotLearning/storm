@@ -10,6 +10,7 @@ import gym
 import d4rl
 import numpy as np
 import isaacgym
+import isaacgymenvs
 import torch
 from torch.profiler import record_function
 from tqdm import tqdm

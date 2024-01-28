@@ -11,7 +11,7 @@ import time
 from isaacgym import gymutil, gymtorch, gymapi
 import torch
 
-from isaacgym.torch_utils import *
+# from isaacgym.torch_utils import to_torch
 import yaml
 from hydra.utils import instantiate
 
@@ -425,7 +425,7 @@ class IsaacGymRobotEnv():
         # create some wrapper tensors for different slices
         # self.franka_default_dof_pos = to_torch([1.157, -1.066, -0.155, -2.239, -1.841, 1.003, 0.469], device=self.device)
         # self.robot_default_dof_pos = to_torch([0.0, -0.7853, 0.0, -2.3561, 0.0, 1.5707, 0.7853], device=self.device)
-        self.robot_default_dof_pos = to_torch(self.robot_default_dof_pos, device=self.device)
+        self.robot_default_dof_pos = torch.as_tensor(self.robot_default_dof_pos, device=self.device)
         self.robot_dof_state = self.dof_state[:, :self.num_robot_dofs]
         self.robot_dof_pos = self.robot_dof_state[..., 0]
         self.robot_dof_vel = self.robot_dof_state[..., 1]
