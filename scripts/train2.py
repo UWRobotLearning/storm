@@ -7,7 +7,7 @@ import hydra
 from omegaconf import OmegaConf, DictConfig
 import time 
 import gym
-import d4rl
+# import d4rl
 import numpy as np
 import isaacgym
 import isaacgymenvs
@@ -136,7 +136,7 @@ def get_mpc_policy(cfg, policy=None, vf=None, qf=None, prediction_metrics=None):
         task_cls=task_cls, dynamics_model_cls=dynamics_model_cls, 
         sampling_policy=policy, vf=vf, qf=qf,
         device=cfg.rl_device)
-    mpc_policy.set_prediction_metrics(prediction_metrics)
+    # mpc_policy.set_prediction_metrics(prediction_metrics)
     return mpc_policy
 
 @hydra.main(config_name="config", config_path="../content/configs/gym")
@@ -189,20 +189,16 @@ def main(cfg: DictConfig):
         
     policy = GaussianPolicy(
         obs_dim=obs_dim, act_dim=act_dim, config=cfg.train.policy, device=cfg.rl_device) #task=task,
-    target_policy = copy.deepcopy(policy).requires_grad_(False)
     # qf = TwinQFunction(
     #     obs_dim=obs_dim, act_dim=act_dim, config=cfg.train.qf, device=cfg.rl_device)
     qf = EnsembleQFunction(
         obs_dim=obs_dim, act_dim=act_dim, config=cfg.train.qf, device=cfg.rl_device)
-    target_qf = copy.deepcopy(qf).requires_grad_(False)
     vf = EnsembleValueFunction(
         obs_dim=obs_dim, config=cfg.train.vf, device=cfg.rl_device)
-    target_vf = copy.deepcopy(vf).requires_grad_(False)
+    vf.set_normalization_stats(normalization_stats)
+
 
     #initialize mpc policy
-    # value_metrics = {
-    #     'V_min': dataset_info['V_min'], 'V_max': dataset_info['V_max'],
-    #     'V_mean':  normalization_stats["disc_return_mean"], 'V_std': normalization_stats['disc_return_std']}
     mpc_policy = get_mpc_policy(cfg, policy=None, vf=vf, qf=qf, prediction_metrics=normalization_stats)
 
     # Run behavior pretraining
@@ -210,7 +206,6 @@ def main(cfg: DictConfig):
     num_train_epochs = int(cfg.train.agent['num_train_epochs'])
     agent = BPAgent(
         cfg.train.agent, policy=policy, qf=None, vf=vf, 
-        target_policy=target_policy, target_qf=None, target_vf=target_vf,
         device=cfg.rl_device
     )
 
@@ -229,7 +224,6 @@ def main(cfg: DictConfig):
     total_train_steps = 0
 
     for epoch_num in pbar:
-
         #Run validation at some frequency
         if (epoch_num % validation_freq == 0) or (epoch_num == num_train_epochs -1):
             print('Validation...')

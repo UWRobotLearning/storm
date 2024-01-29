@@ -118,8 +118,9 @@ def main(cfg: DictConfig):
             remove_prefix = 'vf.'
             vf_state_dict = {k[len(remove_prefix):] if k.startswith(remove_prefix) else k: v for k, v in vf_state_dict.items()}
             pretrained_vf.load_state_dict(vf_state_dict)
-            pretrained_vf.eval()
             normalization_stats = checkpoint['normalization_stats']
+            pretrained_vf.set_normalization_stats(normalization_stats)
+            pretrained_vf.eval()
             vf_loaded = True
             print('Loaded Pretrained VF Successfully')
         except:
@@ -137,7 +138,7 @@ def main(cfg: DictConfig):
             task_cls=task_cls, dynamics_model_cls=dyn_model_cls,
             sampling_policy=pretrained_policy, vf=pretrained_vf if vf_loaded else None, 
             device=cfg.rl_device)
-        policy.set_prediction_metrics(normalization_stats)
+        # policy.set_prediction_metrics(normalization_stats)
 
     st=time.time()
     num_episodes = cfg.eval.num_episodes

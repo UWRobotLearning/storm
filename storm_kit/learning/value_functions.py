@@ -1,5 +1,6 @@
 from operator import itemgetter
 from omegaconf import OmegaConf
+from typing import Tuple
 import torch
 import torch.nn as nn
 import numpy as np
@@ -243,7 +244,7 @@ class EnsembleValueFunction(nn.Module):
             self.net[last_linear].bias.data.fill_(0.0)
             # torch.nn.init.uniform_(self.net[-2].bias, -3e-3, 3e-3)
 
-
+        self.set_normalization_stats()
         # # # init as in the EDAC paper
         # for layer in self.net[::2]:
         #     torch.nn.init.constant_(layer.bias, 0.1)
@@ -260,10 +261,10 @@ class EnsembleValueFunction(nn.Module):
                 torch.nn.init.xavier_normal_(m.weight)
             if self.activation == "torch.nn.SiLU":
                 torch.nn.init.xavier_uniform_(m.weight)
-        
+    
 
-    def all(self, obs_dict: Dict[str,torch.Tensor]):
-        obs = obs_dict['obs']
+    # def all(self, obs_dict: Dict[str,torch.Tensor]):
+    def all(self, obs:torch.Tensor, denormalized:bool=False):
         if obs.dim() != 3:
             assert obs.dim() == 2
             # [num_critics, batch_size, state_dim + action_dim]
@@ -272,19 +273,27 @@ class EnsembleValueFunction(nn.Module):
             )
         assert obs.dim() == 3
         assert obs.shape[0] == self.ensemble_size
+        
+        obs = self.normalize_inputs(obs)
+        
         # [num_critics, batch_size]
-        values = self.net(obs).squeeze(-1)
+        values = self.net(obs).squeeze(-1) #inference
+
         if self.prior_factor > 0.:
-            values += self.prior_factor * self.prior_net(obs).squeeze(-1)
+            values += self.prior_factor * self.prior_net(obs).squeeze(-1) #inference
+
+        #denormalize
+        if denormalized:
+            values = self.denormalize_predictions(values)
 
         info = {'mean': values.mean(dim=0), 'std': values.std(dim=0)}
 
         return values, info
 
 
-    def forward(self, obs_dict: Dict[str, torch.Tensor]) -> torch.Tensor:
+    def forward(self, obs: torch.Tensor, denormalized:bool=False) -> Tuple[torch.Tensor, Dict[str, torch.Tensor]]:
         # [..., batch_size, state_dim + action_dim]
-        values, info = self.all(obs_dict)
+        values, info = self.all(obs, denormalized=denormalized)
         if self.aggregation == 'max':
             preds = torch.max(values, dim=0)[0]
         elif self.aggregation == 'min':
@@ -293,5 +302,46 @@ class EnsembleValueFunction(nn.Module):
             preds = torch.mean(values, dim=0)
         elif self.aggregation == 'median':
             preds = torch.median(values, dim=0)[0]
+        
         return preds, info
  
+
+    @torch.no_grad()
+    def set_normalization_stats(self, normalization_stats=None):
+        self.V_min, self.V_max=-float('inf'), float('inf')
+        self.obs_min, self.obs_max=-float('inf'), float('inf')
+        self.V_mean, self.V_std = 0.0, 1.0
+        self.obs_mean, self.obs_std = 0.0, 1.0
+        if normalization_stats is not None:
+            self.V_max = normalization_stats['V_max'] if 'V_max' in normalization_stats else float('inf')
+            self.V_min = normalization_stats['V_min'] if 'V_min' in normalization_stats else float('-inf')
+            self.V_mean = normalization_stats['disc_return_mean'] if 'disc_return_mean' in normalization_stats else 0.0
+            self.V_std = normalization_stats['disc_return_std'] if 'disc_return_std' in normalization_stats else 1.0
+            self.obs_mean = normalization_stats['obs_mean'] if 'obs_mean' in normalization_stats else None
+            self.obs_std = normalization_stats['obs_std'] if 'obs_std' in normalization_stats else None
+            self.obs_max = normalization_stats['obs_max'] if 'obs_max' in normalization_stats else float('inf')
+            self.obs_min = normalization_stats['obs_min'] if 'obs_min' in normalization_stats else float('-inf')
+
+    @torch.no_grad()
+    def normalize_predictions(self, v_preds):
+        #normalize [V_min, V_max] -> [-1,1] 
+        V_range = (self.V_max - self.V_min) + 1e-12
+        v_preds = 2.0 * ((v_preds - self.V_min) / V_range) - 1
+        return v_preds 
+
+    @torch.no_grad()
+    def denormalize_predictions(self, v_preds):
+        #unnormalize [-1,1] -> [V_min, V_max]
+        V_range = (self.V_max - self.V_min)
+        v_preds = 0.5 * (v_preds + 1) * V_range  + self.V_min
+
+        return v_preds
+
+    @torch.no_grad()
+    def normalize_inputs(self, obs:torch.Tensor):
+        obs_range = (self.obs_max - self.obs_min) + 1e-12
+        # obs = (obs - self.obs_min) / obs_range 
+        obs = 2.0 * ((obs - self.obs_min) / obs_range) - 1 
+
+        return obs
+

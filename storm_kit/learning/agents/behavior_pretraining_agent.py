@@ -21,9 +21,6 @@ class BPAgent(nn.Module):
         policy=None,
         qf=None,
         vf=None,
-        target_policy=None,
-        target_qf=None,
-        target_vf=None,
         device=torch.device('cpu'), 
     ):
         super().__init__()
@@ -31,22 +28,9 @@ class BPAgent(nn.Module):
         self.policy = policy
         self.qf = qf
         self.vf = vf
-        self.device = device 
+        self.device = device
 
-        if self.policy is not None:
-            self.policy_optimizer = optim.Adam(self.policy.parameters(), lr=self.cfg['policy_optimizer']['lr'])
-            self.target_policy = copy.deepcopy(self.policy).requires_grad_(False) if target_policy is None else target_policy
-
-        if self.qf is not None:
-            self.qf_optimizer = optim.Adam(self.qf.parameters(), lr=self.cfg['qf_optimizer']['lr'])
-            self.target_qf = copy.deepcopy(self.qf).requires_grad_(False) if target_qf is None else target_qf
-
-        if self.vf is not None:
-            self.vf_optimizer = optim.Adam(self.vf.parameters(), lr=self.cfg['vf_optimizer']['lr'])
-            self.target_vf = copy.deepcopy(self.vf).requires_grad_(False) if target_vf is None else target_vf
-        
         self.setup_agent_called = False
- 
         self.num_action_samples = self.cfg['num_action_samples']
         self.fixed_alpha = self.cfg.get('fixed_alpha', 0.2)
         self.num_eval_episodes = self.cfg.get('num_eval_episodes', 1)
@@ -63,6 +47,21 @@ class BPAgent(nn.Module):
         self.expecile_tau = self.cfg.get('expecile_tau', 0.7)
         self.lambd = self.cfg.get('lambd', 1.0)
         self.randomize_ensemble_targets = self.cfg.get('randomize_ensemble_targets', True)
+        self.use_target_networks = self.cfg['use_target_networks']
+
+        if self.policy is not None:
+            self.policy_optimizer = optim.Adam(self.policy.parameters(), lr=self.cfg['policy_optimizer']['lr'])
+            self.target_policy = copy.deepcopy(self.policy).requires_grad_(False) if self.use_target_networks else None
+
+        if self.qf is not None:
+            self.qf_optimizer = optim.Adam(self.qf.parameters(), lr=self.cfg['qf_optimizer']['lr'])
+            self.target_qf = copy.deepcopy(self.qf).requires_grad_(False) if self.use_target_networks else None
+
+        if self.vf is not None:
+            self.vf_optimizer = optim.Adam(self.vf.parameters(), lr=self.cfg['vf_optimizer']['lr'])
+            self.target_vf = copy.deepcopy(self.vf).requires_grad_(False) if self.use_target_networks else None
+        
+
 
     def update(
             self, batch:Dict[str, torch.Tensor], 
@@ -77,7 +76,7 @@ class BPAgent(nn.Module):
         if self.vf is not None:
             # for (param1, param2) in zip(self.target_vf.parameters(), self.vf.parameters()):
             #     param1.data.mul_(1. - self.polyak_tau).add_(param2.data, alpha=self.polyak_tau)
-            update_exponential_moving_average(self.target_vf, self.vf, self.polyak_tau)
+            if self.target_vf is not None: update_exponential_moving_average(self.target_vf, self.vf, self.polyak_tau)
             vf_loss, adv, vf_info_dict = self.compute_vf_loss(batch, step_num, normalization_stats)
             self.vf_optimizer.zero_grad()
             vf_loss.backward()
@@ -88,7 +87,7 @@ class BPAgent(nn.Module):
         if self.qf is not None:
             # for (param1, param2) in zip(self.target_qf.parameters(), self.qf.parameters()):
             #     param1.data.mul_(1. - self.polyak_tau).add_(param2.data, alpha=self.polyak_tau)
-            update_exponential_moving_average(self.target_qf, self.qf, self.polyak_tau)
+            if self.target_qf is not None: update_exponential_moving_average(self.target_qf, self.qf, self.polyak_tau)
             qf_loss, qf_info_dict = self.compute_qf_loss(batch, step_num, normalization_stats)
             self.qf_optimizer.zero_grad()
             qf_loss.backward()
@@ -96,7 +95,7 @@ class BPAgent(nn.Module):
         
         #Update policy
         if self.policy is not None:
-            update_exponential_moving_average(self.target_policy, self.policy, self.polyak_tau)
+            if self.target_policy is not None: update_exponential_moving_average(self.target_policy, self.policy, self.polyak_tau)
             policy_loss, policy_info_dict = self.compute_policy_loss(batch, step_num, normalization_stats)
             self.policy_optimizer.zero_grad()
             policy_loss.backward()
@@ -232,9 +231,9 @@ class BPAgent(nn.Module):
             step_num:int, normalization_stats:Dict[str, float] = {'disc_return_mean': 0.0, 'disc_return_std': 1.0, 'obs_mean': None, 'obs_std': None}):
         
         r_c_batch = batch['costs'] if 'costs' in batch else batch['rewards']
-        obs_batch = batch['observations']
-        next_obs_batch = batch['next_observations']
-        done_batch = batch['terminals'].float()
+        observations = batch['observations']
+        next_observations = batch['next_observations']
+        terminals = batch['terminals'].float()
         last_terminals = batch['last_terminals'].float()
         last_observations = batch['last_observations']
         returns = batch['disc_returns']
@@ -244,31 +243,30 @@ class BPAgent(nn.Module):
         td_targets = torch.zeros_like(r_c_batch)
         with torch.no_grad():
             if self.lambd > 0:
-                last_inp = self.get_normalized_input(last_observations, normalization_stats)
-                last_vs, _ = self.vf.all(last_inp)  # inference (normalized space)
+                # last_inp = self.normalize_observations(last_observations, normalization_stats)
+                last_vs, _ = self.vf.all(last_observations, denormalized=True)  # inference (de-normalized)
                 # last_vs = normalization_stats['disc_return_std'] * last_vs + normalization_stats['disc_return_mean'] #un-normalize
-                last_vs = self.unnormalize_value_estimates(last_vs, normalization_stats)
+                # last_vs = self.unnormalize_value_estimates(last_vs, normalization_stats)
                 # last_vs += normalization_stats['disc_return_mean'] #un-normalize
                 mc_targets = (returns + (1. - last_terminals) * (self.discount**remaining_steps) * last_vs)#.clamp(min=self.V_min, max=self.V_max)
 
             if self.lambd < 1:
-                next_inp = self.get_normalized_input(next_obs_batch, normalization_stats)    
-                v_next, _ = self.vf.all(next_inp) #inference (normalized space)
+                # next_inp = self.normalize_observations(next_obs_batch, normalization_stats)    
+                v_next, _ = self.vf.all(next_observations, denormalized=True) #inference (de-normalized)
                 # v_next = normalization_stats['disc_return_std'] * v_next + normalization_stats['disc_return_mean'] #un-normalize         
-                v_next = self.unnormalize_value_estimates(v_next, normalization_stats) #un-normalize         
+                # v_next = self.unnormalize_value_estimates(v_next, normalization_stats) #un-normalize         
                 # v_next += normalization_stats['disc_return_mean'] #un-normalize         
-                td_targets = (r_c_batch +  (1. - done_batch) * self.discount * v_next)#.clamp(min=self.V_min, max=self.V_max)
+                td_targets = (r_c_batch +  (1. - terminals) * self.discount * v_next)#.clamp(min=self.V_min, max=self.V_max)
         
         v_target = td_targets*(1.-self.lambd) + mc_targets*self.lambd
         # adv = v_target - v_pred
         
-        inp = self.get_normalized_input(obs_batch, normalization_stats) 
-        vf_all, vf_pred_info = self.vf.all(inp) #inference (normalized space)
+        # inp = self.normalize_observations(obs_batch, normalization_stats) 
+        vf_all, vf_pred_info = self.vf.all(observations, denormalized=False) #inference (normalized space)
         # v_target = v_target.unsqueeze(0).repeat(vf_all.shape[0],1)                
         # v_target = (v_target - disc_return_mean) # / disc_return_std  #Normalize targets 
-        v_target = self.normalize_value_estimates(v_target, normalization_stats)
-
-
+        v_target = self.vf.normalize_predictions(v_target)
+        # v_target = self.normalize_value_estimates(v_target, normalization_stats) #normalize targets
 
         vf_loss = F.mse_loss(vf_all, v_target, reduction='none') #loss (normalized space)
         
@@ -289,6 +287,10 @@ class BPAgent(nn.Module):
         max_target_value = v_target.max()
         min_target_value = v_target.min()
 
+
+
+
+
         vf_info_dict = {
             'Train/vf_loss': vf_loss.item(),
             'Train/vf_ensemble_mean': vf_pred_info['mean'].mean().item(),
@@ -300,19 +302,19 @@ class BPAgent(nn.Module):
         
         return vf_loss, None, vf_info_dict
         
-    def get_normalized_input(self, obs, normalization_stats):
-        # obs_mean, obs_std = normalization_stats['obs_mean'], normalization_stats['obs_std']
-        # if obs_mean is not None:
-        #     obs -= obs_mean
-        # # if obs_std is not None:
-        # #     obs /= obs_std
+    # def normalize_observations(self, obs, normalization_stats):
+    #     # obs_mean, obs_std = normalization_stats['obs_mean'], normalization_stats['obs_std']
+    #     # if obs_mean is not None:
+    #     #     obs -= obs_mean
+    #     # # if obs_std is not None:
+    #     # #     obs /= obs_std
 
-        obs_max, obs_min = normalization_stats['obs_max'], normalization_stats['obs_min']
-        obs_range = (obs_max - obs_min) + 1e-12
-        obs = (obs - obs_min) / obs_range 
-        # if obs_std is not None:
-        #     obs /= obs_std
-        return {'obs': obs}
+    #     obs_max, obs_min = normalization_stats['obs_max'], normalization_stats['obs_min']
+    #     obs_range = (obs_max - obs_min) + 1e-12
+    #     obs = (obs - obs_min) / obs_range 
+    #     # if obs_std is not None:
+    #     #     obs /= obs_std
+    #     return obs
 
     def normalize_value_estimates(self, values, normalization_stats):
         V_min, V_max = normalization_stats['V_min'], normalization_stats['V_max']
@@ -320,11 +322,11 @@ class BPAgent(nn.Module):
         values = (values - V_min) / V_range
         return values
 
-    def unnormalize_value_estimates(self, values, normalization_stats):
-        V_min, V_max = normalization_stats['V_min'], normalization_stats['V_max']
-        V_range = V_max - V_min
-        values =  values * V_range + V_min 
-        return values
+    # def unnormalize_value_estimates(self, values, normalization_stats):
+    #     V_min, V_max = normalization_stats['V_min'], normalization_stats['V_max']
+    #     V_range = V_max - V_min
+    #     values =  values * V_range + V_min 
+    #     return values
 
     def state_dict(self):
         state = {}
@@ -355,12 +357,12 @@ class BPAgent(nn.Module):
         
         info = {}
         with torch.no_grad():
-            obs = validation_buffer['observations'].clone()
-            inp = self.get_normalized_input(obs, normalization_stats)
-            vf_preds, vf_preds_info = self.vf.all(inp) #inference (normalized)
+            observations = validation_buffer['observations'].clone()
+            # inp = self.normalize_observations(obs, normalization_stats)
+            vf_preds, vf_preds_info = self.vf.all(observations, denormalized=True) #inference (de-normalized)
             # vf_preds = normalization_stats['disc_return_std'] * vf_preds + normalization_stats['disc_return_mean'] #un-normalize
             # vf_preds += normalization_stats['disc_return_mean'] #un-normalize
-            vf_preds = self.unnormalize_value_estimates(vf_preds, normalization_stats) #un-normalize
+            # vf_preds = self.unnormalize_value_estimates(vf_preds, normalization_stats) #un-normalize
 
             disc_returns = validation_buffer['disc_returns'].unsqueeze(0).repeat(vf_preds.shape[0], 1) #ensemble x num_points
             vf_error_validation = torch.abs(vf_preds - disc_returns).mean().item() #sum across trajectory and moean along ensemble
