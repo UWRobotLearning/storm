@@ -196,7 +196,7 @@ class Controller(nn.Module):
     def forward(self, state, shift_steps:int=1, n_iters=None, calc_val:bool=False):
         distrib_info, aux_info =  self.optimize(state, shift_steps, n_iters, calc_val)
         return distrib_info, aux_info
-
+    
     def optimize(self, state, shift_steps:int=1, n_iters:int=None, calc_val:bool = False):
         """
         Optimize for best action at current state
@@ -232,20 +232,20 @@ class Controller(nn.Module):
             self.reset_distribution()
             
 
-        with torch.cuda.amp.autocast(enabled=False):
-            with torch.no_grad():
-                for _ in range(n_iters):
-                    # generate random simulated trajectories
-                    with record_function('mpc:generate_rollouts'):
-                        trajectory = self.generate_rollouts(state)
+        # with torch.cuda.amp.autocast(enabled=True):
+        with torch.no_grad():
+            for _ in range(n_iters):
+                # generate random simulated trajectories
+                with record_function('mpc:generate_rollouts'):
+                    trajectory = self.generate_rollouts(state)
 
-                    # update distribution parameters
-                    with record_function("mpc:update_distribution"):
-                        distrib_info = self._update_distribution(trajectory)
+                # update distribution parameters
+                with record_function("mpc:update_distribution"):
+                    distrib_info = self._update_distribution(trajectory)
 
-                    # check if converged
-                    if self.check_convergence():
-                        break
+                # check if converged
+                if self.check_convergence():
+                    break
 
         self.trajectories = trajectory
 

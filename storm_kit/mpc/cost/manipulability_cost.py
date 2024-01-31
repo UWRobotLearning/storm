@@ -50,9 +50,10 @@ class ManipulabilityCost(nn.Module):
     def forward(self, jac_batch:torch.Tensor) -> Tuple[torch.Tensor, Dict[str, torch.Tensor]]:
         inp_device = jac_batch.device
 
-        with torch.cuda.amp.autocast(enabled=False):
-            J_J_t = torch.matmul(jac_batch, jac_batch.transpose(-2,-1))
-            score = torch.sqrt(torch.linalg.det(J_J_t))
+        # with torch.cuda.amp.autocast(enabled=False):
+        # with torch.autocast
+        J_J_t = torch.matmul(jac_batch, jac_batch.transpose(-2,-1)).float()
+        score = torch.sqrt(torch.linalg.det(J_J_t))
             # score = torch.linalg.det(J_J_t)
             # with record_function('manip_cost:chol'):
             #     chol = torch.linalg.cholesky(J_J_t)

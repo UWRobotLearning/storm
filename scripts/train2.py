@@ -152,7 +152,7 @@ def main(cfg: DictConfig):
     train_dataset = qlearning_dataset(train_dataset)
     if val_dataset is not None: val_dataset.to(cfg.rl_device)
     # if val_dataset is not None: val_dataset = qlearning_dataset(val_dataset)
-    if terminal_dataset is not None: terminal_dataset = qlearning_dataset(terminal_dataset).to(cfg.rl_device)
+    if terminal_dataset is not None: terminal_dataset.to(cfg.rl_device) #qlearning_dataset(terminal_dataset) #.to(cfg.rl_device)
     print(dataset_info)
 
     env = GymEnvWrapper(env, task)
@@ -197,7 +197,6 @@ def main(cfg: DictConfig):
         obs_dim=obs_dim, config=cfg.train.vf, device=cfg.rl_device)
     vf.set_normalization_stats(normalization_stats)
 
-
     #initialize mpc policy
     mpc_policy = get_mpc_policy(cfg, policy=None, vf=vf, qf=qf, prediction_metrics=normalization_stats)
 
@@ -236,7 +235,7 @@ def main(cfg: DictConfig):
             row = {}
             for k, v in val_metrics.items():
                 row[k.split("/")[-1]] = v
-                tb_writer.add_scalar(k, v, epoch_num)
+                tb_writer.add_scalar(k, v, total_train_steps)
             tb_writer.add_figure('Validation Ensemble Value Predictions', [v for k,v in val_figs.items()], epoch_num)
             # if cfg.wandb_activate: 
             #     # wandb.log(val_figs, step=step_num)
@@ -264,7 +263,7 @@ def main(cfg: DictConfig):
             row = {}
             for k, v in eval_info.items():
                 row[k.split("/")[-1]] = v
-                tb_writer.add_scalar(k, v, epoch_num)
+                tb_writer.add_scalar(k, v, total_train_steps)
              # if cfg.wandb_activate: wandb.log(eval_info, step=step_num)
 
         #Run through trainign batches

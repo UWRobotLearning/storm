@@ -4,7 +4,7 @@ import pinocchio as pin
 from pinocchio.visualize import MeshcatVisualizer
 import sys 
 
-class Visuailizer():
+class Visualizer():
     def __init__(self):
         pass
 
@@ -35,6 +35,14 @@ class Visuailizer():
 
 
 if __name__ == "__main__":
+    import os
+    from hydra import compose, initialize
+    from omegaconf import OmegaConf
     from storm_kit.robot_model.robot_model import RobotModel
-    robot_model = RobotModel("../../content/config/urdf/franka_description/franka_panda_no_gripper.urdf")
-    # (self, urdf_path:str, mesh_dir:str="", name:str="", device:torch.device=torch.device('cpu')):
+    
+    with initialize(config_path="../../content/configs/robot", job_name="test_app"):
+        cfg = compose(config_name="franka_panda")
+    robot_model = RobotModel(cfg)
+    viz = Visualizer()
+    viz.initialize(robot_model)
+    input('....')

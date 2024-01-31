@@ -215,6 +215,7 @@ class EnsembleValueFunction(nn.Module):
         self.prior_factor = self.config['prior_factor']
         self.activation = self.mlp_params['activation']
         self.w_init = self.config['w_init']
+        self.prediction_temp = self.config['prediction_temp']
         self.layer_sizes = [self.obs_dim] + OmegaConf.to_object(self.mlp_params['hidden_layers']) + [self.out_dim]
 
         self.net = ensemble_mlp(
@@ -265,14 +266,15 @@ class EnsembleValueFunction(nn.Module):
 
     # def all(self, obs_dict: Dict[str,torch.Tensor]):
     def all(self, obs:torch.Tensor, denormalized:bool=False):
-        if obs.dim() != 3:
-            assert obs.dim() == 2
+        # if obs.dim() != 3:
+        if obs.dim() == 2:
+            # assert obs.dim() == 2
             # [num_critics, batch_size, state_dim + action_dim]
             obs = obs.unsqueeze(0).repeat_interleave(
                 self.ensemble_size, dim=0
             )
-        assert obs.dim() == 3
-        assert obs.shape[0] == self.ensemble_size
+        # assert obs.dim() == 3
+        # assert obs.shape[0] == self.ensemble_size
         
         obs = self.normalize_inputs(obs)
         
@@ -286,8 +288,9 @@ class EnsembleValueFunction(nn.Module):
         if denormalized:
             values = self.denormalize_predictions(values)
 
-        info = {'mean': values.mean(dim=0), 'std': values.std(dim=0)}
-
+        std_mean = torch.std_mean(values, dim=0)
+        # info = {'mean': values.mean(dim=0), 'std': values.std(dim=0)}
+        info = {'mean': std_mean[1], 'std': std_mean[0]}
         return values, info
 
 
@@ -299,10 +302,15 @@ class EnsembleValueFunction(nn.Module):
         elif self.aggregation == 'min':
             preds = torch.min(values, dim=0)[0]
         elif self.aggregation == 'mean':
-            preds = torch.mean(values, dim=0)
+            # preds = torch.mean(values, dim=0)
+            preds = info['mean']
+        elif self.aggregation == 'std_mean':
+            preds = info['mean'] + self.prediction_temp * info['std']
         elif self.aggregation == 'median':
             preds = torch.median(values, dim=0)[0]
-        
+        elif self.aggregation == 'log_sum_exp':
+            preds = torch.logsumexp((1.0/ self.prediction_temp) * values, dim=0)
+
         return preds, info
  
 

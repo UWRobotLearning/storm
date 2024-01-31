@@ -39,6 +39,7 @@ dependencies:
     - hydra-core
     # - argcomplete
     # - click
+    - meshcat
     - omegaconf
     - opencv-python
     - open3d

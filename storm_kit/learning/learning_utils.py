@@ -346,8 +346,8 @@ def run_episode(
                 # with profile(activities=[ProfilerActivity.CPU, ProfilerActivity.CUDA]) as prof:
                 action, policy_info = policy.get_action(policy_input, deterministic=deterministic)
 
-                # if i == 2:
-                #     print(prof.key_averages().table(sort_by="cuda_time_total", row_limit=30))
+                # if i == 4:
+                #     print(prof.key_averages().table(sort_by="cuda_time_total", row_limit=40))
                 #     exit()
 
                 #step tells me about next state
@@ -478,6 +478,7 @@ def preprocess_dataset(train_dataset, env, task=None, cfg=None, normalize_score_
         terminal_dataset = ReplayBuffer(capacity=len(train_dataset["terminals"].nonzero()), device=train_dataset.device)
         terminal_batch = {k: v[terminal_idxs] for (k,v) in train_dataset.items()}
         terminal_dataset.add_batch(terminal_batch)
+
     #Get ranges of returns/disc returns
     info["return_min"] = min(train_dataset["returns"]).item()
     info["return_max"] = max(train_dataset["returns"]).item()

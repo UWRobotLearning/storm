@@ -14,6 +14,7 @@ import torch.nn as nn
 from torch.profiler import record_function
 
 from storm_kit.differentiable_robot_model.spatial_vector_algebra import SpatialMotionVec, SpatialForceVec
+from storm_kit.util_file import join_path, get_assets_path
 from .spatial_vector_algebra import SpatialForceVec, SpatialMotionVec, DifferentiableSpatialRigidBodyInertia
 from .spatial_vector_algebra import (
     CoordinateTransform,
@@ -31,6 +32,9 @@ class RigidBody(nn.Module):
 
     joint_limits: Dict[str, float]
     name: str
+    _batch_rot: torch.Tensor
+    _batch_trans: torch.Tensor
+    # _children: List[RigidBody]
 
     # _parents: Optional["RigidBody"]
     # _children: List["RigidBody"]
@@ -41,7 +45,7 @@ class RigidBody(nn.Module):
         super().__init__()
 
         # self._parents = None
-        # self._children = []
+        self._children: List[RigidBody] = []
 
         self._device = device
         self.joint_id = rigid_body_params["joint_id"]
@@ -177,7 +181,6 @@ class RigidBody(nn.Module):
         )
 
         if batch_size != self._batch_size:
-            #print('calling once', self._batch_size, batch_size)
             self._batch_size = batch_size
             self._batch_trans = self.trans.repeat(self._batch_size,1)
             self._batch_rot = self.fixed_rotation.repeat(self._batch_size, 1, 1)
@@ -231,8 +234,8 @@ class RobotModel(nn.Module):
     Robot Model
     ====================================
     """
-    _urdf: str
-    _mesh_dir: str
+    urdf: str
+    mesh_dir: str
     _name_to_idx_map: Dict[str, int]
     _body_idx_to_controlled_joint_idx_map: Dict[int, int]
     _name_to_parent_map: Dict[str, str]
@@ -242,15 +245,14 @@ class RobotModel(nn.Module):
     _link_names: List[str]
     _link_pose_dict: Dict[str, Tuple[torch.Tensor, torch.Tensor]]
 
-    def __init__(self, urdf_path:str, mesh_dir:str="", name:str="", device:torch.device=torch.device('cpu')):
-
+    def __init__(self, robot_config, device:torch.device=torch.device('cpu')):
         super().__init__()
-
-        self.name = name
+        self.config = robot_config
+        self.name = self.config['name']
         self._device = device
-        self._urdf:str = urdf_path 
-        self._mesh_dir:str = mesh_dir
-        self._urdf_model = URDFRobotModel(urdf_path=urdf_path, device=self._device)
+        self.urdf:str = join_path(get_assets_path(), self.config['urdf_path'])
+        self.mesh_dir:str = join_path(get_assets_path(), self.config['mesh_dir'])
+        self._urdf_model = URDFRobotModel(urdf_path=self.urdf, device=self._device)
         self._bodies = [] #torch.nn.ModuleList()
         self._n_dofs = 0
         self._controlled_joints = []
@@ -313,12 +315,17 @@ class RobotModel(nn.Module):
             torch.zeros([self._batch_size, 3, self._n_dofs], device=self._device),
         )
 
-        self._link_pose_dict = {}
+        self._link_pose_dict:Dict[str, torch.Tensor] = {}
         for name in self._link_names:
             self._link_pose_dict[name] = (
                 torch.zeros(self._batch_size, 3, device=self._device),
                 torch.zeros(self._batch_size, 3, 3, device=self._device)
             )
+
+        #load collision model
+        self.collision_spheres = robot_config['collision_spheres']
+        self.robot_collision_params = robot_config['robot_collision_params']
+
 
     def delete_lxml_objects(self):
         self._urdf_model = None
@@ -457,6 +464,7 @@ class RobotModel(nn.Module):
 
         Args:
             q: joint angles [batch_size x n_dofs]
+            qd: joint velocities [batch_size x n_dofs]
             link_name: name of link
 
         Returns: translation and rotation of the link frame
@@ -480,13 +488,6 @@ class RobotModel(nn.Module):
             rot = pose.rotation() #.to(inp_device)#get_quaternion()        
             link_pose_dict[link_name] = (pos, rot)
         return link_pose_dict
-
-        # body = self._bodies[self._name_to_idx_map[link_name]]
-        # pose = body.pose
-        # vel = body.vel
-        # pos = pose.translation()
-        # rot = pose.rotation() #.get_quaternion()
-        # return pos, rot
 
     @torch.jit.export
     def get_link_pose(self, link_name: str)->Tuple[torch.Tensor, torch.Tensor]:
@@ -983,29 +984,6 @@ class RobotModel(nn.Module):
         parent_object.__delattr__(parameter_name)
         parent_object.add_module(parameter_name, parametrization.to(self._device))
 
-    def freeze_learnable_link_param(self, link_name: str, parameter_name: str):
-        parent_object = self._get_parent_object_of_param(link_name, parameter_name)
-
-        # Get output value of current module
-        param_module = getattr(parent_object, parameter_name)
-        assert (
-            type(param_module).__bases__[0] is torch.nn.Module
-        ), f"{parameter_name} of {link_name} is not a learnable module."
-
-        for param in param_module.parameters():
-            param.requires_grad = False
-
-    def unfreeze_learnable_link_param(self, link_name: str, parameter_name: str):
-        parent_object = self._get_parent_object_of_param(link_name, parameter_name)
-
-        # Get output value of current module
-        param_module = getattr(parent_object, parameter_name)
-        assert (
-            type(param_module).__bases__[0] is torch.nn.Module
-        ), f"{parameter_name} of {link_name} is not a learnable module."
-
-        for param in param_module.parameters():
-            param.requires_grad = True
 
     @torch.jit.export
     def get_joint_limits(self)-> List[Dict[str, float]]:  # -> List[Dict[str, torch.Tensor]]:
@@ -1038,17 +1016,6 @@ class RobotModel(nn.Module):
         """
         for i in range(len(self._bodies)):
             print(self._bodies[i].name)
-
-    def print_learnable_params(self) -> None:
-        r"""
-
-        print the name and value of all learnable parameters
-
-        """
-        for name, param in self.named_parameters():
-            print(f"{name}: {param}")
-
-
 
 if __name__ == "__main__":
     import os

@@ -54,7 +54,6 @@ class ArmTask(nn.Module):
         self.viz_rollouts = viz_rollouts
         self.batch_size = cfg.get('batch_size', 1)
         self.horizon = cfg.get('horizon', 1)
-        # self.num_instances = cfg.get('num_instances', 1)
         self.dt_traj_params = cfg.get('dt_traj_params', None)
         self.max_acc = cfg['max_acc']
         self.max_jerk = cfg['max_jerk']
@@ -88,19 +87,20 @@ class ArmTask(nn.Module):
         self.ee_vel_twist_cost = torch.jit.script(NormCost(**self.cfg['cost']['ee_vel_twist'], device=self.device))
         self.ee_acc_twist_cost = torch.jit.script(NormCost(**self.cfg['cost']['ee_acc_twist'], device=self.device))
 
-        
         if self.dt_traj_params is not None:
             if self.cfg['cost']['stop_cost']['weight'] > 0:
-                self.stop_cost = torch.jit.script(StopCost(**cfg['cost']['stop_cost'],
-                                            horizon=self.horizon,
-                                            device=self.device,
-                                            dt_traj_params=self.dt_traj_params))
+                self.stop_cost = torch.jit.script(
+                    StopCost(**cfg['cost']['stop_cost'],
+                    horizon=self.horizon,
+                    device=self.device,
+                    dt_traj_params=self.dt_traj_params))
             
             if self.cfg['cost']['stop_cost_acc']['weight'] > 0:        
-                self.stop_cost_acc = torch.jit.script(StopCost(**cfg['cost']['stop_cost_acc'],
-                                            horizon=self.horizon,
-                                            device=self.device,
-                                            dt_traj_params=self.dt_traj_params))
+                self.stop_cost_acc = torch.jit.script(
+                    StopCost(**cfg['cost']['stop_cost_acc'],
+                    horizon=self.horizon,
+                    device=self.device,
+                    dt_traj_params=self.dt_traj_params))
 
         self.retract_state = torch.tensor([self.cfg['cost']['retract_state']], device=device)
 
@@ -113,11 +113,11 @@ class ArmTask(nn.Module):
                 device=self.device)
 
 
-        self.primitive_collision_cost = PrimitiveCollisionCost(
+        self.primitive_collision_cost = torch.compile(PrimitiveCollisionCost(
             world_params=world_params, robot_collision_params=cfg.robot_collision_params,
             world_collision_params=cfg.world_collision_params, 
             batch_size= self.batch_size * self.horizon, #self.num_instances * 
-            device=self.device, **self.cfg['cost']['primitive_collision'])
+            device=self.device, **self.cfg['cost']['primitive_collision']))
 
         # if cfg['cost']['robot_self_collision']['weight'] > 0.0:
         # self.robot_self_collision_cost = RobotSelfCollisionCost(
@@ -140,9 +140,9 @@ class ArmTask(nn.Module):
             self.state_lower_bounds.unsqueeze(0), 
             self.state_upper_bounds.unsqueeze(0)], dim=0).T
         
-        self.bound_cost = torch.jit.script(BoundCost(**cfg['cost']['state_bound'],
-                                    bounds=self.bounds,
-                                    device=self.device))
+        self.bound_cost = torch.jit.script(
+            BoundCost(**cfg['cost']['state_bound'],
+            bounds=self.bounds, device=self.device))
 
         # self.link_pos_seq = torch.zeros((self.num_instances, self.num_links, 3), device=self.device)
         # self.link_rot_seq = torch.zeros((self.num_instances, self.num_links, 3, 3), device=self.device)
@@ -286,14 +286,6 @@ class ArmTask(nn.Module):
 
         # ee_rot_obs = ee_rot_batch[..., 0:2].flatten(-2,-1)
 
-        # q_pos_lower = self.state_lower_bounds[0:self.n_dofs]
-        # q_pos_upper = self.state_upper_bounds[0:self.n_dofs]
-        # q_vel_lower = self.state_lower_bounds[self.n_dofs:2*self.n_dofs]
-        # q_vel_upper = self.state_upper_bounds[self.n_dofs:2*self.n_dofs]
-
-        # q_pos_norm = (q_pos_batch - q_pos_lower) / (q_pos_upper - q_pos_lower)
-        # q_vel_norm = (q_vel_batch - q_vel_lower) / (q_vel_upper - q_vel_lower)
-
         # if 'ee_quat_seq' not in state_dict:
         #     ee_rot_batch = state_dict['ee_rot_seq']
         #     ee_quat_batch = matrix_to_quaternion(ee_rot_batch.view(new_size, 3, 3)).view(*orig_size, -1)
@@ -359,6 +351,7 @@ class ArmTask(nn.Module):
             success = self.compute_success(state_dict).flatten()
             termination = torch.logical_or(termination, success)
             info['success'] = success
+            
         # termination = torch.logical_or(collision_violation, bounds_violation)
         # termination_cost = coll_cost +  bound_cost
 
