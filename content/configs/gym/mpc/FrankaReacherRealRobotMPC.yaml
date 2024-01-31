@@ -15,7 +15,7 @@ rollout:
       learnable_links: []
     name: "franka_panda"
     dt_traj_params:
-      base_dt: 0.02 #0.02 #0.0166 #0.01 #0.02
+      base_dt: 0.025 #0.02 #0.0166 #0.01 #0.02
       base_ratio: 1.0 #0.5
       max_dt: 0.04
     ee_link_name: ${task.ee_link_name}
@@ -117,16 +117,16 @@ viz_rollouts: False
 
 mppi:
   state_batch_size  : 1
-  horizon           : 30
+  horizon           : 20
   init_cov          : 0.2 #0.02 #0.005 #.5 #.5
   gamma             : 0.99 #0.98
   td_lam            : 1.0
   n_iters           : 1
   step_size_mean    : 0.99
-  step_size_cov     : 0.5
+  step_size_cov     : 0.1 #0.5
   beta              : 0.1 #0.05
   alpha             : 1
-  num_particles     : 500 #1000 #10000
+  num_particles     : 400 #1000 #10000
   update_cov        : True
   cov_type          : 'full_AxA' # 
   kappa             : 0.05

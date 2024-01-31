@@ -30,7 +30,7 @@ env:
 
 joint_control:
   n_dofs: ${task.n_dofs}
-  control_dt: 0.02
+  control_dt: 0.025
   state_filter_coeff: {'q_pos': 0.2, 'q_vel': 0.1, 'q_acc': 0.0}
 
 task:

@@ -48,6 +48,7 @@ class MPCPolicy(Policy):
     def get_action(self, obs_dict, deterministic=False): #, num_samples=1):
         st = time.time()
         state_dict = obs_dict['states']
+        # with torch.autocast(device_type='cuda'):
         with record_function('mpc_policy:get_action'):
             curr_action_seq, _, _ = self.controller.sample(
                 state_dict, shift_steps=1, deterministic=deterministic)#, calc_val=False, num_samples=num_samples)
