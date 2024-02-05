@@ -81,13 +81,14 @@ class ArmTask(nn.Module):
         # self.null_cost = ProjectedDistCost(ndofs=self.n_dofs, device=device, 
         #                                    **cfg['cost']['null_space'])
         
-        self.manipulability_cost = torch.jit.script(ManipulabilityCost(device=self.device, **cfg['cost']['manipulability']))
+        # self.manipulability_cost = torch.jit.script(ManipulabilityCost(device=self.device, **cfg['cost']['manipulability']))
+        self.manipulability_cost = ManipulabilityCost(device=self.device, **cfg['cost']['manipulability'])
         self.zero_q_vel_cost = torch.jit.script(NormCost(**self.cfg['cost']['zero_q_vel'], device=self.device))
         self.zero_q_acc_cost = torch.jit.script(NormCost(**self.cfg['cost']['zero_q_acc'], device=self.device))
         self.zero_q_jerk_cost = torch.jit.script(NormCost(**self.cfg['cost']['zero_q_jerk'], device=self.device))
         self.ee_vel_twist_cost = torch.jit.script(NormCost(**self.cfg['cost']['ee_vel_twist'], device=self.device))
         self.ee_acc_twist_cost = torch.jit.script(NormCost(**self.cfg['cost']['ee_acc_twist'], device=self.device))
-
+        self.goal_ee_pos = None
         
         if self.dt_traj_params is not None:
             if self.cfg['cost']['stop_cost']['weight'] > 0:
@@ -178,7 +179,19 @@ class ArmTask(nn.Module):
         q_acc_batch = state_dict['q_acc']
         orig_size = q_pos_batch.size()[0:-1]
 
-
+        #for ee pos error - clamp costs
+        ee_pos_batch = state_dict['ee_pos']
+        goal_ee_pos = self.goal_ee_pos
+        if goal_ee_pos is not None:
+            if ee_pos_batch.ndim == 2:
+                goal_ee_pos = self.goal_ee_pos.reshape_as(ee_pos_batch)
+            elif ee_pos_batch.ndim == 3:
+                goal_ee_pos = self.goal_ee_pos.unsqueeze(1).reshape_as(ee_pos_batch)
+            elif ee_pos_batch.ndim == 4:
+                goal_ee_pos = self.goal_ee_pos.unsqueeze(1).unsqueeze(1).repeat(1, ee_pos_batch.shape[1], ee_pos_batch.shape[2], 1)
+            goal_ee_pos_error = torch.norm(ee_pos_batch - goal_ee_pos, p=2, dim=-1, keepdim=False) #should take norm along last dim
+        # print("goal_ee_pos_error", goal_ee_pos_error)
+        
         # action_batch = action_batch.view(self.num_instances * self.batch_size, self.horizon, -1)
         # ee_jacobian = state_dict['ee_jacobian'].view(self.num_instances*self.batch_size, self.horizon, 6, -1)
         # ee_vel_twist_batch = state_dict['ee_vel_twist'].view(self.num_instances*self.batch_size, self.horizon, -1)
@@ -220,26 +233,64 @@ class ArmTask(nn.Module):
             cost_terms['manip_cost'] = manip_cost
             cost = manip_cost.view(orig_size)
 
-        if self.cfg['cost']['zero_q_vel']['weight'] > 0:
+        # if self.cfg['cost']['zero_q_vel']['weight'] > 0 and torch.all(goal_ee_pos_error < 0.01):
+        #     with record_function('zero_q_vel_cost'):
+        #         print("zero_q_vel_cost activated")
+        #         cost += self.zero_q_vel_cost.forward(q_vel_batch) #.view(-1,self.n_dofs) #.view(self.num_instances * self.batch_size, self.horizon)
+
+        # if self.cfg['cost']['zero_q_acc']['weight'] > 0 and torch.all(goal_ee_pos_error < 0.01):
+        #     with record_function('zero_q_acc_cost'):
+        #         cost += self.zero_q_acc_cost.forward(q_acc_batch)#.view(self.num_instances * self.batch_size, self.horizon)
+
+        # if self.cfg['cost']['zero_q_jerk']['weight'] >  0 and torch.all(goal_ee_pos_error < 0.01):
+        #     with record_function('zero_q_jerk_cost'):
+        #         q_jerk_batch = state_dict['q_jerk']
+        #         cost += self.zero_q_jerk_cost.forward(q_jerk_batch)
+
+        # if self.cfg['cost']['ee_vel_twist']['weight'] > 0 and torch.all(goal_ee_pos_error < 0.01):
+        #     with record_function('ee_vel_twist_cost'):
+        #         cost += self.ee_vel_twist_cost.forward(ee_vel_twist_batch)#.view(self.num_instances * self.batch_size, self.horizon)
+
+        # if self.cfg['cost']['ee_acc_twist']['weight'] > 0 and torch.all(goal_ee_pos_error < 0.01):
+        #     with record_function('ee_acc_twist_cost'):
+        #         cost += self.ee_acc_twist_cost.forward(ee_acc_twist_batch)#.view(self.num_instances * self.batch_size, self.horizon)
+        # print("config", self.cfg)
+        if self.cfg['cost']['zero_q_vel']['weight'] > 0.0:
             with record_function('zero_q_vel_cost'):
-                cost += self.zero_q_vel_cost.forward(q_vel_batch) #.view(-1,self.n_dofs) #.view(self.num_instances * self.batch_size, self.horizon)
+                if self.cfg['cost']['zero_q_vel']['is_hinge']:
+                    print("zero_q_vel_cost activated")
+                    cost += self.zero_q_vel_cost.forward(q_vel_batch, hinge_x = goal_ee_pos_error)
+                else:
+                    cost += self.zero_q_vel_cost.forward(q_vel_batch)
 
-        if self.cfg['cost']['zero_q_acc']['weight'] > 0:
+        if self.cfg['cost']['zero_q_acc']['weight'] > 0.0:
             with record_function('zero_q_acc_cost'):
-                cost += self.zero_q_acc_cost.forward(q_acc_batch)#.view(self.num_instances * self.batch_size, self.horizon)
+                if self.cfg['cost']['zero_q_acc']['is_hinge']:
+                    print("zero_q_acc_cost activated")
+                    cost += self.zero_q_acc_cost.forward(q_acc_batch, hinge_x = goal_ee_pos_error)
+                else:
+                    cost += self.zero_q_acc_cost.forward(q_acc_batch)
 
-        if self.cfg['cost']['zero_q_jerk']['weight'] > 0:
+        if self.cfg['cost']['zero_q_jerk']['weight'] >  0.0:
             with record_function('zero_q_jerk_cost'):
                 q_jerk_batch = state_dict['q_jerk']
                 cost += self.zero_q_jerk_cost.forward(q_jerk_batch)
 
-        if self.cfg['cost']['ee_vel_twist']['weight'] > 0:
+        if self.cfg['cost']['ee_vel_twist']['weight'] > 0.0:
             with record_function('ee_vel_twist_cost'):
-                cost += self.ee_vel_twist_cost.forward(ee_vel_twist_batch)#.view(self.num_instances * self.batch_size, self.horizon)
+                if self.cfg['cost']['ee_vel_twist']['is_hinge']:
+                    print("ee_vel_twist_cost activated")
+                    cost += self.ee_vel_twist_cost.forward(ee_vel_twist_batch, hinge_x = goal_ee_pos_error)
+                else:
+                    cost += self.ee_vel_twist_cost.forward(ee_vel_twist_batch)
 
-        if self.cfg['cost']['ee_acc_twist']['weight'] > 0:
+        if self.cfg['cost']['ee_acc_twist']['weight'] > 0.0:
             with record_function('ee_acc_twist_cost'):
-                cost += self.ee_acc_twist_cost.forward(ee_acc_twist_batch)#.view(self.num_instances * self.batch_size, self.horizon)
+                if self.cfg['cost']['ee_acc_twist']['is_hinge']:
+                    print("ee_acc_twist_cost activated")
+                    cost += self.ee_acc_twist_cost.forward(ee_acc_twist_batch, hinge_x = goal_ee_pos_error)
+                else:   
+                    cost += self.ee_acc_twist_cost.forward(ee_acc_twist_batch)
 
         #TODO: This must also be MPC specific?
         # if self.cfg['cost']['smooth_cost']['weight'] > 0:

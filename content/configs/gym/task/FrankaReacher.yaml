@@ -85,32 +85,39 @@ task:
       cost_type: 'se3_twist'
       norm_type: 'l2'
       hinge_val: -1
+      is_hinge: False
       convergence_val: [0.0, 0.0] # orientation, position
 
     ee_vel_twist:
       weight: 0.0 #1e-5 #1.0
       norm_type: 'l2'
+      is_hinge: False
+
       # hinge_val: 0.01
       # vec_weight: [1.0, 1.0, 1.0] 
 
     ee_acc_twist:
       weight: 0.0
       norm_type: 'l2'
+      is_hinge: False
       # vec_weight: [1.0, 1.0, 1.0] 
 
     zero_q_vel:
       weight: 0.0 #3e-2
       norm_type: 'l2'
+      is_hinge: False
       # hinge_val: 0.2 #0.2
 
     zero_q_acc:
       weight: 0.0 #0.01
       norm_type: 'l2'
+      is_hinge: False
       # hinge_val: -1.0
 
     zero_q_jerk:
       weight: 0.0 #0.01
       norm_type: 'l2'
+      is_hinge: False
       # hinge_val: -1.0
       
     manipulability:

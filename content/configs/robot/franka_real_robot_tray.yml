@@ -144,12 +144,6 @@ collision_spheres:
           "radius": 0.05
         - "center": [0.0, 0.0, 0.08]
           "radius": 0.05
-    panda_leftfinger:
-        - "center": [0.0, 0.01, 0.034]
-          "radius": 0.02
-    panda_rightfinger:
-        - "center": [0.0, -0.01, 0.034]
-          "radius": 0.02
     tray_link:
         - "center": [0.1225, 0.0, 0.0]
           "radius": 0.04
@@ -167,6 +161,13 @@ collision_spheres:
           "radius": 0.04
         - "center": [0.0, -0.125, 0.0]
           "radius": 0.04
+    panda_leftfinger:
+        - "center": [0.0, 0.01, 0.034]
+          "radius": 0.02
+    panda_rightfinger:
+        - "center": [0.0, -0.01, 0.034]
+          "radius": 0.02
+    
         # - "center": []
           # "radius": 0.02
 

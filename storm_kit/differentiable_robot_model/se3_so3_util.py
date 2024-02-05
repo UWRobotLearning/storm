@@ -37,7 +37,7 @@ def integrateAxisAngle(axis_angle, omega, dt):
     return quat
 
 @torch.jit.script
-def convertQuaternionToAxisAngle(quat, alpha=0.05, epsilon=1.0e-15):
+def convertQuaternionToAxisAngle(quat, alpha:float=0.05, epsilon:float=1.0e-15):
     # if not torch.is_tensor(quat):
     #     quat = torch.Tensor(quat)
     # assert quat.shape[0] == 4

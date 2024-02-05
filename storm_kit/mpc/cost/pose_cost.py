@@ -21,7 +21,7 @@
 # FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 # DEALINGS IN THE SOFTWARE.#
 
-from typing import List, Tuple, Dict
+from typing import List, Tuple, Dict, Optional
 import torch
 from storm_kit.mpc.cost import NormCost
 from storm_kit.differentiable_robot_model.spatial_vector_algebra import CoordinateTransform, matrix_to_quaternion
@@ -39,8 +39,8 @@ class PoseCost(NormCost):
     """
     def __init__(
             self, weight:List, vec_weight:List, cost_type:str = 'se3_transform', 
-            norm_type:str='squared_l2', device:torch.device=torch.device("cpu"), hinge_val:float=100.0,
-            convergence_val=[0.0,0.0], logcosh_alpha=[1.0, 1.0]):
+            norm_type:str='squared_l2', device:torch.device=torch.device("cpu"), hinge_val:float=0.01,
+            convergence_val=[0.0,0.0], logcosh_alpha=[1.0, 1.0], is_hinge:bool=False):
         
         super(PoseCost, self).__init__(weight=1.0, norm_type=norm_type, device=device)
 
@@ -50,19 +50,22 @@ class PoseCost(NormCost):
         self.trans_err_weight = weight[1]
         self.vec_weight = torch.as_tensor(vec_weight, device=self.device)
         self.trans_vec_weight = self.vec_weight[3:6]
+        self.is_hinge = is_hinge
 
         if self.cost_type in ['se3_transform', 'se3_twist']:
             self.rot_vec_weight = self.vec_weight[0:3]
+            self.rot_err_weight = torch.tensor(weight[0], device=device, dtype=torch.float32)
+            self.rot_zeroes = torch.zeros(1, dtype=self.rot_err_weight.dtype, device=device)
             self.I = torch.eye(3,3,device=self.device)
             self.Z = torch.zeros(1, device=self.device)
-        
+
         self.hinge_val = hinge_val
         self.convergence_val = convergence_val
         self.logcosh_alpha = logcosh_alpha
 
     def forward(
             self, ee_pos_batch:torch.Tensor, ee_rot_batch:torch.Tensor, 
-            ee_goal_pos:torch.Tensor, ee_goal_rot:torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+            ee_goal_pos:torch.Tensor, ee_goal_rot:torch.Tensor, hinge_x:Optional[torch.Tensor]=None) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
 
         ee_pos_batch = ee_pos_batch.to(device=self.device)
         ee_rot_batch = ee_rot_batch.to(device=self.device)
@@ -87,6 +90,14 @@ class PoseCost(NormCost):
 
         # if jac_batch is not None:
         #     jac_batch = jac_batch.view(num_instances*batch_size*horizon, 6, -1)
+
+        #hinge orientation cost
+        # if hinge_x is not None:
+        #     hinge_mask = hinge_x > self.hinge_val
+        #     # if hinge_mask.any():
+        #     #     self.rot_err_weight = 0.0
+        #     self.rot_err_weight = torch.where(hinge_mask, self.rot_weight_zero, self.rot_err_weight)
+        #     print("rot_err_weight ", self.rot_err_weight)
         
         #compute error transform
         if self.cost_type in ['se3_transform', 'se3_twist']:
@@ -151,11 +162,11 @@ class PoseCost(NormCost):
         # rot_err_norm = torch.norm(torch.sum(self.rot_vec_weight * rot_err,dim=-1), p=2, dim=-1, keepdim=True)
         
         # rot_err = torch.square(torch.sum(self.rot_vec_weight * rot_err, dim=-1))
-
-
-        if self.hinge_val > 0.0:
-            rotation_err = torch.where(position_err.squeeze(-1) <= self.hinge_val, rotation_err, self.Z) #hard hinge
-
+        #for pose cost hinging
+        if self.is_hinge:
+            print("hinge val ", self.hinge_val)
+            rotation_err = torch.where(position_err.squeeze(-1) <= self.hinge_val, rotation_err, self.Z)
+            print("rotation error ", rotation_err)
         rotation_err[rotation_err < self.convergence_val[0]] = 0.0
         position_err[position_err < self.convergence_val[1]] = 0.0
         # cost = self.rot_err_weight * torch.sqrt(rotation_err) + self.trans_err_weight * torch.sqrt(position_err)
@@ -180,8 +191,19 @@ class PoseCost(NormCost):
         rotation_err[rotation_err < self.convergence_val[0]] = 0.0
         position_err[position_err < self.convergence_val[1]] = 0.0
 
+        #for pose cost hinging
+        # if hinge_x is not None:
+        #     hinge_mask = hinge_x > self.hinge_val
+        #     hinge_mask = hinge_mask.flatten()
+        #     rotation_err = torch.where(hinge_mask, 0, rotation_err)
+        #     print("rotation error ", rotation_err)
+        if self.is_hinge:
+            print("hinge val ", self.hinge_val)
+            rotation_err = torch.where(position_err.squeeze(-1) <= self.hinge_val, rotation_err, self.Z)
+            print("rotation error ", rotation_err)
+
         cost = self.rot_err_weight * rotation_err + self.trans_err_weight * position_err
-        
+
         info = dict(
             rotation_err=rotation_err,
             translation_err=position_err,

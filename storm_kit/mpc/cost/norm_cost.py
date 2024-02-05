@@ -9,7 +9,8 @@ class NormCost(nn.Module):
             self,
             weight:float=1.0,
             norm_type:str = 'l2',
-            hinge_val:float = 0.0,
+            hinge_val:float = 0.01,
+            is_hinge:bool = False,
             device: torch.device = torch.device('cpu'),
             ):
         super().__init__()
@@ -17,6 +18,7 @@ class NormCost(nn.Module):
         self.device = device
         self.weight = weight
         self.hinge_val = hinge_val
+        self.is_hinge = is_hinge
     
     @torch.jit.export
     def forward(self, x:torch.Tensor, hinge_x:Optional[torch.Tensor]=None, keepdim:bool=False, logcosh_alpha:float=3.0) -> torch.Tensor:
@@ -45,7 +47,7 @@ class NormCost(nn.Module):
             #if dist is above hinge val we set it to zero
             hinge_mask = hinge_x > self.hinge_val
             dist[hinge_mask] = 0.0
-
+            # dist = 0.0
         return self.weight * dist
 
 @torch.jit.script

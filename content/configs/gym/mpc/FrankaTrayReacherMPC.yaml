@@ -4,6 +4,7 @@ rollout:
   max_acc: ${task.task.max_acc} #100.0 
   max_jerk: ${task.task.max_jerk}
   n_dofs: ${task.n_dofs}
+  name_config: ${task.task.name_config}
 
   model:
     # any link that is not specified as learnable will be initialized from urdf
@@ -35,44 +36,65 @@ rollout:
   #   bounds: [[-0.4, -0.6, -0.2], [0.6,0.6,1.0]] 
   #   #bounds: [[-0.5, -0.8, 0.0],[0.5,0.8,1.0]]
   #   grid_resolution: 0.05
-
+  # name_config: "FrankaTrayReacher"
   cost:
+    friction_cone_cost:
+      m: 0.5
+      com: [0.0, 0.0, 0.025]
+      J: [[0.05, 0.0, 0.0], [0.0, 0.05, 0.0], [0.0, 0.0, 0.05]]
+      mu: 0.5
+      contact_points:
+      - [0.025, 0.025, -0.025]
+      - [-0.025, 0.025, -0.025]
+      - [0.025, -0.025, -0.025]
+      - [-0.025, -0.025, -0.025]
+      friction_cost_weight: 0.2
+      tangential_cost_weight: 0.0
+
     goal_pose:
       vec_weight: [1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
-      weight: [5.0, 10.0] #[10.0, 50.0] #[50.0, 100.0]
+      weight: [0.0, 15.0] #[10.0, 50.0] #[50.0, 100.0]
       cost_type: 'se3_twist'
-      norm_type: 'logcosh'
-      hinge_val: -1
+      norm_type: 'l2'
+      hinge_val: 0.005 #-1
+      is_hinge: True
       convergence_val: [0.0, 0.0] # orientation, position
 
     ee_vel_twist:
-      weight: 8e-3 #1.0
+      weight: 0.04 #0.0 #8e-3 #1.0
       norm_type: 'l2'
-      # hinge_val: 0.01
+      hinge_val: 0.01
+      is_hinge: True
       # vec_weight: [1.0, 1.0, 1.0] 
 
     ee_acc_twist:
-      weight: 0.0
+      weight: 0.04 #0.0
       norm_type: 'squared_l2'
+      is_hinge: True
+      hinge_val: 0.01
       # vec_weight: [1.0, 1.0, 1.0] 
 
     zero_q_vel:
-      weight: 1e-2
+      weight: 0.04 #1e-2
       norm_type: 'l2'
-      # hinge_val: 0.2 #0.2
+      is_hinge: True
+      hinge_val: 0.01
 
     zero_q_acc:
-      weight: 0.0 #0.01
+      weight: 0.04 #0.01
       norm_type: 'l2'
+      is_hinge: True
+      hinge_val: 0.01
       # hinge_val: -1.0
 
     zero_q_jerk:
       weight: 0.0 #1e-5 
       norm_type: 'l2'
+      is_hinge: False
       # hinge_val: -1.0
       
     manipulability:
-      weight: 0.5 #30.0 #30.0 #10.0 #100.0 #0.05 #0.5 #1.0
+      weight: 0.0 #0.5 #30.0 #30.0 #10.0 #100.0 #0.05 #0.5 #1.0
       thresh: 0.1 #0.1 #0.05 #0.03
 
     joint_l2:

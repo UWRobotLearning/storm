@@ -346,7 +346,7 @@ def run_episode(
                 action, policy_info = policy.get_action(policy_input, deterministic=deterministic)
 
                 # if i == 2:
-                #     print(prof.key_averages().table(sort_by="cuda_time_total", row_limit=30))
+                #     print(prof.key_averages().table(sort_by="cuda_time_total", row_limit=40))
                 #     exit()
 
                 #step tells me about next state
