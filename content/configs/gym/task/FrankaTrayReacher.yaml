@@ -1,7 +1,6 @@
 # used to create the object
 
 name: FrankaTrayReacher
-physics_engine: ${..physics_engine}
 
 defaults:
   - robot: FrankaPandaTray
@@ -13,9 +12,8 @@ joint_control:
   control_dt: 0.0166 #0.02
   state_filter_coeff: {'q_pos': 0.1, 'q_vel': 0.0, 'q_acc': 0.0}
 
-
 env:
-  num_envs: ${resolve_default:1,${...num_envs}}
+  num_envs: ${...num_envs}
   robot: ${task.robot}
   envSpacing: 1.5
   episodeLength: 500

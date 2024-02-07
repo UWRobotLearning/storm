@@ -16,6 +16,7 @@ import yaml
 from hydra.utils import instantiate
 
 from storm_kit.differentiable_robot_model.spatial_vector_algebra import CoordinateTransform, quaternion_to_matrix
+from storm_kit.differentiable_robot_model.robot_model import DifferentiableRobotModel
 from storm_kit.envs.isaac_gym_env_utils import tensor_clamp, load_urdf_asset, load_primitive_asset
 from storm_kit.envs.joint_controllers import JointStiffnessController, InverseDynamicsController
 from storm_kit.mpc.utils.state_filter import JointStateFilter
@@ -78,7 +79,9 @@ class IsaacGymRobotEnv():
         self.robot_z_offset: float = self.cfg.get("robot_z_offset", 0.0)
         self.floating_base_robot: bool = self.cfg.get("floating_base_robot", False)
         self.ee_link_name = self.robot_cfg["ee_link_name"]
-        
+        self.robot_model = torch.jit.script(DifferentiableRobotModel(self.robot_cfg, device=self.device))
+
+
         self.last_frame_time: float = 0.0
         self.total_train_env_frames: int = 0
         # number of control steps
@@ -438,6 +441,13 @@ class IsaacGymRobotEnv():
             self.robot_base_state = self.rigid_body_states[:, 3]
         self.ee_state = self.rigid_body_states[:, self.ee_handle]
 
+        #Get EE pose using FK
+        link_pose_dict, link_spheres_dict, self_coll_dist, lin_jac, ang_jac = self.robot_model.compute_fk_and_jacobian(
+            self.robot_default_dof_pos.unsqueeze(0), torch.zeros_like(self.robot_default_dof_pos).unsqueeze(0),
+            link_name=self.ee_link_name)
+
+        ee_pos, ee_rot = link_pose_dict[self.ee_link_name]
+
         #Note: this needs to change to support more than one object!!!
         if self.num_objects > 0:
             if self.num_objects == 1:
@@ -472,10 +482,11 @@ class IsaacGymRobotEnv():
             # self.init_object_state_2[:,5] = 1.4265e-02 #-1.8236e-04    
             # self.init_object_state_2[:,6] = 4.7758e-02 
 
+
             #for basic tray object reaching
-            self.init_object_state_1[:,0] = 1.3653e-01
-            self.init_object_state_1[:,1] = 7.8287e-03 
-            self.init_object_state_1[:,2] = 5.7433e-01
+            self.init_object_state_1[:,0] = 4.3190e-01 #1.3653e-01 + 0.1
+            self.init_object_state_1[:,1] = -8.7195e-05 #7.8287e-03 
+            self.init_object_state_1[:,2] = 4.7028e-01 #5.7433e-01
             self.init_object_state_1[:,3] = 6.9506e-01 
             self.init_object_state_1[:,4] = 7.1866e-01
             self.init_object_state_1[:,5] = 2.0540e-02
@@ -720,7 +731,7 @@ class IsaacGymRobotEnv():
         state_dict = self.get_state_dict()
         self.ee_handle = self.gym.find_actor_rigid_body_handle(self.envs[0], self.robots[0], self.ee_link_name)
         self.ee_state = self.rigid_body_states[:, self.ee_handle]
-        # print("reset function tray link pose", self.ee_state)
+        print("reset function tray link pose", self.ee_state)
         self.state_filter.reset()
         state_dict = copy.deepcopy(self.state_filter.filter_joint_state(copy.deepcopy(state_dict)))
         return state_dict 
@@ -849,7 +860,7 @@ class IsaacGymRobotEnv():
 
                 ee_pos = self.ee_state[i, 0:3]
                 ee_rot = self.ee_state[i, 3:7]
-                ee_pos = gymapi.Vec3(x=ee_pos[0], y=ee_pos[1], z=ee_pos[2]) 
+                ee_pos = gymapi.Vec3(x=ee_pos[0], y=ee_pos[1], z=ee_pos[2])
                 ee_rot = gymapi.Quat(x=ee_rot[0], y=ee_rot[1], z=ee_rot[2], w=ee_rot[3])
                 ee_pose_world = gymapi.Transform(p=ee_pos, r=ee_rot)
 
