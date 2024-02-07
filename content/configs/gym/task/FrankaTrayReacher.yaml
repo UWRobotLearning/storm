@@ -1,119 +1,141 @@
 # used to create the object
+
 name: FrankaTrayReacher
 physics_engine: ${..physics_engine}
-robot_urdf: "urdf/franka_description/franka_panda_tray.urdf"
-ee_link_name: "tray_link"
-n_dofs: 7
 
-# if given, will override the device setting in gym. 
-env:
-  num_envs: ${resolve_default:1,${...num_envs}}
-  envSpacing: 1.5
-  episodeLength: 500
-  enableDebugVis: False
-  controlFrequencyInv: 1
-  num_objects: 2
-  # clipObservations: 5.0
-  # # clipActions: 1.0
-  aggregateMode: 3
-  # actionScale: 1.0 #7.5
-  # dofVelocityScale: 0.1
-  joint_control_mode: 'inverse_dynamics'
-  #tuned gains
-  robot_p_gains: [1000.0, 1000.0, 1000.0, 1000.0, 4000.0, 3000.0, 2000.0]
-  robot_d_gains: [10.0, 10.0, 10.0, 10.0, 7.5, 5.0, 1.0]
-  # robot_p_gains: [100.0, 100.0, 100.0, 100.0, 40.0, 30.0, 20.0]
-  # robot_d_gains: [10.0, 10.0, 10.0, 10.0, 7.5, 5.0, 1.0]
-  robot_default_dof_pos: [0.0, -0.7853, 0.0, -2.3561, 0.0, 1.5707, 0.7853]
-  robot_z_offset: 0.0
-
-  asset:
-    assetFileNameRobot: ${task.robot_urdf}
-    assetFileNameObjects: ["urdf/cube.urdf", "urdf/cube2.urdf"]
-  # set to True if you use camera sensors in the environment
-  enableCameraSensors: False
+defaults:
+  - robot: FrankaPandaTray
+  - world: TableWorld
+  - object: cube_sim
 
 joint_control:
   n_dofs: ${task.n_dofs}
   control_dt: 0.0166 #0.02
   state_filter_coeff: {'q_pos': 0.1, 'q_vel': 0.0, 'q_acc': 0.0}
 
+
+env:
+  num_envs: ${resolve_default:1,${...num_envs}}
+  robot: ${task.robot}
+  envSpacing: 1.5
+  episodeLength: 500
+  enableDebugVis: False
+  controlFrequencyInv: 1
+  num_objects: 1
+  aggregateMode: 3
+  joint_control: ${..joint_control}
+  joint_control_mode: 'inverse_dynamics'
+  #tuned gains
+  robot_p_gains: [1000.0, 1000.0, 1000.0, 1000.0, 4000.0, 3000.0, 2000.0]
+  robot_d_gains: [10.0, 10.0, 10.0, 10.0, 7.5, 5.0, 1.0]
+  # robot_p_gains: [100.0, 100.0, 100.0, 100.0, 40.0, 30.0, 20.0]
+  # robot_d_gains: [10.0, 10.0, 10.0, 10.0, 7.5, 5.0, 1.0]
+  # robot_default_dof_pos: [0.0, -0.7853, 0.0, -2.3561, 0.0, 1.5707, 0.7853]
+  robot_z_offset: 0.0
+
+  asset:
+    assetFileNameObjects: ["urdf/cube.urdf"] #, "urdf/cube2.urdf"]
+
+  # set to True if you use camera sensors in the environment
+  enableCameraSensors: False
+  physics_engine: ${...physics_engine}
+  sim:
+    dt: 0.0166 # 1/60
+    substeps: 1
+    up_axis: "z"
+    use_gpu_pipeline: ${....use_gpu_pipeline}
+    gravity: [0.0, 0.0, -9.81]
+    physx:
+      num_threads: ${.....num_threads}
+      solver_type: ${.....solver_type}
+      use_gpu: ${contains:"cuda",${.....sim_device}} # set to False to run on CPU
+      num_position_iterations: 12
+      num_velocity_iterations: 1
+      contact_offset: 0.005
+      rest_offset: 0.0
+      bounce_threshold_velocity: 0.2
+      max_depenetration_velocity: 1000.0
+      default_buffer_size_multiplier: 5.0
+      max_gpu_contact_pairs: 1048576 # 1024*1024
+      num_subscenes: ${.....num_subscenes}
+      contact_collection: 0 # 0: CC_NEVER (don't collect contact info), 1: CC_LAST_SUBSTEP (collect only contacts on last substep), 2: CC_ALL_SUBSTEPS (broken - do not use!)
+
+
+
 task:
+  robot: ${task.robot}
   randomize: False  
-  robot_urdf: ${task.robot_urdf}
-  #links to be used for collision checking
-  robot_link_names: ['panda_link1', 'panda_link2','panda_link3','panda_link4','panda_link5', 'panda_link6', 'panda_link7', 'panda_hand']
-  ee_link_name: ${task.ee_link_name}
   control_space: 'acc'
   max_acc: 100.0
   max_jerk: 500.0
-
-  robot_collision_params:
-    urdf_path: ${task.robot_urdf}
-    sample_points: 100
-    link_names: ${task.task.robot_link_names}
-    threshold: 0.35
-    collision_spheres: 'robot/franka.yml'
-    self_collision_weights: 'robot_self/franka_panda_self_collision_weights_2.pt'
-    self_collision_ignore:
-      panda_link0: ["panda_link1", "panda_link2"]
-      panda_link1: ["panda_link2", "panda_link3", "panda_link4"]
-      panda_link2: ["panda_link3", "panda_link4"]
-      panda_link3: ["panda_link4", "panda_link6"]
-      panda_link4: ["panda_link5", "panda_link6", "panda_link7"] #"panda_link8"
-      panda_link5: ["panda_link6", "panda_link7", "panda_hand"] # "panda_leftfinger", "panda_rightfinger"],
-      panda_link6: ["panda_link7", "panda_hand"]  #, "attached_object", "panda_leftfinger", "panda_rightfinger"],
-      panda_link7: ["panda_hand"]  # "attached_object", "panda_leftfinger", "panda_rightfinger"],
-      panda_hand: []              
-      #["panda_leftfinger", "panda_rightfinger","attached_object"],
-      # panda_leftfinger: ["panda_rightfinger", "attached_object"],
-      # panda_rightfinger: ["attached_object"],
-    n_dofs: ${task.rollout.n_dofs}
 
   world_collision_params:
     bounds: [[-0.4, -0.6, -0.2], [0.6,0.6,1.0]] 
     #bounds: [[-0.5, -0.8, 0.0],[0.5,0.8,1.0]]
     grid_resolution: 0.05
 
+
   task_specs:
-    default_ee_target: [0.4, 0.0, 0.5, 0.0, 0.707, 0.707, 0.0]
+    default_ee_target: [0.45, 0.0, 0.4, 0.0, 0.707, 0.707, 0.0]
+    # default_ee_target: [0.6, 0.0, 0.5, 0.0, 0.707, 0.707, 0.0]
     # default_ee_target: [0.4, -0.3, 0.5, 0.0, 0.707, 0.707, 0.0]
-    target_position_noise: 0.2 #meters
-    target_rotation_noise: 0.0 #radians
+    randomize_target_position: True
+    randomize_target_rotation: True
+    target_position_range: [[0.3, 0.6], [-0.2, 0.2], [0.1, 0.6]] #xyz (meters)
+    target_rotation_range: [[0.0, 0.0], [0.0, 0.0], [0.0, 0.0]] #radians
+
+  # task_specs:
+  #   # default_ee_target: [0.6, 0.0, 0.15, 0.0, 0.707, 0.707, 0.0]
+  #   # default_ee_target: [0.6, 0.0, 0.5, 0.0, 0.707, 0.707, 0.0]
+  #   default_ee_target: [0.4, -0.3, 0.5, 0.0, 0.707, 0.707, 0.0]
+  #   target_position_noise: [0.0, 0.0, 0.0] #xyz (meters)
+  #   target_rotation_noise: [0.0, 0.0, 0.0] #radians
+
+  object: ${..object} 
 
   cost:
+    friction_cone_cost:
+      weight: 0.2
+      tangential_cost_weight: 0.0
+
     goal_pose:
       vec_weight: [1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
       weight: [5.0, 10.0] #[10.0, 50.0] #[50.0, 100.0]
       cost_type: 'se3_twist'
       norm_type: 'l2'
-      hinge_val: -1
+      hinge_val: 0.01
+      # is_hinge: False
       convergence_val: [0.0, 0.0] # orientation, position
 
     ee_vel_twist:
-      weight: 8e-3 #1.0
+      weight: 0.0 #1.0
       norm_type: 'l2'
+      # is_hinge: True
       # hinge_val: 0.01
       # vec_weight: [1.0, 1.0, 1.0] 
 
     ee_acc_twist:
       weight: 0.0
       norm_type: 'l2'
+      # is_hinge: False
       # vec_weight: [1.0, 1.0, 1.0] 
 
     zero_q_vel:
       weight: 1e-2
       norm_type: 'l2'
+      # is_hinge: False
       # hinge_val: 0.2 #0.2
 
     zero_q_acc:
       weight: 0.0 #0.01
       norm_type: 'l2'
+      # is_hinge: False
       # hinge_val: -1.0
 
     zero_q_jerk:
       weight: 0.0 #0.01
       norm_type: 'l2'
+      # is_hinge: False
       # hinge_val: -1.0
       
     manipulability:
@@ -143,28 +165,3 @@ task:
 
     retract_state : [0.00, 0.0, 0.00, -1.5, 0.00, 2.0, 0.0] #check
     retract_weight: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0,0.0] #check
-
-defaults:
-  - world: FrankaReacherWorld
-
-
-sim:
-  dt: 0.0166 # 1/60
-  substeps: 1
-  up_axis: "z"
-  use_gpu_pipeline: ${...use_gpu_pipeline}
-  gravity: [0.0, 0.0, -9.81]
-  physx:
-    num_threads: ${....num_threads}
-    solver_type: ${....solver_type}
-    use_gpu: ${contains:"cuda",${....sim_device}} # set to False to run on CPU
-    num_position_iterations: 12
-    num_velocity_iterations: 1
-    contact_offset: 0.005
-    rest_offset: 0.0
-    bounce_threshold_velocity: 0.2
-    max_depenetration_velocity: 1000.0
-    default_buffer_size_multiplier: 5.0
-    max_gpu_contact_pairs: 1048576 # 1024*1024
-    num_subscenes: ${....num_subscenes}
-    contact_collection: 0 # 0: CC_NEVER (don't collect contact info), 1: CC_LAST_SUBSTEP (collect only contacts on last substep), 2: CC_ALL_SUBSTEPS (broken - do not use!)

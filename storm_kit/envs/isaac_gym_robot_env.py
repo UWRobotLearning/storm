@@ -33,7 +33,7 @@ def _create_sim_once(gym, *args, **kwargs):
 
 
 class IsaacGymRobotEnv():
-    def __init__(self, cfg, rl_device, sim_device, graphics_device_id, headless, virtual_screen_capture, force_render):        
+    def __init__(self, cfg, world_cfg, rl_device, sim_device, graphics_device_id, headless, virtual_screen_capture, force_render):        
         self.cfg = cfg
         self.rl_device = rl_device
         self.device = sim_device
@@ -60,23 +60,24 @@ class IsaacGymRobotEnv():
             self.virtual_display.start()
 
         self.force_render = force_render
-        self.max_episode_length = self.cfg["env"]["episodeLength"]
-        self.aggregate_mode = self.cfg["env"]["aggregateMode"]
-        self.num_environments = self.cfg["env"]["num_envs"]
-        self.num_objects = self.cfg["env"]["num_objects"]
-        self.debug_viz = self.cfg["env"]["enableDebugVis"]
-        self.joint_control_mode = self.cfg["env"]["joint_control_mode"]
-        self.robot_default_dof_pos = self.cfg["env"]["robot_default_dof_pos"]
+        self.max_episode_length = self.cfg["episodeLength"]
+        self.aggregate_mode = self.cfg["aggregateMode"]
+        self.num_environments = self.cfg["num_envs"]
+        self.num_objects = self.cfg["num_objects"]
+        self.debug_viz = self.cfg["enableDebugVis"]
+        self.joint_control_mode = self.cfg["joint_control_mode"]
         self.up_axis = "z"
         self.up_axis_idx = 2
         self.dt = self.cfg["sim"]["dt"]
-        self.world_params = self.cfg["world"]
-        self.world_model = self.world_params["world_model"]
-        self.control_freq_inv = self.cfg["env"].get("controlFrequencyInv", 1)                
-        self.render_fps: int = self.cfg["env"].get("renderFPS", -1)
-        self.robot_z_offset: float = self.cfg["env"].get("robot_z_offset", 0.0)
-        self.floating_base_robot: bool = self.cfg["env"].get("floating_base_robot", False)
-        self.ee_link_name = self.cfg.get("ee_link_name", "ee_link")
+        self.robot_cfg = self.cfg["robot"]
+        self.world_cfg = world_cfg
+        self.world_model = self.world_cfg["world_model"]
+        self.robot_default_dof_pos = self.robot_cfg["default_dof_pos"]
+        self.control_freq_inv = self.cfg.get("controlFrequencyInv", 1)                
+        self.render_fps: int = self.cfg.get("renderFPS", -1)
+        self.robot_z_offset: float = self.cfg.get("robot_z_offset", 0.0)
+        self.floating_base_robot: bool = self.cfg.get("floating_base_robot", False)
+        self.ee_link_name = self.robot_cfg["ee_link_name"]
         
         self.last_frame_time: float = 0.0
         self.total_train_env_frames: int = 0
@@ -212,7 +213,7 @@ class IsaacGymRobotEnv():
             quit()
 
         self._create_ground_plane()
-        self._create_envs(self.num_envs, self.cfg["env"]['envSpacing'], int(np.sqrt(self.num_envs)))
+        self._create_envs(self.num_envs, self.cfg['envSpacing'], int(np.sqrt(self.num_envs)))
 
 
     def _create_ground_plane(self):
@@ -225,7 +226,7 @@ class IsaacGymRobotEnv():
         upper = gymapi.Vec3(spacing, spacing, spacing)
 
         #Load robot asset
-        robot_asset_file = self.cfg["env"]["asset"].get("assetFileNameRobot")
+        robot_asset_file = self.robot_cfg["urdf_path"]
         robot_asset = load_urdf_asset(
             self.gym, self.sim, asset_file=robot_asset_file, 
             fix_base_link=True, disable_gravity=True
@@ -257,7 +258,7 @@ class IsaacGymRobotEnv():
         if self.num_objects > 0: #changes for multiple objects' loading
             object_color_1 = gymapi.Vec3(0.0, 0.0, 1.0)
             object_color_2 = gymapi.Vec3(0.8, 0.1, 0.1)
-            object_asset_file = self.cfg["env"]["asset"].get("assetFileNameObjects")
+            object_asset_file = self.cfg["asset"].get("assetFileNameObjects")
             object_assets = []
             for asset in object_asset_file:
                 print("Loading asset '%s'" % (asset))
@@ -369,8 +370,8 @@ class IsaacGymRobotEnv():
 
 
     def init_robot_dof_properties(self, robot_asset):
-        robot_p_gains = self.cfg["env"].get("robot_p_gains")
-        robot_d_gains = self.cfg["env"].get("robot_d_gains")
+        robot_p_gains = self.cfg.get("robot_p_gains")
+        robot_d_gains = self.cfg.get("robot_d_gains")
         robot_dof_props = self.gym.get_asset_dof_properties(robot_asset)
         self.robot_q_pos_lower_lims = []
         self.robot_q_pos_upper_lims = []
@@ -726,7 +727,7 @@ class IsaacGymRobotEnv():
 
     #only for object reset
     def object_reset(self, env_ids, reset_data=None):
-        object_asset_file = self.cfg["env"]["asset"].get("assetFileNameObjects")
+        object_asset_file = self.cfg["asset"].get("assetFileNameObjects")
         len_obj_urdfs = len(object_asset_file)
         self.object_state_1[env_ids] = self.cube1_reset_pose
         if self.num_objects > 1:
@@ -746,6 +747,7 @@ class IsaacGymRobotEnv():
                 self.sim,
                 gymtorch.unwrap_tensor(self.root_state),
                 gymtorch.unwrap_tensor(multi_env_ids_objects_int32), len(multi_env_ids_objects_int32))
+
 
     def reset(self, reset_data=None):
         return self.reset_idx(torch.arange(self.num_envs, device=self.device), reset_data=reset_data)

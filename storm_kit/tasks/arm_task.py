@@ -47,7 +47,7 @@ class ArmTask(nn.Module):
     1. Update cfg to be kwargs
     """
 
-    def __init__(self, cfg, world_params=None, viz_rollouts:bool=False, device=torch.device('cpu')):
+    def __init__(self, cfg, world_cfg=None, viz_rollouts:bool=False, device=torch.device('cpu')):
         super().__init__()
         self.device = device
         self.cfg = cfg
@@ -57,21 +57,26 @@ class ArmTask(nn.Module):
         self.dt_traj_params = cfg.get('dt_traj_params', None)
         self.max_acc = cfg['max_acc']
         self.max_jerk = cfg['max_jerk']
+        self.robot_cfg = cfg.robot
 
-        robot_urdf = cfg.get('robot_urdf', None)
+        # robot_urdf = cfg.get('robot_urdf', None)
         
-        if robot_urdf is None:
-            robot_urdf = cfg['model']['urdf_path']
+        # if robot_urdf is None:
+        #     robot_urdf = cfg['model']['urdf_path']
 
-        self.ee_link_name = cfg.get('ee_link_name')
-
-        urdf_path = join_path(get_assets_path(), robot_urdf)
-        self.robot_model = torch.jit.script(DifferentiableRobotModel(urdf_path, device=self.device)) #, dtype=self.dtype)
+        # self.ee_link_name = cfg.get('ee_link_name')
+        self.ee_link_name = self.robot_cfg['ee_link_name']
+        # urdf_path = join_path(get_assets_path(), robot_urdf)
+        # self.robot_model = torch.jit.script(DifferentiableRobotModel(urdf_path, device=self.device))
+        self.robot_model = torch.jit.script(DifferentiableRobotModel(self.robot_cfg, device=self.device))
         self.n_dofs = self.robot_model._n_dofs
-        self.link_names = cfg.get('robot_link_names')
-        if self.link_names is None:
-            self.link_names = cfg['model'].get('link_names')
-        self.num_links = len(self.link_names)
+        self.robot_default_dof_pos = torch.as_tensor(self.robot_cfg['default_dof_pos'], device=self.device).unsqueeze(0)
+
+        # self.n_links = self.robot_model.n_links
+        # self.link_names = cfg.get('robot_link_names')
+        # if self.link_names is None:
+        #     self.link_names = cfg['model'].get('link_names')
+        # # self.num_links = len(self.link_names)
                         
         # self.jacobian_cost = JacobianCost(ndofs=self.n_dofs, device=device,
         #                                   float_dtype=float_dtype,
@@ -114,7 +119,7 @@ class ArmTask(nn.Module):
 
 
         self.primitive_collision_cost = torch.compile(PrimitiveCollisionCost(
-            world_params=world_params, robot_collision_params=cfg.robot_collision_params,
+            world_cfg=world_cfg, # robot_collision_params=cfg.robot_collision_params,
             world_collision_params=cfg.world_collision_params, 
             batch_size= self.batch_size * self.horizon, #self.num_instances * 
             device=self.device, **self.cfg['cost']['primitive_collision']))
@@ -328,9 +333,11 @@ class ArmTask(nn.Module):
                 # link_pos_batch, link_rot_batch = state_dict['link_pos'], state_dict['link_rot']
                 # link_pos_batch = link_pos_batch.view(-1, self.num_links, 3)
                 # link_rot_batch = link_rot_batch.view(-1, self.num_links, 3, 3)
-                link_pose_dict = state_dict['link_pose_dict']
+                # link_pose_dict = state_dict['link_pose_dict']
+                link_spheres_dict = state_dict['link_spheres_dict']
+                self_coll_dist = state_dict['self_coll_dist']
                 # coll_cost, coll_cost_info = self.primitive_collision_cost.forward(link_pos_batch, link_rot_batch)
-                coll_cost, coll_cost_info = self.primitive_collision_cost.forward(link_pose_dict)
+                coll_cost, coll_cost_info = self.primitive_collision_cost.forward(link_spheres_dict, self_coll_dist)
                 collision_violation = torch.logical_or(coll_cost_info['in_coll_world'], coll_cost_info['in_coll_self'])
                 collision_violation = collision_violation.sum(-1)
                 termination = torch.logical_or(termination, collision_violation)
@@ -378,7 +385,7 @@ class ArmTask(nn.Module):
             #     q_pos.reshape(-1, q_pos.shape[-1]), q_vel.view(-1, self.n_dofs), self.cfg['ee_link_name'])
 
             with record_function("arm_task: fk + jacobian"):
-                link_pose_dict, lin_jac, ang_jac = self.robot_model.compute_fk_and_jacobian(
+                link_pose_dict, link_spheres_dict, self_coll_dist, lin_jac, ang_jac = self.robot_model.compute_fk_and_jacobian(
                     q_pos.view(-1, self.n_dofs), q_vel.view(-1, self.n_dofs),
                     link_name=self.ee_link_name)
 
@@ -428,6 +435,9 @@ class ArmTask(nn.Module):
             new_state_dict['ee_vel_twist'] = ee_vel_twist
             new_state_dict['ee_acc_twist'] = ee_acc_twist
             new_state_dict['link_pose_dict'] = link_pose_dict
+            new_state_dict['link_spheres_dict'] = link_spheres_dict
+            new_state_dict['self_coll_dist'] = self_coll_dist
+
             # new_state_dict['link_pos'] = link_pos
             # new_state_dict['link_rot'] = link_rot
 

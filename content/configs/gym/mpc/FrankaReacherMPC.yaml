@@ -1,42 +1,28 @@
+world: ${task.world}
+robot: ${task.robot}
+viz_rollouts: False
 
-rollout:
-  num_instances: ${task.env.num_envs}
+model:
+  # any link that is not specified as learnable will be initialized from urdf
+  # urdf_path: ${task.robot_urdf}
+  robot: ${..robot}
+  dt_traj_params:
+    base_dt: 0.0166 #0.02 #0.0166 #0.01 #0.02
+    base_ratio: 1.0
+    max_dt: 0.166
+  init_state: [0.8, 0.3, 0.0, -1.57, 0.0, 1.86, 0.] #check
   control_space: ${task.task.control_space}
+  link_names: ${task.task.robot_link_names}
+  robot_keys: ['q_pos', 'q_vel', 'q_acc']
+
+task:
+  num_instances: ${task.env.num_envs}
   max_acc: ${task.task.max_acc} #100.0 
   max_jerk: ${task.task.max_jerk}
   n_dofs: ${task.n_dofs}
   ee_link_name: ${task.ee_link_name}
-
-  model:
-    # any link that is not specified as learnable will be initialized from urdf
-    urdf_path: ${task.robot_urdf}
-    learnable_rigid_body_config:
-      learnable_links: []
-    name: "franka_panda"
-    dt_traj_params:
-      base_dt: 0.0166 #0.02 #0.0166 #0.01 #0.02
-      base_ratio: 1.0
-      max_dt: 0.166
-    ee_link_name: ${task.ee_link_name}
-    init_state: [0.8, 0.3, 0.0, -1.57, 0.0, 1.86, 0.] #check
-    link_names: ${task.task.robot_link_names}
-  
-  robot_collision_params: ${task.task.robot_collision_params}
+  robot: ${..robot}
   world_collision_params: ${task.task.world_collision_params}
-
-  # robot_collision_params:
-  #   urdf_path: ${task.robot_urdf}
-  #   sample_points: 100
-  #   link_names: ${task.task.robot_link_names}
-  #   threshold: 0.35
-  #   collision_spheres: 'robot/franka.yml'
-  #   self_collision_weights: 'robot_self/franka_panda_self_collision_weights_2.pt'
-  #   n_dofs: ${task.rollout.n_dofs}
-
-  # world_collision_params:
-  #   bounds: [[-0.4, -0.6, -0.2], [0.6,0.6,1.0]] 
-  #   #bounds: [[-0.5, -0.8, 0.0],[0.5,0.8,1.0]]
-  #   grid_resolution: 0.05
 
   cost:
     goal_pose:
@@ -46,9 +32,10 @@ rollout:
       norm_type: 'l2'
       hinge_val: -1
       convergence_val: [0.0, 0.0] # orientation, position
+      logcosh_alpha: [1.0, 1.0] #orientation, position (shaping used only for logcosh)
 
     ee_vel_twist:
-      weight: 5e-2 #1.0
+      weight: 1e-2 #1.0
       norm_type: 'l2'
       # hinge_val: 0.01
       # vec_weight: [1.0, 1.0, 1.0] 
@@ -94,7 +81,7 @@ rollout:
       order: 1
 
     primitive_collision:
-      weight: 1000.0
+      weight: 2000.0
       distance_threshold_world: 0.03
       distance_threshold_self: 0.03
 
@@ -103,20 +90,19 @@ rollout:
     #   distance_threshold: 0.05
 
     state_bound:
-      weight: 1000.0 
+      weight: 2000.0 
       bound_thresh: 0.03
 
     retract_state : [0.00, 0.0, 0.00, -1.5, 0.00, 2.0, 0.0] #check
     retract_weight: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0,0.0] #check
 
-world: ${task.world}
-viz_rollouts: False
+
 
 mppi:
   state_batch_size  : 1
-  horizon           : 25
+  horizon           : 20
   init_cov          : 0.1 #0.005 #.5 #.5
-  gamma             : 0.99 
+  gamma             : 0.999 
   td_lam            : 1.0
   n_iters           : 1
   step_size_mean    : 0.9
@@ -126,7 +112,7 @@ mppi:
   num_particles     : 400
   update_cov        : True
   cov_type          : 'full_AxA'
-  kappa             : 0.01
+  kappa             : 0.05
   null_act_frac     : 0.01
   cl_act_frac       : 1.0
   use_cl_std        : False #whether to use std of closed loop policy for exploration

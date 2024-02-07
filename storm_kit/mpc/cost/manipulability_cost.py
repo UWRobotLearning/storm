@@ -51,7 +51,7 @@ class ManipulabilityCost(nn.Module):
         inp_device = jac_batch.device
 
         # with torch.cuda.amp.autocast(enabled=False):
-        # with torch.autocast
+        # with torch.autocast(device_type='cuda', enabled=False):
         J_J_t = torch.matmul(jac_batch, jac_batch.transpose(-2,-1)).float()
         score = torch.sqrt(torch.linalg.det(J_J_t))
             # score = torch.linalg.det(J_J_t)

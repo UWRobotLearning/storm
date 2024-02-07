@@ -270,7 +270,8 @@ class MPPI(GaussianMPC):
                     
                 elif self.cov_type == 'full_AxA':
                     self.cov_action += self.kappa*self.I
-                    self.scale_tril = matrix_cholesky(self.cov_action) # torch.cholesky(self.cov_action) #
+                    # self.scale_tril, = matrix_cholesky(self.cov_action) # torch.cholesky(self.cov_action) #
+                    self.scale_tril, _ = torch.linalg.cholesky_ex(self.cov_action)
                     # self.scale_tril = torch.cholesky(self.cov_action)
                     # self.inv_cov_action = torch.cholesky_inverse(self.scale_tril)
                 

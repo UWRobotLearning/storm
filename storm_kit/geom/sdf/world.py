@@ -57,9 +57,9 @@ class WorldGridCollision(WorldCollision):
         
         # super().__init__(batch_size, tensor_args)
         super().__init__(batch_size, device)
-        self.bounds = torch.as_tensor(bounds, device=self.device)
-        self.grid_resolution = grid_resolution
-        self.pitch = self.grid_resolution
+        self.bounds:torch.Tensor = torch.as_tensor(bounds, device=self.device)
+        self.grid_resolution:float = grid_resolution
+        self.pitch:float = self.grid_resolution
         self.scene_sdf = None
         self.scene_sdf_matrix = None
 
@@ -81,18 +81,6 @@ class WorldGridCollision(WorldCollision):
             tensor: distance [b,1]
         """        
         raise NotImplementedError
-
-    # def view_sdf_grid(self, sdf_grid):
-    #     ax = plt.axes(projection='3d')
-    #     ind_matrix = [[x,y,z] for x in range(sdf_grid.shape[0]) for y in range(sdf_grid.shape[1]) for z in range(sdf_grid.shape[2])]
-    #     ind_matrix = np.matrix(ind_matrix)
-    #     xdata = ind_matrix[:,0]
-    #     ydata = ind_matrix[:, 1]
-    #     zdata = ind_matrix[:,2]
-        
-    #     c_data = torch.flatten(sdf_grid).cpu().numpy()
-    #     ax.scatter3D(xdata, ydata, zdata, c=c_data, cmap='coolwarm')#, vmin=-0.1, vmax=0.1)
-    #     plt.show()
 
     def build_transform_matrices(self, bounds, pitch):
         '''
@@ -195,17 +183,15 @@ class WorldGridCollision(WorldCollision):
 class WorldPrimitiveCollision(WorldGridCollision):
     """ This class holds a batched collision model
     """
-    # def __init__(self, world_collision_params, batch_size=1, tensor_args={'device':"cpu", 'dtype':torch.float32}, bounds=None, grid_resolution=0.05):
     def __init__(self, world_collision_params, batch_size:int=1, bounds:torch.Tensor = torch.zeros(2,2), grid_resolution:float=0.05, device:torch.device=torch.device('cpu')):
         super().__init__(batch_size, bounds, grid_resolution, device)
+        
         self._world_spheres = []
         self._world_cubes = []
-        
-        self.n_objs = 0
-        self.num_sphere_objs = 0
-        self.num_cube_objs = 0
+        self.n_objs:int = 0
+        self.num_sphere_objs:int = 0
+        self.num_cube_objs:int = 0
 
-        # self.l_T_c = CoordinateTransform(device=self.tensor_args['device'])
         self.l_T_c = CoordinateTransform(device=self.device)
         self.load_collision_model(world_collision_params)
         # self.dist = torch.zeros((1,1,1), **self.tensor_args)
@@ -230,7 +216,7 @@ class WorldPrimitiveCollision(WorldGridCollision):
         self.num_cube_objs = len(cube_objs)
 
         # we store as [Batch, n_link, 7]
-        self._world_spheres = []
+        # self._world_spheres = []
         if len(sphere_objs) > 0:
             self._world_spheres = torch.empty((self.batch_size, len(sphere_objs), 4), device=self.device)
             for j_idx, j in enumerate(sphere_objs):
@@ -261,7 +247,6 @@ class WorldPrimitiveCollision(WorldGridCollision):
         """
         
         # This contains coordinate tranforms as [batch_size * n_links ]
-        
         self.l_T_c.set_translation(objs_pos)
         self.l_T_c.set_rotation(objs_rot)
         
@@ -508,3 +493,17 @@ class WorldImageCollision(WorldCollision):
         
         return pt_coll
 
+
+
+
+    # def view_sdf_grid(self, sdf_grid):
+    #     ax = plt.axes(projection='3d')
+    #     ind_matrix = [[x,y,z] for x in range(sdf_grid.shape[0]) for y in range(sdf_grid.shape[1]) for z in range(sdf_grid.shape[2])]
+    #     ind_matrix = np.matrix(ind_matrix)
+    #     xdata = ind_matrix[:,0]
+    #     ydata = ind_matrix[:, 1]
+    #     zdata = ind_matrix[:,2]
+        
+    #     c_data = torch.flatten(sdf_grid).cpu().numpy()
+    #     ax.scatter3D(xdata, ydata, zdata, c=c_data, cmap='coolwarm')#, vmin=-0.1, vmax=0.1)
+    #     plt.show()

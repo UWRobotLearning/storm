@@ -1,6 +1,8 @@
 name: 'Franka Panda'
 urdf_path: 'urdf/franka_description/franka_panda_no_gripper.urdf'
 mesh_dir: 'urdf/franka_description/'
+default_dof_pos: [0.0, -0.7853, 0.0, -2.3561, 0.0, 1.5707, 0.7853]
+
 
 collision_spheres:
     panda_link0:

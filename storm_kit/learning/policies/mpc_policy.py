@@ -23,7 +23,6 @@ class MPCPolicy(Policy):
         
         super().__init__(obs_dim, act_dim, config, device=device)
         self.tensor_args = {'device': self.device, 'dtype' : torch.float32}
-        self.n_dofs = self.cfg.rollout.n_dofs
         # self.rollout = self.init_rollout(task_cls) 
         self.controller = self.init_controller(
             task_cls, dynamics_model_cls,
@@ -33,22 +32,22 @@ class MPCPolicy(Policy):
         
     def forward(self, obs_dict, calc_val:bool=False): #calc_val:bool=False
         states = obs_dict['states']
-        
-        with torch.autocast(device_type='cuda'):
-            distrib_info, aux_info =  self.controller.optimize(
-                states, shift_steps=1, calc_val=calc_val) #value #calc_val=calc_val,         
-            mean = distrib_info['mean'][:, 0]
-            scale_tril = distrib_info['scale_tril']
-            dist = MultivariateNormal(loc=mean, scale_tril=scale_tril)
-            value = distrib_info['optimal_value'] if 'optimal_value' in distrib_info else 0.
-            aux_info['base_policy_value'] = distrib_info['base_policy_value'] if 'base_policy_value' in distrib_info else 0.
+
+        distrib_info, aux_info =  self.controller.optimize(
+            states, shift_steps=1, calc_val=calc_val) #value #calc_val=calc_val,         
+        mean = distrib_info['mean'][:, 0]
+        scale_tril = distrib_info['scale_tril']
+        dist = MultivariateNormal(loc=mean, scale_tril=scale_tril)
+        value = distrib_info['optimal_value'] if 'optimal_value' in distrib_info else 0.
+        aux_info['base_policy_value'] = distrib_info['base_policy_value'] if 'base_policy_value' in distrib_info else 0.
         
         return dist, value, aux_info
 
+    @torch.no_grad()
+    @torch.autocast(device_type='cuda', enabled=False, dtype=torch.float16)
     def get_action(self, obs_dict, deterministic=False): #, num_samples=1):
         st = time.time()
         state_dict = obs_dict['states']
-        # with torch.autocast(device_type='cuda'):
         with record_function('mpc_policy:get_action'):
             curr_action_seq, _, _ = self.controller.sample(
                 state_dict, shift_steps=1, deterministic=deterministic)#, calc_val=False, num_samples=num_samples)
@@ -73,24 +72,25 @@ class MPCPolicy(Policy):
                         sampling_policy, vf=None, qf=None):
         # world_params = self.cfg.world
         # rollout = self.init_rollout(task_cls)
-        # rollout_params = self.cfg.rollout
+        # task_params = self.cfg.rollout
         task, dynamics_model = self.init_rollout(task_cls, dynamics_model_cls)
-        rollout_params = self.cfg.rollout
+        task_params = self.cfg.task
+        model_params = self.cfg.model
 
         mppi_params = self.cfg.mppi
         with open_dict(mppi_params):
-            mppi_params.d_action = self.n_dofs #dynamics_model.d_action
-            mppi_params.action_lows =  [-1.0 * rollout_params.max_acc] * self.n_dofs #dynamics_model.d_action # * torch.ones(#dynamics_model.d_action, **self.tensor_args)
-            mppi_params.action_highs = [ rollout_params.max_acc] * self.n_dofs #dynamics_model.d_action # * torch.ones(#dynamics_model.d_action, **self.tensor_args)
+            mppi_params.d_action = dynamics_model.n_dofs #dynamics_model.d_action
+            mppi_params.action_lows =  [-1.0 * task_params.max_acc] * dynamics_model.n_dofs #dynamics_model.d_action # * torch.ones(#dynamics_model.d_action, **self.tensor_args)
+            mppi_params.action_highs = [ task_params.max_acc] * dynamics_model.n_dofs #dynamics_model.d_action # * torch.ones(#dynamics_model.d_action, **self.tensor_args)
         
         # init_q = torch.tensor(self.cfg.model.init_state, **self.tensor_args)
         #TODO: This should be read from the environment
-        init_q = torch.tensor(rollout_params.model.init_state, device=self.device)
-        # self.init_action = torch.zeros((mppi_params.num_instances, mppi_params.horizon, self.n_dofs), device=self.device)#dynamics_model.d_action), **self.tensor_args)
-        self.init_action = torch.zeros((mppi_params.horizon, self.n_dofs), device=self.device)#dynamics_model.d_action), **self.tensor_args)
-        # if rollout_params.control_space == 'acc':
+        init_q = torch.tensor(model_params['init_state'], device=self.device)
+        # self.init_action = torch.zeros((mppi_params.num_instances, mppi_params.horizon, task_params.n_dofs), device=self.device)#dynamics_model.d_action), **self.tensor_args)
+        self.init_action = torch.zeros((mppi_params.horizon, dynamics_model.n_dofs), device=self.device)#dynamics_model.d_action), **self.tensor_args)
+        # if task_params.control_space == 'acc':
         #     init_mean = self.init_action
-        if rollout_params.control_space == 'pos':
+        if model_params['control_space'] == 'pos':
             self.init_action[:,:,:] += init_q
         init_mean = self.init_action
 
@@ -106,23 +106,29 @@ class MPCPolicy(Policy):
 
 
     def init_rollout(self, task_cls, dynamics_model_cls):
-        world_params = self.cfg.world
-        rollout_params = self.cfg.rollout
-        with open_dict(rollout_params):
-        #    rollout_params['num_instances'] = self.cfg['mppi']['num_instances']
-           rollout_params['horizon'] = self.cfg['mppi']['horizon']
-           rollout_params['batch_size'] = self.cfg['mppi']['num_particles']
-           rollout_params['dt_traj_params'] = rollout_params['model']['dt_traj_params']
+        world_cfg = self.cfg.world
+        rollout_cfg = self.cfg.task
+        model_cfg = self.cfg.model
+        with open_dict(rollout_cfg):
+           rollout_cfg['horizon'] = self.cfg['mppi']['horizon']
+           rollout_cfg['batch_size'] = self.cfg['mppi']['num_particles']
+           rollout_cfg['dt_traj_params'] = model_cfg['dt_traj_params']
 
-        task = task_cls(cfg = rollout_params, world_params = world_params, device=self.device)
+        with open_dict(model_cfg):
+           model_cfg['horizon'] = self.cfg['mppi']['horizon']
+           model_cfg['batch_size'] = self.cfg['mppi']['num_particles']
+
+
+        task = torch.compile(task_cls(cfg = rollout_cfg, world_cfg = world_cfg, device=self.device))
         dynamics_model = dynamics_model_cls(
-            join_path(get_assets_path(), rollout_params['model']['urdf_path']),
-            batch_size=rollout_params['batch_size'],
-            horizon=rollout_params['horizon'],
-            ee_link_name=rollout_params['model']['ee_link_name'],
-            link_names=rollout_params['model']['link_names'],
-            dt_traj_params=rollout_params['model']['dt_traj_params'],
-            control_space=rollout_params['control_space'],
+            # join_path(get_assets_path(), rollout_cfg['model']['urdf_path']),
+            cfg = model_cfg,
+            # batch_size=task_params['batch_size'],
+            # horizon=task_params['horizon'],
+            # ee_link_name=task_params['model']['ee_link_name'],
+            # link_names=task_params['model']['link_names'],
+            # dt_traj_params=task_params['model']['dt_traj_params'],
+            # control_space=task_params['control_space'],
             device=self.device
         )
 

@@ -384,6 +384,7 @@ def cost_to_go_np(cost_seq, gamma_seq):
 ############
 ##Cholesky##
 ############
+# @torch.jit.script
 def matrix_cholesky(A:torch.Tensor)->torch.Tensor:
     L = torch.zeros_like(A)   
     for i in range(A.shape[-1]):

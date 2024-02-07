@@ -5,6 +5,7 @@ Differentiable robot model class
 TODO
 """
 
+import copy
 from typing import List, Tuple, Dict, Optional
 from dataclasses import dataclass
 import os
@@ -14,8 +15,10 @@ import torch
 from storm_kit.differentiable_robot_model.rigid_body import (
     DifferentiableRigidBody,
 )
-from storm_kit.differentiable_robot_model.spatial_vector_algebra import SpatialMotionVec, SpatialForceVec
+from storm_kit.differentiable_robot_model.spatial_vector_algebra import SpatialMotionVec, SpatialForceVec, transform_point
 from storm_kit.differentiable_robot_model.urdf_utils import URDFRobotModel
+from storm_kit.geom.geom_types import tensor_sphere
+from storm_kit.util_file import join_path, get_assets_path
 from torch.profiler import record_function
 
 # import diff_robot_data
@@ -90,6 +93,9 @@ class DifferentiableRobotModel(torch.nn.Module):
     Differentiable Robot Model
     ====================================
     """
+    _controlled_joints: List[int]
+    _n_dofs: int
+    _n_links: int
     _name_to_idx_map: Dict[str, int]
     _body_idx_to_controlled_joint_idx_map: Dict[int, int]
     _name_to_parent_map: Dict[str, str]
@@ -98,18 +104,22 @@ class DifferentiableRobotModel(torch.nn.Module):
     _joint_limits: List[Dict[str, float]]
     _link_names: List[str]
     _link_pose_dict: Dict[str, Tuple[torch.Tensor, torch.Tensor]]
+    _collision_link_names: List[str]
+    _self_collision_ignore_dict: Dict[str, List[str]]
 
-    def __init__(self, urdf_path:str, name:str="", device:torch.device=torch.device('cpu')):
+    # def __init__(self, urdf_path:str, name:str="", device:torch.device=torch.device('cpu')):
+    def __init__(self, robot_config, device:torch.device=torch.device('cpu')):
 
         super().__init__()
 
-        self.name = name
-
+        self.config = robot_config
+        self.name = self.config['name']
         self._device = device
-
-        self._urdf_model = URDFRobotModel(urdf_path=urdf_path, device=self._device)
+        self.urdf:str = join_path(get_assets_path(), self.config['urdf_path'])
+        self.mesh_dir:str = join_path(get_assets_path(), self.config['mesh_dir'])
+        self._urdf_model = URDFRobotModel(urdf_path=self.urdf, device=self._device)
         self._bodies = [] #torch.nn.ModuleList()
-        self._n_dofs = 0
+        self._n_dofs:int = 0
         self._controlled_joints = []
 
         self._batch_size:int = 1
@@ -149,7 +159,7 @@ class DifferentiableRobotModel(torch.nn.Module):
             self._name_to_idx_map[body.name] = i
             self._name_to_parent_map[body.name] = self._urdf_model.get_name_of_parent_body(body.name)
             self._body_to_joint_idx_map[body.name] = self._urdf_model.find_joint_of_body(body.name)
-
+        self._n_links = len(self._bodies)
         self._joint_limits = []
         for idx in self._controlled_joints:
             self._joint_limits.append(self._bodies[idx].get_joint_limits())
@@ -165,28 +175,86 @@ class DifferentiableRobotModel(torch.nn.Module):
         #     body.set_parent(self._bodies[parent_body_idx])
         #     self._bodies[parent_body_idx].add_child(body)
 
+        self.q_pos = torch.zeros([self._batch_size, self._n_dofs], device=self._device)
+        self.q_vel = torch.zeros([self._batch_size, self._n_dofs], device=self._device)
         self._lin_jac, self._ang_jac = (
             torch.zeros([self._batch_size, 3, self._n_dofs], device=self._device),
             torch.zeros([self._batch_size, 3, self._n_dofs], device=self._device),
         )
 
-        self._link_pose_dict = {}
+        self._link_pose_dict: Dict[str, Tuple[torch.Tensor]] = dict()
         for name in self._link_names:
             self._link_pose_dict[name] = (
                 torch.zeros(self._batch_size, 3, device=self._device),
                 torch.zeros(self._batch_size, 3, 3, device=self._device)
             )
 
+
+        #Loading the collision model
+        self._robot_collision_params = self.config.robot_collision_params
+        self._collision_link_names: List[str] = self._robot_collision_params['collision_link_names']
+        self._self_collision_ignore_dict: Dict[str, List[str]] = self._robot_collision_params['self_collision_ignore']
+        self._all_collision_spheres = self._robot_collision_params['collision_spheres']
+        self._link_collision_spheres: Dict[str, torch.Tensor] = dict()
+        self._batch_link_collision_spheres: Dict[str, torch.Tensor] = dict()
+        self._w_batch_link_collision_spheres: Dict[str, torch.Tensor] = dict() #this dict will holds link sphere locations in the world frame
+        self._collision_link_to_idx: Dict[str, int] = dict()
+        self._collision_idx_to_link:Dict[int, str] = dict()
+        
+        for (link_idx, link_name) in enumerate(self._collision_link_names):
+            #Get number of spheres per link
+            n_spheres = len(self._all_collision_spheres[link_name])
+            link_spheres_tensor = torch.zeros((n_spheres, 4), device=self._device)
+
+            for i in range(n_spheres):
+                link_spheres_tensor[i,:] = tensor_sphere(
+                    self._all_collision_spheres[link_name][i]['center'], self._all_collision_spheres[link_name][i]['radius'], 
+                    device=self._device, tensor=link_spheres_tensor[i,:])
+            self._link_collision_spheres[link_name] = link_spheres_tensor
+            self._batch_link_collision_spheres[link_name] = link_spheres_tensor.unsqueeze(0).repeat(self._batch_size, 1, 1).clone()
+            self._w_batch_link_collision_spheres[link_name] = link_spheres_tensor.unsqueeze(0).repeat(self._batch_size, 1, 1).clone()
+            self._collision_link_to_idx[link_name] = link_idx
+            self._collision_idx_to_link[link_idx] = link_name
+
+        self._num_collision_links:int = len(self._w_batch_link_collision_spheres.keys())
+        self._self_collision_dist_buff = torch.zeros(
+            (self._batch_size, self._num_collision_links, self._num_collision_links), device=self._device)
+        # self._self_collision_dist_buff2 = torch.zeros(
+        #     (self._batch_size, self._num_collision_links, self._num_collision_links), device=self._device)
+
+
     def delete_lxml_objects(self):
         self._urdf_model = None
     
     def load_lxml_objects(self):
         self._urdf_model = URDFRobotModel(
-            urdf_path=self.urdf_path, device=self._device) #, dtype=self.dtype
-        # )
-
+            urdf_path=self._urdf_path, device=self._device)
+        
     def allocate_buffers(self, batch_size:int):
-        pass
+        self._base_lin_vel = torch.zeros((batch_size, 3), device=self._device)
+        self._base_ang_vel = torch.zeros((batch_size, 3), device=self._device)
+        self._base_pose_trans = torch.zeros((batch_size, 3), device=self._device)
+        self._base_pose_rot = torch.eye(3, device=self._device)
+        self._lin_jac, self._ang_jac = (
+            torch.zeros([batch_size, 3, self._n_dofs], device=self._device),
+            torch.zeros([batch_size, 3, self._n_dofs], device=self._device),
+        )
+
+        for name in self._link_names:
+            self._link_pose_dict[name] = (
+                torch.zeros(batch_size, 3, device=self._device),
+                torch.zeros(batch_size, 3, 3, device=self._device)
+            )
+
+        for k in self._batch_link_collision_spheres.keys():
+            self._batch_link_collision_spheres[k] = self._link_collision_spheres[k].unsqueeze(0).repeat(batch_size, 1, 1).clone()
+            self._w_batch_link_collision_spheres[k] = self._link_collision_spheres[k].unsqueeze(0).repeat(batch_size, 1, 1).clone()
+
+
+        self._self_collision_dist_buff = torch.zeros(
+            (batch_size, self._num_collision_links, self._num_collision_links), device=self._device)
+        # self._self_collision_dist_buff2 = torch.zeros(
+        #     (batch_size, self._num_collision_links, self._num_collision_links), device=self._device)
 
     # @tensor_check
     @torch.jit.export
@@ -207,17 +275,12 @@ class DifferentiableRobotModel(torch.nn.Module):
         # assert qd.shape[1] == self._n_dofs
 
         batch_size = q.shape[0]
+        self.q_pos = q
+        self.q_vel = qd
 
         if batch_size != self._batch_size:
             self._batch_size = batch_size
-            self._base_lin_vel = torch.zeros((self._batch_size, 3), device=self._device) #, dtype=self.dtype)
-            self._base_ang_vel = torch.zeros((self._batch_size, 3), device=self._device) #, dtype=self.dtype)
-            self._base_pose_trans = torch.zeros((self._batch_size, 3), device=self._device) #, dtype=self.dtype)
-            self._base_pose_rot = torch.eye(3, device=self._device) #, dtype=self.dtype).expand(self._batch_size,3,3)
-            self._lin_jac, self._ang_jac = (
-                torch.zeros([self._batch_size, 3, self._n_dofs], device=self._device),
-                torch.zeros([self._batch_size, 3, self._n_dofs], device=self._device),
-            )
+            self.allocate_buffers(batch_size)
 
         # update the state of the joints
         # for i in range(q.shape[1]):
@@ -268,6 +331,15 @@ class DifferentiableRobotModel(torch.nn.Module):
                 # the position and orientation of the body in world coordinates, with origin at the joint
                 with record_function('robot_model:fk/for_loop/multiply_transform'):
                     body.pose = parent_body.pose.multiply_transform(childToParentT)
+                link_name = body.name
+                link_pos = body.pose.translation()
+                link_rot = body.pose.rotation()
+                self._link_pose_dict[link_name] = (link_pos, link_rot)
+                
+                if link_name in self._collision_link_names:
+                    self._w_batch_link_collision_spheres[link_name][...,:3] = transform_point(
+                        self._batch_link_collision_spheres[link_name][...,:3], link_rot, link_pos.unsqueeze(-2)
+                    )
 
                 # # X: we rotate the velocity of the parent's body into the child frame
                 # with record_function('robot_model:fk/for_loop/vel_transform'):
@@ -309,7 +381,7 @@ class DifferentiableRobotModel(torch.nn.Module):
     @torch.jit.export
     def compute_forward_kinematics(
         self, q: torch.Tensor, qd:torch.Tensor #, link_name: str, 
-    ) -> Dict[str, Tuple[torch.Tensor, torch.Tensor]]: #recursive: bool = False
+    ) -> Tuple[Dict[str, Tuple[torch.Tensor, torch.Tensor]], Dict[str, torch.Tensor], torch.Tensor]: #recursive: bool = False
         r"""
 
         Args:
@@ -330,13 +402,21 @@ class DifferentiableRobotModel(torch.nn.Module):
         with record_function('robot_model:update_kinematic_state'):
             self.update_kinematic_state(q, qd)
 
-        link_pose_dict = self._link_pose_dict
-        for link_name in self._link_names:
-            pose = self._bodies[self._name_to_idx_map[link_name]].pose
-            pos = pose.translation() #.to(inp_device)
-            rot = pose.rotation() #.to(inp_device)#get_quaternion()        
-            link_pose_dict[link_name] = (pos, rot)
-        return link_pose_dict
+        dist = find_link_distance(self._w_batch_link_collision_spheres, self._self_collision_ignore_dict, self._collision_idx_to_link, self._self_collision_dist_buff)
+        # dist2 = find_link_distance2(self._w_batch_link_collision_spheres, self._self_collision_ignore_dict, self._collision_idx_to_link, self._self_collision_dist_buff2)
+        
+        # assert torch.allclose(dist, dist2)
+        
+        
+        return self._link_pose_dict, self._w_batch_link_collision_spheres, dist
+    
+        # link_pose_dict = self._link_pose_dict
+        # for link_name in self._link_names:
+        #     pose = self._bodies[self._name_to_idx_map[link_name]].pose
+        #     pos = pose.translation() #.to(inp_device)
+        #     rot = pose.rotation() #.to(inp_device)#get_quaternion()        
+        #     link_pose_dict[link_name] = (pos, rot)
+        # return link_pose_dict
 
         # body = self._bodies[self._name_to_idx_map[link_name]]
         # pose = body.pose
@@ -344,6 +424,50 @@ class DifferentiableRobotModel(torch.nn.Module):
         # pos = pose.translation()
         # rot = pose.rotation() #.get_quaternion()
         # return pos, rot
+
+    @torch.jit.export
+    def compute_fk_and_jacobian(
+            self, q:torch.Tensor, qd:torch.Tensor, link_name: str
+    ) -> Tuple[Dict[str, Tuple[torch.Tensor, torch.Tensor]], Dict[str, torch.Tensor], torch.Tensor, torch.Tensor, torch.Tensor]:
+
+        
+        with record_function("robot_model:fk"):
+            # ee_pos, ee_rot = self.compute_forward_kinematics(q, qd) #, link_name)
+            link_pose_dict, link_collision_spheres_dict, self_collision_dist = self.compute_forward_kinematics(q, qd) #, link_name)
+
+        ee_pos = link_pose_dict[link_name][0]
+        ee_rot = link_pose_dict[link_name][1]
+
+        # e_pose = self._bodies[self._name_to_idx_map[link_name]].pose
+        # p_e = e_pose.translation()
+
+        #use pre-allocated buffers
+        lin_jac = self._lin_jac
+        ang_jac = self._ang_jac
+
+        parent_joint_id = self._bodies[self._name_to_idx_map[link_name]].joint_id
+        
+        with record_function("robot_model:jac"):
+            # while link_name != self._bodies[0].name:
+            for i, idx in enumerate(self._controlled_joints):
+                # if joint_id in self._controlled_joints:
+                #     i = self._controlled_joints.index(joint_id)
+                #     idx = joint_id
+                if (idx - 1) > parent_joint_id:
+                    continue
+
+                pose = self._bodies[idx].pose
+                axis = self._bodies[idx].joint_axis
+                p_i = pose.translation()
+                z_i = pose.rotation() @ axis.squeeze()
+                lin_jac[:, :, i] = torch.cross(z_i, ee_pos - p_i, dim=-1) #p_e
+                ang_jac[:, :, i] = z_i
+
+                # link_name = self._urdf_model.get_name_of_parent_body(link_name)
+                # joint_id = self._bodies[self._name_to_idx_map[link_name]].joint_id
+
+        # return ee_pos, ee_rot, lin_jac, ang_jac, ee_lin_vel, ee_ang_vel
+        return link_pose_dict, link_collision_spheres_dict, self_collision_dist, lin_jac, ang_jac
 
     @torch.jit.export
     def get_link_pose(self, link_name: str)->Tuple[torch.Tensor, torch.Tensor]:
@@ -773,96 +897,6 @@ class DifferentiableRobotModel(torch.nn.Module):
 
         return lin_jac, ang_jac
     
-    @torch.jit.export
-    def compute_fk_and_jacobian(
-            self, q:torch.Tensor, qd:torch.Tensor, link_name: str
-    ) -> Tuple[Dict[str, Tuple[torch.Tensor, torch.Tensor]], torch.Tensor, torch.Tensor]:
-
-        
-        with record_function("robot_model:fk"):
-            # ee_pos, ee_rot = self.compute_forward_kinematics(q, qd) #, link_name)
-            link_pose_dict = self.compute_forward_kinematics(q, qd) #, link_name)
-
-        ee_pos = link_pose_dict[link_name][0]
-        ee_rot = link_pose_dict[link_name][1]
-
-        # e_pose = self._bodies[self._name_to_idx_map[link_name]].pose
-        # p_e = e_pose.translation()
-
-        #use pre-allocated buffers
-        lin_jac = self._lin_jac
-        ang_jac = self._ang_jac
-
-        parent_joint_id = self._bodies[self._name_to_idx_map[link_name]].joint_id
-        
-        with record_function("robot_model:jac"):
-            # while link_name != self._bodies[0].name:
-            for i, idx in enumerate(self._controlled_joints):
-                # if joint_id in self._controlled_joints:
-                #     i = self._controlled_joints.index(joint_id)
-                #     idx = joint_id
-                if (idx - 1) > parent_joint_id:
-                    continue
-
-                pose = self._bodies[idx].pose
-                axis = self._bodies[idx].joint_axis
-                p_i = pose.translation()
-                z_i = pose.rotation() @ axis.squeeze()
-                lin_jac[:, :, i] = torch.cross(z_i, ee_pos - p_i, dim=-1) #p_e
-                ang_jac[:, :, i] = z_i
-
-                # link_name = self._urdf_model.get_name_of_parent_body(link_name)
-                # joint_id = self._bodies[self._name_to_idx_map[link_name]].joint_id
-
-        # return ee_pos, ee_rot, lin_jac, ang_jac, ee_lin_vel, ee_ang_vel
-        return link_pose_dict, lin_jac, ang_jac
-
-
-    def _get_parent_object_of_param(self, link_name: str, parameter_name: str):
-        body_idx = self._name_to_idx_map[link_name]
-        if parameter_name in ["trans", "rot_angles", "joint_damping"]:
-            parent_object = self._bodies[body_idx]
-        elif parameter_name in ["mass", "inertia_mat", "com"]:
-            parent_object = self._bodies[body_idx].inertia
-        else:
-            raise AttributeError(
-                "Invalid parameter name. Accepted parameter names are: "
-                "trans, rot_angles, joint_damping, mass, inertia_mat, com"
-            )
-        return parent_object
-
-    def make_link_param_learnable(
-        self, link_name: str, parameter_name: str, parametrization: torch.nn.Module
-    ):
-        parent_object = self._get_parent_object_of_param(link_name, parameter_name)
-
-        # Replace current parameter with a learnable module
-        parent_object.__delattr__(parameter_name)
-        parent_object.add_module(parameter_name, parametrization.to(self._device))
-
-    def freeze_learnable_link_param(self, link_name: str, parameter_name: str):
-        parent_object = self._get_parent_object_of_param(link_name, parameter_name)
-
-        # Get output value of current module
-        param_module = getattr(parent_object, parameter_name)
-        assert (
-            type(param_module).__bases__[0] is torch.nn.Module
-        ), f"{parameter_name} of {link_name} is not a learnable module."
-
-        for param in param_module.parameters():
-            param.requires_grad = False
-
-    def unfreeze_learnable_link_param(self, link_name: str, parameter_name: str):
-        parent_object = self._get_parent_object_of_param(link_name, parameter_name)
-
-        # Get output value of current module
-        param_module = getattr(parent_object, parameter_name)
-        assert (
-            type(param_module).__bases__[0] is torch.nn.Module
-        ), f"{parameter_name} of {link_name} is not a learnable module."
-
-        for param in param_module.parameters():
-            param.requires_grad = True
 
     @torch.jit.export
     def get_joint_limits(self)-> List[Dict[str, float]]:  # -> List[Dict[str, torch.Tensor]]:
@@ -887,24 +921,188 @@ class DifferentiableRobotModel(torch.nn.Module):
 
         return self._link_names
 
-    def print_link_names(self) -> None:
-        r"""
+    @property
+    def n_dofs(self)->int:
+        return self._n_dofs
 
-        print the names of all links
+    @property
+    def n_links(self)->int:
+        return self._n_links
 
-        """
-        for i in range(len(self._bodies)):
-            print(self._bodies[i].name)
+    @property
+    def n_collision_links(self)->int:
+        return self._num_collision_links
 
-    def print_learnable_params(self) -> None:
-        r"""
+    # def _get_parent_object_of_param(self, link_name: str, parameter_name: str):
+    #     body_idx = self._name_to_idx_map[link_name]
+    #     if parameter_name in ["trans", "rot_angles", "joint_damping"]:
+    #         parent_object = self._bodies[body_idx]
+    #     elif parameter_name in ["mass", "inertia_mat", "com"]:
+    #         parent_object = self._bodies[body_idx].inertia
+    #     else:
+    #         raise AttributeError(
+    #             "Invalid parameter name. Accepted parameter names are: "
+    #             "trans, rot_angles, joint_damping, mass, inertia_mat, com"
+    #         )
+    #     return parent_object
 
-        print the name and value of all learnable parameters
+    # def make_link_param_learnable(
+    #     self, link_name: str, parameter_name: str, parametrization: torch.nn.Module
+    # ):
+    #     parent_object = self._get_parent_object_of_param(link_name, parameter_name)
 
-        """
-        for name, param in self.named_parameters():
-            print(f"{name}: {param}")
+    #     # Replace current parameter with a learnable module
+    #     parent_object.__delattr__(parameter_name)
+    #     parent_object.add_module(parameter_name, parametrization.to(self._device))
 
+    # def freeze_learnable_link_param(self, link_name: str, parameter_name: str):
+    #     parent_object = self._get_parent_object_of_param(link_name, parameter_name)
+
+    #     # Get output value of current module
+    #     param_module = getattr(parent_object, parameter_name)
+    #     assert (
+    #         type(param_module).__bases__[0] is torch.nn.Module
+    #     ), f"{parameter_name} of {link_name} is not a learnable module."
+
+    #     for param in param_module.parameters():
+    #         param.requires_grad = False
+
+    # def unfreeze_learnable_link_param(self, link_name: str, parameter_name: str):
+    #     parent_object = self._get_parent_object_of_param(link_name, parameter_name)
+
+    #     # Get output value of current module
+    #     param_module = getattr(parent_object, parameter_name)
+    #     assert (
+    #         type(param_module).__bases__[0] is torch.nn.Module
+    #     ), f"{parameter_name} of {link_name} is not a learnable module."
+
+    #     for param in param_module.parameters():
+    #         param.requires_grad = True
+
+    # def print_link_names(self) -> None:
+    #     r"""
+
+    #     print the names of all links
+
+    #     """
+    #     for i in range(len(self._bodies)):
+    #         print(self._bodies[i].name)
+
+    # def print_learnable_params(self) -> None:
+    #     r"""
+
+    #     print the name and value of all learnable parameters
+
+    #     """
+    #     for name, param in self.named_parameters():
+    #         print(f"{name}: {param}")
+    
+
+@torch.jit.script
+def compute_spheres_distance(spheres_1:torch.Tensor, spheres_2:torch.Tensor)->torch.Tensor:
+    b, n, _ = spheres_1.shape
+    
+    j = 0
+    link_sphere_pts = spheres_1[:,j,:]
+    link_sphere_pts = link_sphere_pts.unsqueeze(1)
+    # find closest distance to other link spheres:
+    s_dist = torch.norm(spheres_2[:,:,:3] - link_sphere_pts[:,:,:3], dim=-1)
+    s_dist = spheres_2[:,:,3] + link_sphere_pts[:,:,3] - s_dist
+    max_dist = torch.max(s_dist, dim=-1)[0]
+    
+    for j in range(1, n):
+        link_sphere_pts = spheres_1[:,j,:]
+        link_sphere_pts = link_sphere_pts.unsqueeze(1)
+        # find closest distance to other link spheres:
+        s_dist = torch.norm(spheres_2[:,:,:3] - link_sphere_pts[:,:,:3], dim=-1)
+        s_dist = spheres_2[:,:,3] + link_sphere_pts[:,:,3] - s_dist
+        s_dist = torch.max(s_dist, dim=-1)[0]
+        max_dist = torch.maximum(max_dist, s_dist)
+        
+    dist = max_dist #torch.max(dist,dim=-1)[0]
+    return dist
+
+@torch.jit.script
+def compute_spheres_distance2(spheres_1:torch.Tensor, spheres_2:torch.Tensor)->torch.Tensor:
+
+    batch_sdist =  torch.cdist(spheres_1[...,0:3], spheres_2[...,0:3], p=2.0)
+    spheres_2_radius = spheres_2[...,3]
+    spheres_1_radius = spheres_1[...,3]
+    batch_sdist = spheres_1_radius[...,None] + spheres_2_radius[:,None,:] - batch_sdist
+    max_dist = torch.amax(batch_sdist, dim=(-1,-2)) #closest signed distance between current and query spheres
+    return max_dist
+
+
+
+@torch.jit.script
+def find_link_distance(links_sphere_dict: Dict[str, torch.Tensor], collision_ignore_dict:Dict[str, List[str]], idx2link:Dict[int, str], dist: torch.Tensor)->torch.Tensor:
+    futures : List[torch.jit.Future[torch.Tensor]] = []
+
+    link_names = links_sphere_dict.keys()
+    n_links = len(link_names)
+    dist *= 0.0
+    dist -= 100.0
+
+
+    for link1_idx in range(n_links):
+        # for every link, compute the distance to the other links:
+        link1_name = idx2link[link1_idx]
+        current_spheres = links_sphere_dict[link1_name]
+
+        for link2_idx in range(link1_idx + 1, n_links):
+            link2_name = idx2link[link2_idx]
+            if link2_name not in collision_ignore_dict[link1_name]:
+                compute_spheres = links_sphere_dict[link2_name]
+                # find the distance between the two links:
+                d = torch.jit.fork(compute_spheres_distance, current_spheres, compute_spheres)
+                futures.append(d)
+
+    #Gather results
+    k = 0
+    for link1_idx in range(n_links):
+        link1_name = idx2link[link1_idx]
+        for link2_idx in range(link1_idx + 1, n_links):
+            link2_name = idx2link[link2_idx]
+            if link2_name not in collision_ignore_dict[link1_name]:
+                d = torch.jit.wait(futures[k])
+                dist[:,link1_idx,link2_idx] = d
+                dist[:,link2_idx,link1_idx] = d
+                k += 1
+    
+    link_dist = torch.max(dist, dim=-1)[0]
+    
+    return link_dist
+
+
+# @torch.jit.script
+# def find_link_distance2(links_sphere_dict: Dict[str, torch.Tensor], collision_ignore_dict:Dict[str, List[str]], idx2link:Dict[int, str], dist: torch.Tensor)->torch.Tensor:
+
+#     link_names = links_sphere_dict.keys()
+#     n_links = len(link_names)
+#     dist *= 0.0
+#     dist -= 100.0
+
+#     for link1_idx in range(n_links):
+#         # for every link, compute the distance to the other links:
+#         link1_name = idx2link[link1_idx]
+#         current_spheres = links_sphere_dict[link1_name]
+
+#         for link2_idx in range(link1_idx + 1, n_links):
+#             link2_name = idx2link[link2_idx]
+#             if link2_name not in collision_ignore_dict[link1_name]:
+#                 query_spheres = links_sphere_dict[link2_name]
+#                 batch_sdist =  torch.cdist(current_spheres[...,0:3], query_spheres[...,0:3], p=2.0)
+#                 query_spheres_radius = query_spheres[...,3]
+#                 current_spheres_radius = current_spheres[...,3]
+#                 batch_sdist = current_spheres_radius[...,None] + query_spheres_radius[:,None,:] - batch_sdist
+                
+#                 max_dist = torch.amax(batch_sdist, dim=(-1,-2)) #closest signed distance between current and query spheres
+#                 dist[:,link1_idx,link2_idx] = max_dist
+#                 dist[:,link2_idx,link1_idx] = max_dist
+    
+#     link_closest_dist = torch.max(dist, dim=-1)[0]
+    
+#     return link_closest_dist
 
 
 if __name__ == "__main__":

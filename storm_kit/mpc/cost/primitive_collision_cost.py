@@ -27,34 +27,36 @@ from torch.profiler import record_function
 from ...geom.sdf.robot_world import RobotWorldCollisionPrimitive
 
 class PrimitiveCollisionCost(nn.Module):
-    def __init__(self, weight:torch.Tensor, world_params=None, robot_collision_params=None, world_collision_params=None, batch_size:int=1,
+    weight: torch.Tensor
+
+    def __init__(self, weight:torch.Tensor, world_cfg, world_collision_params=None, batch_size:int=1, #robot_collision_params=None
                  distance_threshold_world:float=0.1, 
                  distance_threshold_self:float=0.1,
                  device:torch.device=torch.device('cpu')):
 
         super(PrimitiveCollisionCost, self).__init__()
         
-        self.device = device
-        self.weight = torch.as_tensor(weight, device=self.device)
-        self.robot_collision_params = robot_collision_params #robot_params['robot_collision_params']
+        self.device:torch.device = device
+        self.weight:torch.Tensor = torch.as_tensor(weight, device=self.device)
+        # self.robot_collision_params = robot_collision_params #robot_params['robot_collision_params']
         self.world_collision_params = world_collision_params
-        self.batch_size = batch_size
-        bounds = torch.as_tensor(self.world_collision_params['bounds'], device=self.device)
-        self.robot_world_coll = RobotWorldCollisionPrimitive(self.robot_collision_params,
-                                                             world_params['world_model'],
-                                                             robot_batch_size=batch_size,
-                                                             device=self.device,
-                                                             bounds=bounds,
-                                                             grid_resolution=self.world_collision_params['grid_resolution'])
-        
+        self.batch_size:int = batch_size
+        self.world_bounds:torch.Tensor = torch.as_tensor(self.world_collision_params['bounds'], device=self.device)
+        self.robot_world_coll = RobotWorldCollisionPrimitive(
+            world_cfg['world_model'],
+            robot_batch_size=batch_size,
+            device=self.device,
+            bounds=self.world_bounds,
+            grid_resolution=self.world_collision_params['grid_resolution'])
+                
         self.n_world_objs = self.robot_world_coll.world_coll.n_objs
-        self.t_mat = None
-        self.distance_threshold_world = distance_threshold_world
-        self.distance_threshold_self = distance_threshold_self
+        self.distance_threshold_world:float = distance_threshold_world
+        self.distance_threshold_self:float = distance_threshold_self
 
     
     # def forward(self, link_pos_batch:torch.Tensor, link_rot_batch:torch.Tensor)->Tuple[torch.Tensor, Dict[str, torch.Tensor]]:
-    def forward(self, link_pose_dict:Dict[str, Tuple[torch.Tensor, torch.Tensor]])->Tuple[torch.Tensor, Dict[str, torch.Tensor]]:
+    # def forward(self, link_pose_dict:Dict[str, Tuple[torch.Tensor, torch.Tensor]])->Tuple[torch.Tensor, Dict[str, torch.Tensor]]:
+    def forward(self, link_spheres_dict:Dict[str, torch.Tensor], self_coll_dist:torch.Tensor)->Tuple[torch.Tensor, Dict[str, torch.Tensor]]:
         
         # inp_device = link_pos_batch.device
         # batch_size = link_pos_batch.shape[0]
@@ -66,7 +68,9 @@ class PrimitiveCollisionCost(nn.Module):
         
         with record_function("primitive_collision_cost:check_sphere_collision"):
             # world_coll_dist, self_coll_dist, w_link_spheres = self.robot_world_coll.check_robot_sphere_collisions(link_pos_batch, link_rot_batch)
-            world_coll_dist, self_coll_dist, w_link_spheres = self.robot_world_coll.check_robot_sphere_collisions(link_pose_dict)
+            # world_coll_dist, self_coll_dist, w_link_spheres = self.robot_world_coll.check_robot_sphere_collisions(link_pose_dict)
+            # world_coll_dist, self_coll_dist = self.robot_world_coll.check_robot_sphere_collisions(link_spheres_dict)
+            world_coll_dist = self.robot_world_coll.check_robot_sphere_collisions(link_spheres_dict)
 
         #world collision cost
         # world_coll_dist_inflated = world_coll_dist + self.distance_threshold_world
@@ -107,10 +111,6 @@ class PrimitiveCollisionCost(nn.Module):
             'self_coll_dist': self_coll_dist,
             'in_coll_world': in_coll_world,
             'in_coll_self': in_coll_self,
-            # 'w_link_spheres': w_link_spheres,
         }
 
         return cost, info #.to(inp_device)
-
-
-

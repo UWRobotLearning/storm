@@ -8,11 +8,6 @@ num_envs: 1
 
 # seed - set to -1 to choose random seed
 seed: 42
-# set to True for deterministic performance
-torch_deterministic: False
-
-# set the maximum number of learning iterations to train for. overrides default per-environment setting
-max_iterations: ''
 
 ## Device config
 #  'physx' or 'flex'
@@ -60,6 +55,8 @@ headless: False
 # set default task and default training config based on task
 defaults:
   - task: FrankaReacher
+  # - robot: FrankaPanda
+  # - world: TableWorld
   - mpc: ${task}MPC
   - train: BP
   - hydra/job_logging: disabled
