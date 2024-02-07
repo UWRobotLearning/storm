@@ -62,7 +62,8 @@ rollout:
       weight: [0.0, 2.0] #[10.0, 50.0] #[50.0, 100.0]
       cost_type: 'se3_twist'
       norm_type: 'l2'
-      hinge_val: -1
+      hinge_val: 0.005 #-1
+      is_hinge: False
       convergence_val: [0.0, 0.0] # orientation, position
       logcosh_alpha: [5.0, 5.0] #orientation, position (shaping used only for logcosh)
 
@@ -70,14 +71,14 @@ rollout:
       weight: 3e-3 #5e-3 #0.0 #3e-3 #1.0
       norm_type: 'l2'
       hinge_val: 0.01
-      is_hinge: False
+      is_hinge: True
       # vec_weight: [1.0, 1.0, 1.0] 
 
     ee_acc_twist:
       weight: 3e-4 #0.0
       norm_type: 'l2'
       hinge_val: 0.01
-      is_hinge: False
+      is_hinge: True
       # vec_weight: [1.0, 1.0, 1.0] 
 
     zero_q_vel:

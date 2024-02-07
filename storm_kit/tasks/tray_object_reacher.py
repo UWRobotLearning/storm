@@ -36,12 +36,11 @@ class TrayObjectReacher(ArmTask):
         if self.task_specs is not None:
             self.default_ee_goal = torch.tensor(self.task_specs['default_ee_target'], device=self.device)
         #for refactored friction cost
-        # self.object_config = self.load_config('./content/configs/gym/object_params_sims.yaml')
         if self.cfg['name_config'] == 'FrankaTrayReacher':
             config_file = 'object_params_sims.yaml'
         else:
             config_file = 'object_params_real.yaml'
-
+        print("object config chosen",config_file)
         config_path = os.path.join('/home/navneet/catkin_ws/src/storm/content/configs/gym/', config_file)
         print(config_path)
         self.object_config = self.load_config(config_path)
