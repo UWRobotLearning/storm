@@ -15,7 +15,7 @@ import torch
 import yaml
 from hydra.utils import instantiate
 
-from storm_kit.differentiable_robot_model.spatial_vector_algebra import CoordinateTransform, quaternion_to_matrix
+from storm_kit.differentiable_robot_model.spatial_vector_algebra import CoordinateTransform, quaternion_to_matrix, matrix_to_quaternion
 from storm_kit.differentiable_robot_model.robot_model import DifferentiableRobotModel
 from storm_kit.envs.isaac_gym_env_utils import tensor_clamp, load_urdf_asset, load_primitive_asset
 from storm_kit.envs.joint_controllers import JointStiffnessController, InverseDynamicsController
@@ -445,9 +445,13 @@ class IsaacGymRobotEnv():
         link_pose_dict, link_spheres_dict, self_coll_dist, lin_jac, ang_jac = self.robot_model.compute_fk_and_jacobian(
             self.robot_default_dof_pos.unsqueeze(0), torch.zeros_like(self.robot_default_dof_pos).unsqueeze(0),
             link_name=self.ee_link_name)
-
         ee_pos, ee_rot = link_pose_dict[self.ee_link_name]
-
+        ee_quat = matrix_to_quaternion(ee_rot)
+        ee_pos_vec = gymapi.Vec3(x=ee_pos[0][0], y=ee_pos[0][1], z=ee_pos[0][2])
+        ee_rot_quat = gymapi.Quat(x=ee_quat[0][1],y=ee_quat[0][2], z=ee_quat[0][3], w=ee_quat[0][0])
+        ee_pose_robot = gymapi.Transform(p=ee_pos_vec, r=ee_rot_quat)
+        ee_pose_world = self.robot_pose_world * ee_pose_robot
+        print("ee pose world", ee_pose_world.p)
         #Note: this needs to change to support more than one object!!!
         if self.num_objects > 0:
             if self.num_objects == 1:
@@ -457,48 +461,22 @@ class IsaacGymRobotEnv():
                 self.object_state_2 = self.root_state[:,-1]
             self.init_object_state_1 = torch.zeros(self.num_envs, 13, device=self.device)
             self.init_object_state_2 = torch.zeros(self.num_envs, 13, device=self.device)
-            # self.init_object_state[:,0] = self.object_start_pose_world.p.x
-            # self.init_object_state[:,1] = self.object_start_pose_world.p.y
-            # self.init_object_state[:,2] = self.object_start_pose_world.p.z
-            # self.init_object_state[:,3] = self.object_start_pose_world.r.x
-            # self.init_object_state[:,4] = self.object_start_pose_world.r.y
-            # self.init_object_state[:,5] = self.object_start_pose_world.r.z
-            # self.init_object_state[:,6] = self.object_start_pose_world.r.w
-
-            #lateral tray object transfer (right to left)
-            # self.init_object_state_1[:,0] = -1.8488e-01 #0.2185e-01   
-            # self.init_object_state_1[:,1] = -3.4987e-01 #2.7730e-05    
-            # self.init_object_state_1[:,2] = 5.3405e-01 #5.0005e-01 
-            # self.init_object_state_1[:,3] = 9.5840e-01 #7.0723e-01    
-            # self.init_object_state_1[:,4] = 2.8105e-01 #7.0698e-01   
-            # self.init_object_state_1[:,5] = 1.4265e-02 #-1.8236e-04    
-            # self.init_object_state_1[:,6] = 4.7758e-02 #-0.0322
-
-            # self.init_object_state_2[:,0] = -1.8488e-01 #0.2185e-01    
-            # self.init_object_state_2[:,1] = -3.4987e-01 #2.7730e-05    
-            # self.init_object_state_2[:,2] = 5.7405e-01 #5.0005e-01 
-            # self.init_object_state_2[:,3] = 9.5840e-01 #7.0723e-01    
-            # self.init_object_state_2[:,4] = 2.8105e-01 #7.0698e-01   
-            # self.init_object_state_2[:,5] = 1.4265e-02 #-1.8236e-04    
-            # self.init_object_state_2[:,6] = 4.7758e-02 
-
-
             #for basic tray object reaching
-            self.init_object_state_1[:,0] = 4.3190e-01 #1.3653e-01 + 0.1
-            self.init_object_state_1[:,1] = -8.7195e-05 #7.8287e-03 
-            self.init_object_state_1[:,2] = 4.7028e-01 #5.7433e-01
-            self.init_object_state_1[:,3] = 6.9506e-01 
-            self.init_object_state_1[:,4] = 7.1866e-01
-            self.init_object_state_1[:,5] = 2.0540e-02
-            self.init_object_state_1[:,6] = 2.6329e-03
+            self.init_object_state_1[:,0] =  ee_pose_world.p.x  
+            self.init_object_state_1[:,1] =  ee_pose_world.p.y  
+            self.init_object_state_1[:,2] =  ee_pose_world.p.z
+            self.init_object_state_1[:,3] = ee_pose_world.r.w #6.9506e-01 
+            self.init_object_state_1[:,4] = ee_pose_world.r.x #7.1866e-01
+            self.init_object_state_1[:,5] = ee_pose_world.r.y #2.0540e-02
+            self.init_object_state_1[:,6] = ee_pose_world.r.z #2.6329e-03
 
-            self.init_object_state_2[:,0] = 1.3653e-01
-            self.init_object_state_2[:,1] = 7.8287e-03 
-            self.init_object_state_2[:,2] = 5.9433e-01
-            self.init_object_state_2[:,3] = 6.9506e-01 
-            self.init_object_state_2[:,4] = 7.1866e-01
-            self.init_object_state_2[:,5] = 2.0540e-02
-            self.init_object_state_2[:,6] = 2.6329e-03 
+            self.init_object_state_2[:,0] =  ee_pose_world.p.x 
+            self.init_object_state_2[:,1] =  ee_pose_world.p.y 
+            self.init_object_state_2[:,2] =  ee_pose_world.p.z+0.03
+            self.init_object_state_2[:,3] = ee_pose_world.r.w 
+            self.init_object_state_2[:,4] = ee_pose_world.r.x
+            self.init_object_state_2[:,5] = ee_pose_world.r.y
+            self.init_object_state_2[:,6] = ee_pose_world.r.z 
             self.cube1_reset_pose = self.init_object_state_1.detach().clone()
             self.cube2_reset_pose = self.init_object_state_2.detach().clone()
 
