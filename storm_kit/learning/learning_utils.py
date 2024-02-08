@@ -343,6 +343,7 @@ def run_episode(
                 policy_input = {
                     'obs': torch.as_tensor(obs).float(),
                     'states': state}
+                
                 # with profile(activities=[ProfilerActivity.CPU, ProfilerActivity.CUDA]) as prof:
                 action, policy_info = policy.get_action(policy_input, deterministic=deterministic)
 

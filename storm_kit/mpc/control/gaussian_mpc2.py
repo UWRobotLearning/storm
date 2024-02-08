@@ -24,7 +24,6 @@
 MPC with open-loop Gaussian policies
 """
 # import numpy as np
-from typing import Dict
 import torch
 import torch.nn as nn
 from torch.profiler import record_function
@@ -257,8 +256,7 @@ class GaussianMPC(Controller):
         "Generate rollouts from closed loop policy"
         pass
     
-    @torch.no_grad()
-    def generate_rollouts(self, state:Dict[str, torch.Tensor]):
+    def generate_rollouts(self, state):
         """
             Samples a batch of actions, rolls out trajectories for each particle
             and returns the resulting observations, costs,  
@@ -269,21 +267,42 @@ class GaussianMPC(Controller):
             state : dict or torch.Tensor
          """
         
-        act_seq = self.sample_action_sequences(state=state)
+        num_policy_rollouts = 0
+        if self.num_cl_particles > 0 and self.use_cl_std:
+            num_policy_rollouts = self.num_cl_particles
+        elif self.num_cl_particles > 0 and (not self.use_cl_std):
+            #rollout cl policy to get mean
+            state_tensor = torch.cat([state[k] for k in state], dim=-1).to(self.device)
+            _, rl_info = self.dynamics_model.rollout_closed_loop(
+                state_tensor, self.sampling_policy, num_rollouts=1,
+                deterministic=True)
+            num_policy_rollouts = 0
+            self.mean_action_cl.data = rl_info['cl_act_seq'][:,0]
         
+        cl_act_seq = None
+        act_seq = self.sample_action_sequences(state=state)
         with record_function('mpc:dynamics_model_rollout'):
-            state_dict = self.dynamics_model.rollout_open_loop(state, act_seq)
-        # if act_seq is None: act_seq = cl_act_seq
-        # act_seq = torch.cat([act_seq, cl_act_seq], dim=1) if cl_act_seq is not None else act_seq
+            state_dict, rollout_info = self.dynamics_model.compute_rollouts(
+                state, act_seq, sampling_policy=self.sampling_policy,
+                num_policy_rollouts=num_policy_rollouts,
+            )
+        cl_act_seq = rollout_info['cl_act_seq']
+        
+        if act_seq is None: act_seq = cl_act_seq
+        act_seq = torch.cat([act_seq, cl_act_seq], dim=1) if cl_act_seq is not None else act_seq
 
-        with record_function('gaussian_mpc:compute_full_state'):
-            full_state_dict = self.task.compute_full_state(state_dict)
+        # print(state_dict.keys())
+        # input('....')
+        # print('before')
+        # state_before = deepcopy(state_dict)
 
+        # full_state_dict = self.task.compute_full_state(state_dict)
+        # import pdb; pdb.set_trace()
         with record_function("gaussian_mpc:compute_cost"):
-            cost_seq, cost_terms = self.task.compute_cost(full_state_dict, act_seq)
+            cost_seq, cost_terms = self.task.compute_cost(state_dict, act_seq)
 
         with record_function("gaussian_mpc:compute_termination"):
-            term_seq, term_cost, term_info = self.task.compute_termination(full_state_dict, act_seq)
+            term_seq, term_cost, term_info = self.task.compute_termination(state_dict, act_seq)
 
         cost_terms = {**cost_terms, **term_info}
 
@@ -293,7 +312,7 @@ class GaussianMPC(Controller):
         v_preds = None
         if self.vf is not None:
             with record_function("gaussian_mpc:value_fn_inference"):
-                obs = self.task.compute_observations(full_state_dict, compute_full_state=False, cost_terms=cost_terms)
+                obs = self.task.compute_observations(state_dict, compute_full_state=False, cost_terms=cost_terms)
                 #normalize obs
                 # if self.obs_mean is not None:
                 #     obs -= self.obs_mean
@@ -313,12 +332,14 @@ class GaussianMPC(Controller):
             costs=cost_seq,
             terminals=term_seq,
             term_cost=term_cost,
-            ee_pos_seq=full_state_dict['ee_pos'],
+            ee_pos_seq=state_dict['ee_pos'],
             value_preds=v_preds,
             q_value_preds=q_preds,
         )
 
         return sim_trajs
+
+
 
     def _shift(self, shift_steps=1):
         """
@@ -421,6 +442,7 @@ class GaussianMPC(Controller):
                 self.set_prediction_metrics(reset_data['normalization_stats'])
         if self.sampling_policy is not None:
             self.sampling_policy.reset(reset_data)
+        self.dynamics_model.reset(reset_data)
 
     # def set_prediction_metrics(self, prediction_metrics=None):
     #     self.V_min, self.V_max=-float('inf'), float('inf')

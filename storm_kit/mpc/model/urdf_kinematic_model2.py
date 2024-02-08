@@ -38,9 +38,7 @@ class URDFKinematicModel(nn.Module):
     _integrate_matrix: torch.Tensor
     _fd_matrix: torch.Tensor
     _fd_matrix_jerk: torch.Tensor
-    dt_traj_params: Dict[str, float]
-    state_seq: torch.Tensor
-    prev_state_buffer: torch.Tensor
+    dt_traj_params: torch.Tensor
 
     def __init__(
         self, 
@@ -63,6 +61,8 @@ class URDFKinematicModel(nn.Module):
         self.num_traj_points:int = self.horizon 
 
         self.robot_model = torch.jit.script(DifferentiableRobotModel(cfg.robot, device=self.device))
+
+
         #self.robot_model.half()
         self.n_dofs:int = self.robot_model._n_dofs
         self.d_state:int = 3 * self.n_dofs + 1
@@ -71,6 +71,7 @@ class URDFKinematicModel(nn.Module):
         # self.max_jerk = max_jerk
 
         #Variables for enforcing joint limits
+        # self.joint_names = self.urdfpy_robot.actuated_joint_names
         self.joint_lim_dicts:List[Dict[str, float]] = self.robot_model.get_joint_limits()
         self.state_upper_bounds:torch.Tensor = torch.zeros(2*self.n_dofs, device=self.device)
         self.state_lower_bounds:torch.Tensor = torch.zeros(2*self.n_dofs, device=self.device)
@@ -130,11 +131,11 @@ class URDFKinematicModel(nn.Module):
         self._integrate_matrix_nth = self._integrate_matrix_nth.unsqueeze(0).repeat(self.state_batch_size, 1, 1).unsqueeze(1)
         # self._nth_traj_dt = torch.pow(self.traj_dt, self.action_order)
         self.initial_step = True
-
         self.allocate_buffers(self.state_batch_size, self.batch_size)
 
 
-    def allocate_buffers(self, state_batch_size:int, batch_size:int):
+    def allocate_buffers(self, state_batch_size, batch_size):
+        # #pre-allocating memory for rollouts
         self.state_seq = torch.zeros(state_batch_size, batch_size, self.num_traj_points, self.d_state, device=self.device)
         self.prev_state_buffer = torch.zeros((state_batch_size, 10, self.d_state), device=self.device) 
 
@@ -144,7 +145,7 @@ class URDFKinematicModel(nn.Module):
     @torch.jit.export
     def get_next_state(
         self, curr_state: torch.Tensor, act:torch.Tensor, 
-        dt:float)->torch.Tensor:
+        dt:float, state_buff:Optional[torch.Tensor])->torch.Tensor:
         """ Does a single step from the current state
         Args:
         curr_state: current state
@@ -153,25 +154,27 @@ class URDFKinematicModel(nn.Module):
         Returns:
         next_state
         """
+        if state_buff is None:
+            state_buff = curr_state
 
         if self.control_space == 'jerk':
-            curr_state[..., 2 * self.n_dofs:3 * self.n_dofs] = curr_state[:, self.n_dofs:2*self.n_dofs] + act * dt
-            curr_state[..., self.n_dofs:2*self.n_dofs] = curr_state[:, self.n_dofs:2*self.n_dofs] + curr_state[self.n_dofs*2:self.n_dofs*3] * dt
-            curr_state[..., :self.n_dofs] = curr_state[:, :self.n_dofs] + curr_state[:, self.n_dofs:2*self.n_dofs] * dt
+            state_buff[..., 2 * self.n_dofs:3 * self.n_dofs] = curr_state[:, self.n_dofs:2*self.n_dofs] + act * dt
+            state_buff[..., self.n_dofs:2*self.n_dofs] = curr_state[:, self.n_dofs:2*self.n_dofs] + curr_state[self.n_dofs*2:self.n_dofs*3] * dt
+            state_buff[..., :self.n_dofs] = curr_state[:, :self.n_dofs] + curr_state[:, self.n_dofs:2*self.n_dofs] * dt
         elif self.control_space == 'acc':
-            curr_state[..., 2 * self.n_dofs:3 * self.n_dofs] = act 
-            curr_state[..., self.n_dofs:2*self.n_dofs] = curr_state[..., self.n_dofs:2*self.n_dofs] + curr_state[..., 2*self.n_dofs:3*self.n_dofs] * dt
-            curr_state[..., :self.n_dofs] = curr_state[..., :self.n_dofs] + curr_state[..., self.n_dofs:2*self.n_dofs] * dt
+            state_buff[..., 2 * self.n_dofs:3 * self.n_dofs] = act 
+            state_buff[..., self.n_dofs:2*self.n_dofs] = curr_state[..., self.n_dofs:2*self.n_dofs] + state_buff[..., 2*self.n_dofs:3*self.n_dofs] * dt
+            state_buff[..., :self.n_dofs] = curr_state[..., :self.n_dofs] + state_buff[..., self.n_dofs:2*self.n_dofs] * dt
         elif self.control_space == 'vel':
-            curr_state[..., 2 * self.n_dofs:3 * self.n_dofs] = 0.0
-            curr_state[..., self.n_dofs:2*self.n_dofs] = act #* dt
-            curr_state[..., :self.n_dofs] = curr_state[:, :self.n_dofs] + curr_state[:, self.n_dofs:2*self.n_dofs] * dt
+            state_buff[..., 2 * self.n_dofs:3 * self.n_dofs] = 0.0
+            state_buff[..., self.n_dofs:2*self.n_dofs] = act #* dt
+            state_buff[..., :self.n_dofs] = curr_state[:, :self.n_dofs] + state_buff[:, self.n_dofs:2*self.n_dofs] * dt
         elif self.control_space == 'pos':
-            curr_state[..., 2 * self.n_dofs:3 * self.n_dofs] = 0.0
-            curr_state[..., 1 * self.n_dofs:2 * self.n_dofs] = 0.0
-            curr_state[..., :self.n_dofs] = act
+            state_buff[..., 2 * self.n_dofs:3 * self.n_dofs] = 0.0
+            state_buff[..., 1 * self.n_dofs:2 * self.n_dofs] = 0.0
+            state_buff[..., :self.n_dofs] = act
         
-        return curr_state
+        return state_buff
     
     @torch.jit.export
     def tensor_step(self, state: torch.Tensor, act: torch.Tensor, state_seq: torch.Tensor, batch_size:int, horizon:int) -> torch.Tensor:
@@ -198,6 +201,7 @@ class URDFKinematicModel(nn.Module):
     @torch.jit.export
     def rollout_open_loop(self, start_state_dict: Dict[str, torch.Tensor], act_seq: torch.Tensor) -> Dict[str, torch.Tensor]:
         act_seq = act_seq.to(self.device)
+        print(act_seq.shape)
         state_batch_size = act_seq.shape[0]
         batch_size = act_seq.shape[1]
 
@@ -212,7 +216,7 @@ class URDFKinematicModel(nn.Module):
         start_t = start_state_dict['tstep']
 
         curr_robot_state = torch.cat((start_q_pos, start_q_vel, start_q_acc, start_t), dim=-1)
-        # curr_robot_state = curr_robot_state#.unsqueeze(1)
+        curr_robot_state = curr_robot_state.unsqueeze(1)
 
         self.prev_state_buffer = self.prev_state_buffer.roll(-1, dims=1)
         self.prev_state_buffer[:,-1,:] = curr_robot_state
@@ -239,76 +243,71 @@ class URDFKinematicModel(nn.Module):
         with record_function("tensor_step"):
             state_seq = self.tensor_step(curr_state, act_seq, state_seq, curr_batch_size, num_traj_points)
 
-        # state_dict = self.compute_full_state(state_seq)
-        state_dict:Dict[str, torch.Tensor] = {
-            'q_pos': state_seq[..., :self.n_dofs],
-            'q_vel': state_seq[..., self.n_dofs:2*self.n_dofs],
-            'q_acc':  state_seq[..., 2*self.n_dofs:3*self.n_dofs],
-            'tstep':  state_seq[..., -1]
-        }
+        state_dict = self.compute_full_state(state_seq)
+
 
         return state_dict #self.compute_full_state(state_seq)
 
 
-    # @torch.jit.export
-    # def compute_rollouts(
-    #     self, start_state_dict: Dict[str, torch.Tensor], 
-    #     open_loop_act_seq: Optional[torch.Tensor]=None,
-    #     sampling_policy: Optional[Policy]=None,
-    #     num_policy_rollouts:int=0) -> Dict[str, torch.Tensor]:
+    @torch.jit.export
+    def compute_rollouts(
+        self, start_state_dict: Dict[str, torch.Tensor], 
+        open_loop_act_seq: Optional[torch.Tensor]=None,
+        sampling_policy: Optional[Policy]=None,
+        num_policy_rollouts:int=0) -> Dict[str, torch.Tensor]:
         
-    #     num_open_loop_rollouts = open_loop_act_seq.shape[1] if open_loop_act_seq is not None else 0
-    #     # TODO: clamp actions?
+        num_open_loop_rollouts = open_loop_act_seq.shape[1] if open_loop_act_seq is not None else 0
+        # TODO: clamp actions?
 
-    #     start_q_pos = start_state_dict[self.robot_keys[0]]
-    #     start_q_vel = start_state_dict[self.robot_keys[1]]
-    #     start_q_acc = start_state_dict[self.robot_keys[2]]
-    #     start_t = start_state_dict['tstep']
+        start_q_pos = start_state_dict[self.robot_keys[0]]
+        start_q_vel = start_state_dict[self.robot_keys[1]]
+        start_q_acc = start_state_dict[self.robot_keys[2]]
+        start_t = start_state_dict['tstep']
 
-    #     curr_robot_state = torch.cat((start_q_pos, start_q_vel, start_q_acc, start_t), dim=-1)
-    #     # curr_robot_state = torch.cat((start_state_dict[k] for k in start_state_dict), dim=-1)
-    #     state_batch_size = curr_robot_state.shape[0]
-    #     batch_size = num_open_loop_rollouts + num_policy_rollouts
+        curr_robot_state = torch.cat((start_q_pos, start_q_vel, start_q_acc, start_t), dim=-1)
+        # curr_robot_state = torch.cat((start_state_dict[k] for k in start_state_dict), dim=-1)
+        state_batch_size = curr_robot_state.shape[0]
+        batch_size = num_open_loop_rollouts + num_policy_rollouts
         
-    #     if batch_size != self.batch_size or state_batch_size != self.state_batch_size:
-    #         self.batch_size = batch_size
-    #         self.state_batch_size = state_batch_size
-    #         #TODO: Just call reset here?
-    #         self.allocate_buffers(self.state_batch_size, self.batch_size)
+        if batch_size != self.batch_size or state_batch_size != self.state_batch_size:
+            self.batch_size = batch_size
+            self.state_batch_size = state_batch_size
+            #TODO: Just call reset here?
+            self.allocate_buffers(self.state_batch_size, self.batch_size)
 
-    #     self.prev_state_buffer = self.prev_state_buffer.roll(-1, dims=1)
-    #     self.prev_state_buffer[:,-1,:] = curr_robot_state
+        self.prev_state_buffer = self.prev_state_buffer.roll(-1, dims=1)
+        self.prev_state_buffer[:,-1,:] = curr_robot_state
 
-    #     # curr_robot_state = curr_robot_state.unsqueeze(1)
-    #     # self.prev_state_buffer = self.prev_state_buffer.roll(-1, dims=1)
-    #     # self.prev_state_buffer[:,-1,:] = curr_robot_state#.squeeze(1)
+        # curr_robot_state = curr_robot_state.unsqueeze(1)
+        # self.prev_state_buffer = self.prev_state_buffer.roll(-1, dims=1)
+        # self.prev_state_buffer[:,-1,:] = curr_robot_state#.squeeze(1)
 
-    #     state_seq = self.state_seq
+        state_seq = self.state_seq
 
-    #     # curr_state = self.prev_state_buffer[:,-1:,:self.n_dofs * 3]
-    #     curr_state = curr_robot_state[..., 0:3*self.n_dofs]
-    #     if num_open_loop_rollouts > 0:
-    #         with record_function("tensor_step"):
-    #             # forward step with step matrix:
-    #             state_seq[:,:num_open_loop_rollouts] = \
-    #                 self.tensor_step(
-    #                     curr_state, open_loop_act_seq, 
-    #                     state_seq[:,:num_open_loop_rollouts], 
-    #                     num_open_loop_rollouts, self.num_traj_points)
+        # curr_state = self.prev_state_buffer[:,-1:,:self.n_dofs * 3]
+        curr_state = curr_robot_state[..., 0:3*self.n_dofs]
+        if num_open_loop_rollouts > 0:
+            with record_function("tensor_step"):
+                # forward step with step matrix:
+                state_seq[:,:num_open_loop_rollouts] = \
+                    self.tensor_step(
+                        curr_state, open_loop_act_seq, 
+                        state_seq[:,:num_open_loop_rollouts], 
+                        num_open_loop_rollouts, self.num_traj_points)
 
-    #     info = {'cl_act_seq': None}
-    #     if sampling_policy is not None and num_policy_rollouts > 0:
-    #         with record_function("policy_rollout"):
-    #             state_seq[:,num_open_loop_rollouts:], info = \
-    #                 self.rollout_closed_loop(
-    #                     curr_robot_state, sampling_policy, 
-    #                     state_seq[:, num_open_loop_rollouts:], 
-    #                     num_policy_rollouts, self.num_traj_points)
+        info = {'cl_act_seq': None}
+        if sampling_policy is not None and num_policy_rollouts > 0:
+            with record_function("policy_rollout"):
+                state_seq[:,num_open_loop_rollouts:], info = \
+                    self.rollout_closed_loop(
+                        curr_robot_state, sampling_policy, 
+                        state_seq[:, num_open_loop_rollouts:], 
+                        num_policy_rollouts, self.num_traj_points)
 
 
-    #     state_dict = self.compute_full_state(state_seq)
+        state_dict = self.compute_full_state(state_seq)
 
-    #     return state_dict, info
+        return state_dict, info
 
     def compute_full_state(self, state_seq:torch.Tensor)->Dict[str, torch.Tensor]:
 

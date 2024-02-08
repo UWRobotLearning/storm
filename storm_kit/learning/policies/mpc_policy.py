@@ -109,6 +109,7 @@ class MPCPolicy(Policy):
         world_cfg = self.cfg.world
         rollout_cfg = self.cfg.task
         model_cfg = self.cfg.model
+        
         with open_dict(rollout_cfg):
            rollout_cfg['horizon'] = self.cfg['mppi']['horizon']
            rollout_cfg['batch_size'] = self.cfg['mppi']['num_particles']
@@ -118,10 +119,8 @@ class MPCPolicy(Policy):
            model_cfg['horizon'] = self.cfg['mppi']['horizon']
            model_cfg['batch_size'] = self.cfg['mppi']['num_particles']
 
-
-        task = torch.compile(task_cls(cfg = rollout_cfg, world_cfg = world_cfg, device=self.device))
-        dynamics_model = dynamics_model_cls(
-            # join_path(get_assets_path(), rollout_cfg['model']['urdf_path']),
+        task = task_cls(cfg = rollout_cfg, world_cfg = world_cfg, device=self.device)
+        dynamics_model = torch.jit.script(dynamics_model_cls(
             cfg = model_cfg,
             # batch_size=task_params['batch_size'],
             # horizon=task_params['horizon'],
@@ -130,7 +129,7 @@ class MPCPolicy(Policy):
             # dt_traj_params=task_params['model']['dt_traj_params'],
             # control_space=task_params['control_space'],
             device=self.device
-        )
+        ))
 
         return task, dynamics_model
 

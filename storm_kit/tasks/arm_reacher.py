@@ -7,7 +7,6 @@ from operator import mul
 from storm_kit.differentiable_robot_model.spatial_vector_algebra import matrix_to_quaternion, quaternion_to_matrix, euler_angles_to_matrix, matrix_to_euler_angles, quat_multiply
 from storm_kit.mpc.cost import NormCost, PoseCost
 from storm_kit.tasks.arm_task import ArmTask
-import numpy as np
 
 class ArmReacher(ArmTask):
     """
@@ -16,30 +15,41 @@ class ArmReacher(ArmTask):
     Todo: 
     1. Update cfg to be kwargs
     """
+    goal_state:torch.Tensor
+    goal_ee_pos:torch.Tensor
+    goal_ee_rot:torch.Tensor
+    task_specs: Optional[Dict[str, torch.Tensor]]
+    device: torch.device
 
-    def __init__(self, cfg, world_cfg=None, viz_rollouts=False, device=torch.device('cpu')):
+    def __init__(self, cfg, world_cfg, viz_rollouts:bool=False, device=torch.device('cpu')):
         super(ArmReacher, self).__init__(cfg=cfg,
                                          world_cfg=world_cfg,
                                          viz_rollouts=viz_rollouts,
                                          device=device)
-        self.goal_state = None
-        self.goal_ee_pos = None
-        self.goal_ee_rot = None
-        self.num_instances = 1
+        self.num_instances:int = 1
+        self.goal_state:torch.Tensor = torch.zeros(self.num_instances, self.n_dofs, device=self.device)
+        self.goal_ee_pos:torch.Tensor = torch.zeros(self.num_instances, 3, device=self.device)
+        self.goal_ee_rot:torch.Tensor = torch.zeros(self.num_instances, 3, 3, device=self.device)
+        self.ee_goal_buff:torch.Tensor= torch.zeros(self.num_instances, 7, device=self.device)
+
         
-        self.dist_cost = NormCost(**self.cfg['cost']['joint_l2'], device=self.device)
-        self.goal_cost = PoseCost(**self.cfg['cost']['goal_pose'], device=self.device)
+        self.dist_cost = torch.jit.script(NormCost(**self.cfg['cost']['joint_l2'], device=self.device))
+        goal_cost_params = self.cfg['cost']['goal_pose']
+        self.goal_cost = torch.jit.script(PoseCost(
+            weight=torch.as_tensor(goal_cost_params['weight'], device=self.device),
+            vec_weight= torch.as_tensor(goal_cost_params['vec_weight'], device=self.device),
+            cost_type=goal_cost_params['cost_type'],
+            norm_type=goal_cost_params['norm_type'],
+            hinge_val=goal_cost_params['hinge_val'],
+            convergence_val=torch.as_tensor(goal_cost_params['convergence_val'], device=self.device),
+            logcosh_alpha=torch.as_tensor(goal_cost_params['logcosh_alpha'], device=self.device), device=self.device))      
+        
         self.task_specs = cfg.get('task_specs', None)
         if self.task_specs is not None:
-            self.default_ee_goal = torch.tensor(self.task_specs['default_ee_target'], device=self.device)
-            self.randomize_target_position = self.task_specs['randomize_target_position']
-            self.randomize_target_rotation = self.task_specs['randomize_target_rotation']
+            self.default_ee_goal = torch.as_tensor(self.task_specs['default_ee_target'], device=self.device)
+            self.randomize_target_position = torch.as_tensor(self.task_specs['randomize_target_position'], device=self.device)
+            self.randomize_target_rotation = torch.as_tensor(self.task_specs['randomize_target_rotation'], device=self.device)
 
-        self.init_buffers()
-
-    def init_buffers(self):
-        self.ee_goal_buff = torch.zeros(self.num_instances, 7, device=self.device)
-        self.prev_state_buff = torch.zeros(self.num_instances, 10, 22, device=self.device)
     
     def forward(self, state_dict: Dict[str, torch.Tensor], act_batch:Optional[torch.Tensor]=None):
         return super().forward(state_dict, act_batch)

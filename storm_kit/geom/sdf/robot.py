@@ -627,7 +627,6 @@ def find_closest_distance(link_idx:int , links_sphere_list: List[torch.Tensor]) 
 @torch.jit.script
 def find_link_distance(links_sphere_dict: Dict[str, torch.Tensor], collision_ignore_dict:Dict[str, List[str]], idx2link:Dict[int, str], dist: torch.Tensor)->torch.Tensor:
     futures : List[torch.jit.Future[torch.Tensor]] = []
-
     link_names = links_sphere_dict.keys()
 
     # b, n, _ = links_sphere_dict[link_names[0]].shape
@@ -637,7 +636,6 @@ def find_link_distance(links_sphere_dict: Dict[str, torch.Tensor], collision_ign
     dist -= 100.0
     #dist = torch.zeros((b,n_links,n_links), device=spheres.device,
     #                   dtype=spheres.dtype) - 100.0
-
 
     for link1_idx in range(n_links):
         # for every link, compute the distance to the other links:

@@ -20,7 +20,7 @@
 # LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
 # FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 # DEALINGS IN THE SOFTWARE.#
-from typing import Optional, Dict, Tuple
+from typing import Optional, Dict, Tuple, Union, List
 import torch
 import torch.nn as nn
 from torch.profiler import record_function
@@ -46,31 +46,30 @@ class ArmTask(nn.Module):
     Todo: 
     1. Update cfg to be kwargs
     """
-
-    def __init__(self, cfg, world_cfg=None, viz_rollouts:bool=False, device=torch.device('cpu')):
+    dt_traj_params: Optional[Dict[str, float]]
+    max_acc: float
+    max_jerk: float
+    robot_default_dof_pos:torch.Tensor
+    retract_state:torch.Tensor
+    joint_lim_dicts:List[Dict[str, float]]
+    
+    def __init__(self, cfg, world_cfg, viz_rollouts:bool=False, device=torch.device('cpu')):
         super().__init__()
-        self.device = device
         self.cfg = cfg
-        self.viz_rollouts = viz_rollouts
-        self.batch_size = cfg.get('batch_size', 1)
-        self.horizon = cfg.get('horizon', 1)
-        self.dt_traj_params = cfg.get('dt_traj_params', None)
-        self.max_acc = cfg['max_acc']
-        self.max_jerk = cfg['max_jerk']
-        self.robot_cfg = cfg.robot
+        self.viz_rollout:bool = viz_rollouts
+        self.batch_size:int = cfg.get('batch_size', 1)
+        self.horizon:int = cfg.get('horizon', 1)
+        self.dt_traj_params:Dict[str, float] = cfg.get('dt_traj_params', None)
+        self.max_acc:float = cfg['max_acc']
+        self.max_jerk:float = cfg['max_jerk']
+        self.robot_cfg = cfg['robot']
+        self.ee_link_name:str = self.robot_cfg['ee_link_name']
+        self.device:torch.device = device
 
-        # robot_urdf = cfg.get('robot_urdf', None)
-        
-        # if robot_urdf is None:
-        #     robot_urdf = cfg['model']['urdf_path']
-
-        # self.ee_link_name = cfg.get('ee_link_name')
-        self.ee_link_name = self.robot_cfg['ee_link_name']
-        # urdf_path = join_path(get_assets_path(), robot_urdf)
-        # self.robot_model = torch.jit.script(DifferentiableRobotModel(urdf_path, device=self.device))
         self.robot_model = torch.jit.script(DifferentiableRobotModel(self.robot_cfg, device=self.device))
-        self.n_dofs = self.robot_model._n_dofs
-        self.robot_default_dof_pos = torch.as_tensor(self.robot_cfg['default_dof_pos'], device=self.device).unsqueeze(0)
+        self.n_dofs:int = self.robot_model._n_dofs
+        self.robot_default_dof_pos:torch.Tensor = torch.as_tensor(self.robot_cfg['default_dof_pos'], device=self.device).unsqueeze(0)
+
 
         # self.n_links = self.robot_model.n_links
         # self.link_names = cfg.get('robot_link_names')
@@ -107,16 +106,14 @@ class ArmTask(nn.Module):
                     device=self.device,
                     dt_traj_params=self.dt_traj_params))
 
-        self.retract_state = torch.tensor([self.cfg['cost']['retract_state']], device=device)
-
+        self.retract_state:torch.Tensor = torch.tensor([self.cfg['cost']['retract_state']], device=device)
 
         if self.cfg['cost']['smooth_cost']['weight'] > 0:
-            self.fd_matrix = build_fd_matrix(10 - self.cfg['cost']['smooth_cost']['order'] + 1, device=self.device, order=self.cfg['cost']['smooth_cost']['order'])
+            self.fd_matrix:torch.Tensor = build_fd_matrix(10 - self.cfg['cost']['smooth_cost']['order'] + 1, device=self.device, order=self.cfg['cost']['smooth_cost']['order'])
             self.smooth_cost = FiniteDifferenceCost(
                 **self.cfg['cost']['smooth_cost'], 
                 horizon = self.horizon + 1,
                 device=self.device)
-
 
         self.primitive_collision_cost = torch.compile(PrimitiveCollisionCost(
             world_cfg=world_cfg, # robot_collision_params=cfg.robot_collision_params,
@@ -130,9 +127,10 @@ class ArmTask(nn.Module):
         #     device=self.device, **self.cfg['cost']['robot_self_collision'])
 
         #Initialize bound cost
-        self.joint_lim_dicts = self.robot_model.get_joint_limits()
-        self.state_upper_bounds = torch.zeros(3*self.n_dofs, device=self.device)
-        self.state_lower_bounds = torch.zeros(3*self.n_dofs, device=self.device)
+        self.joint_lim_dicts:List[Dict[str, float]] = self.robot_model.get_joint_limits()
+        self.state_upper_bounds:torch.Tensor = torch.zeros(3*self.n_dofs, device=self.device)
+        self.state_lower_bounds:torch.Tensor = torch.zeros(3*self.n_dofs, device=self.device)
+        
         for i in range(self.n_dofs):
             self.state_upper_bounds[i] = self.joint_lim_dicts[i]['upper']
             self.state_lower_bounds[i] = self.joint_lim_dicts[i]['lower']
@@ -141,7 +139,7 @@ class ArmTask(nn.Module):
             self.state_upper_bounds[i+2*self.n_dofs] = self.max_acc
             self.state_lower_bounds[i+2*self.n_dofs] = -1.0 * self.max_acc
 
-        self.bounds = torch.cat([
+        self.bounds:torch.Tensor = torch.cat([
             self.state_lower_bounds.unsqueeze(0), 
             self.state_upper_bounds.unsqueeze(0)], dim=0).T
         
@@ -152,8 +150,8 @@ class ArmTask(nn.Module):
         # self.link_pos_seq = torch.zeros((self.num_instances, self.num_links, 3), device=self.device)
         # self.link_rot_seq = torch.zeros((self.num_instances, self.num_links, 3, 3), device=self.device)
 
-        self.vis_initialized = False
-        self.full_state_dict = None
+        self.vis_initialized:bool = False
+        # self.full_state_dict = None
     
     def forward(self, state_dict: Dict[str, torch.Tensor], act_batch:Optional[torch.Tensor]=None):
         state_dict = self.compute_full_state(state_dict)
@@ -375,78 +373,77 @@ class ArmTask(nn.Module):
 
         return termination, term_cost, info
 
-    def compute_full_state(self, state_dict: Dict[str,torch.Tensor], debug=False):
-        if 'state_seq' not in state_dict:
-            q_pos = state_dict['q_pos'].to(device=self.device)
-            q_vel = state_dict['q_vel'].to(device=self.device)
-            q_acc = state_dict['q_acc'].to(device=self.device)
+    @torch.jit.export
+    def compute_full_state(self, state_dict: Dict[str,torch.Tensor], debug:bool=False)->Dict[str, Union[torch.Tensor, Dict[str, torch.Tensor], Dict[str, Tuple[torch.Tensor, torch.Tensor]]]]:
+        # if 'state_seq' not in state_dict:
+        q_pos = state_dict['q_pos'].to(device=self.device)
+        q_vel = state_dict['q_vel'].to(device=self.device)
+        q_acc = state_dict['q_acc'].to(device=self.device)
 
-            # ee_pos_batch, ee_rot_batch, lin_jac_batch, ang_jac_batch, ee_lin_vel, ee_ang_vel = self.robot_model.compute_fk_and_jacobian(
-            #     q_pos.reshape(-1, q_pos.shape[-1]), q_vel.view(-1, self.n_dofs), self.cfg['ee_link_name'])
+        # ee_pos_batch, ee_rot_batch, lin_jac_batch, ang_jac_batch, ee_lin_vel, ee_ang_vel = self.robot_model.compute_fk_and_jacobian(
+        #     q_pos.reshape(-1, q_pos.shape[-1]), q_vel.view(-1, self.n_dofs), self.cfg['ee_link_name'])
 
-            with record_function("arm_task: fk + jacobian"):
-                link_pose_dict, link_spheres_dict, self_coll_dist, lin_jac, ang_jac = self.robot_model.compute_fk_and_jacobian(
-                    q_pos.view(-1, self.n_dofs), q_vel.view(-1, self.n_dofs),
-                    link_name=self.ee_link_name)
+        with record_function("arm_task: fk + jacobian"):
+            link_pose_dict, link_spheres_dict, self_coll_dist, lin_jac, ang_jac = self.robot_model.compute_fk_and_jacobian(
+                q_pos.view(-1, self.n_dofs), q_vel.view(-1, self.n_dofs),
+                link_name=self.ee_link_name)
 
-            ee_pos, ee_rot = link_pose_dict[self.ee_link_name]
+        ee_pos, ee_rot = link_pose_dict[self.ee_link_name]
+        ee_quat = matrix_to_quaternion(ee_rot)
 
-            ee_quat = matrix_to_quaternion(ee_rot)
-            # ee_pos = ee_pos.view(*orig_size, -1)
-            # ee_rot = ee_rot.view(*orig_size, 3, 3)
-            # ee_quat = ee_quat.view(*orig_size, -1)
-            # lin_jac = lin_jac.view(*orig_size, 3, -1)
-            # ang_jac = ang_jac.view(*orig_size, 3, -1)
-            ee_pos = ee_pos.view(*q_pos.shape[0:-1], -1)
-            ee_rot = ee_rot.view(*q_pos.shape[0:-1], 3, 3)
-            ee_quat = ee_quat.view(*q_pos.shape[0:-1], -1)
-            lin_jac = lin_jac.view(*q_pos.shape[0:-1], 3, -1)
-            ang_jac = ang_jac.view(*q_pos.shape[0:-1], 3, -1)
+        # ee_pos = ee_pos.view(*orig_size, -1)
+        # ee_rot = ee_rot.view(*orig_size, 3, 3)
+        # ee_quat = ee_quat.view(*orig_size, -1)
+        # lin_jac = lin_jac.view(*orig_size, 3, -1)
+        # ang_jac = ang_jac.view(*orig_size, 3, -1)
+        ee_pos = ee_pos.view(*q_pos.shape[0:-1], -1)
+        ee_rot = ee_rot.view(*q_pos.shape[0:-1], 3, 3)
+        ee_quat = ee_quat.view(*q_pos.shape[0:-1], -1)
+        lin_jac = lin_jac.view(*q_pos.shape[0:-1], 3, -1)
+        ang_jac = ang_jac.view(*q_pos.shape[0:-1], 3, -1)
 
-            ee_jac = torch.cat((ang_jac, lin_jac), dim=-2)
-            ee_vel_twist = torch.matmul(ee_jac, q_vel.unsqueeze(-1)).squeeze(-1)
-            ee_acc_twist = torch.matmul(ee_jac, q_acc.unsqueeze(-1)).squeeze(-1)
- 
-            # get link poses:
-            # link_pos_list = []
-            # link_rot_list = []
-            # for ki,k in enumerate(self.link_names):
-            #     # link_pos, link_rot = self.robot_model.get_link_pose(k)
-            #     curr_link_pos, curr_link_rot = link_pose_dict[k]
-            #     # link_pos_seq[:,:,:,ki,:] = link_pos.view((self.num_instances, self.batch_size, self.horizon, 3))
-            #     # link_rot_seq[:,:,:,ki,:,:] = link_rot.view((self.num_instances, self.batch_size, self.horizon, 3,3))
-            #     # link_pos_seq[:,ki,:] = link_pos.view((self.num_instances, 1, 3))
-            #     # link_rot_seq[:,ki,:,:] = link_rot.view((self.num_instances, 1, 3,3))
-            #     link_pos_list.append(curr_link_pos.unsqueeze(1))
-            #     link_rot_list.append(curr_link_rot.unsqueeze(1))
-            
-            # link_pos = torch.cat(link_pos_list, dim=2)
-            # link_rot = torch.cat(link_rot_list, dim=2)
+        ee_jac = torch.cat((ang_jac, lin_jac), dim=-2)
+        ee_vel_twist = torch.matmul(ee_jac, q_vel.unsqueeze(-1)).squeeze(-1)
+        ee_acc_twist = torch.matmul(ee_jac, q_acc.unsqueeze(-1)).squeeze(-1)
 
-            new_state_dict = {}
-
-            for k in state_dict.keys():
-                new_state_dict[k] = state_dict[k]
-            
-            new_state_dict['ee_pos'] =  ee_pos 
-            new_state_dict['ee_rot'] = ee_rot
-            new_state_dict['ee_quat'] = ee_quat
-            new_state_dict['ee_jacobian'] = ee_jac
-            new_state_dict['ee_vel_twist'] = ee_vel_twist
-            new_state_dict['ee_acc_twist'] = ee_acc_twist
-            new_state_dict['link_pose_dict'] = link_pose_dict
-            new_state_dict['link_spheres_dict'] = link_spheres_dict
-            new_state_dict['self_coll_dist'] = self_coll_dist
-
-            # new_state_dict['link_pos'] = link_pos
-            # new_state_dict['link_rot'] = link_rot
-
-            # self.prev_state_buff = self.prev_state_buff.roll(-1, dims=1)
-            # self.prev_state_buff[:,-1,:] = new_state_dict['state_seq'].clone()
-            # new_state_dict['prev_state_seq'] = self.prev_state_buff
-            return new_state_dict
+        # get link poses:
+        # link_pos_list = []
+        # link_rot_list = []
+        # for ki,k in enumerate(self.link_names):
+        #     # link_pos, link_rot = self.robot_model.get_link_pose(k)
+        #     curr_link_pos, curr_link_rot = link_pose_dict[k]
+        #     # link_pos_seq[:,:,:,ki,:] = link_pos.view((self.num_instances, self.batch_size, self.horizon, 3))
+        #     # link_rot_seq[:,:,:,ki,:,:] = link_rot.view((self.num_instances, self.batch_size, self.horizon, 3,3))
+        #     # link_pos_seq[:,ki,:] = link_pos.view((self.num_instances, 1, 3))
+        #     # link_rot_seq[:,ki,:,:] = link_rot.view((self.num_instances, 1, 3,3))
+        #     link_pos_list.append(curr_link_pos.unsqueeze(1))
+        #     link_rot_list.append(curr_link_rot.unsqueeze(1))
         
-        return state_dict
+        # link_pos = torch.cat(link_pos_list, dim=2)
+        # link_rot = torch.cat(link_rot_list, dim=2)
+
+        new_state_dict = {}
+        for k in state_dict.keys():
+            new_state_dict[k] = state_dict[k]
+        
+        new_state_dict['ee_pos'] =  ee_pos 
+        new_state_dict['ee_rot'] = ee_rot
+        new_state_dict['ee_quat'] = ee_quat
+        new_state_dict['ee_jacobian'] = ee_jac
+        new_state_dict['ee_vel_twist'] = ee_vel_twist
+        new_state_dict['ee_acc_twist'] = ee_acc_twist
+        new_state_dict['link_pose_dict'] = link_pose_dict
+        new_state_dict['link_spheres_dict'] = link_spheres_dict
+        new_state_dict['self_coll_dist'] = self_coll_dist
+
+        # new_state_dict['link_pos'] = link_pos
+        # new_state_dict['link_rot'] = link_rot
+
+        # self.prev_state_buff = self.prev_state_buff.roll(-1, dims=1)
+        # self.prev_state_buff[:,-1,:] = new_state_dict['state_seq'].clone()
+        # new_state_dict['prev_state_seq'] = self.prev_state_buff
+        return new_state_dict
+        
     
     def compute_success(self, state_dict:Dict[str,torch.Tensor]):
         q_pos = state_dict['q_pos']

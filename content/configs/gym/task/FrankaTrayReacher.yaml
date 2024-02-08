@@ -104,6 +104,7 @@ task:
       hinge_val: 0.01
       # is_hinge: False
       convergence_val: [0.0, 0.0] # orientation, position
+      logcosh_alpha: [1.0, 1.0] #orientation, position (shaping used only for logcosh)
 
     ee_vel_twist:
       weight: 0.0 #1.0

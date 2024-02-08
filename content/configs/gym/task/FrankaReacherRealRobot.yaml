@@ -85,6 +85,7 @@ task:
       norm_type: 'l2'
       hinge_val: -1
       convergence_val: [0.0, 0.0] # orientation, position
+      logcosh_alpha: [1.0, 1.0] #orientation, position (shaping used only for logcosh)
 
     ee_vel_twist:
       weight: 1e-3
