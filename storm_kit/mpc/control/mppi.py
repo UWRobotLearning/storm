@@ -344,7 +344,7 @@ class MPPI(GaussianMPC):
         # print(value_preds)
         if value_preds is not None:
             # value_preds = value_preds * (1. - terminals) + costs * terminals
-            # costs[..., -1] = value_preds[..., -1]
+            # costs[..., -1] += value_preds[..., -1]
             costs += value_preds #* (1-terminals)
         traj_returns = cost_to_go(costs, self.gammalam_seq)
 

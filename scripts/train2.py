@@ -100,25 +100,23 @@ def get_task_and_dataset(task_name:str, cfg=None): #log max_episode_steps
         if not cfg.real_robot_exp:
             from storm_kit.envs.isaac_gym_robot_env import IsaacGymRobotEnv
             env = IsaacGymRobotEnv(
-                cfg.task, cfg.rl_device, 
+                cfg.task.env, cfg.task.world, cfg.rl_device, 
                 cfg.sim_device, cfg.graphics_device_id, 
                 cfg.headless, False, cfg.force_render
             )
         else:
             from storm_kit.envs.panda_real_robot_env import PandaRealRobotEnv
             env = PandaRealRobotEnv(
-                cfg.task, device=cfg.rl_device,
+                cfg.task.env, cfg.task.world, device=cfg.rl_device,
                 headless=cfg.headless, safe_mode=False
             )
-        task = task_cls(
-            cfg=cfg.task.task, device=cfg.rl_device, viz_rollouts=False, world_params=cfg.task.world)
         #Load dataset
         base_dir = Path('./tmp_results/{}/{}'.format(cfg.task_name, 'policy_eval'))
         data_dir = os.path.join(base_dir, 'data')
 
         #Initialize task
         task = task_cls(
-            cfg=cfg.task.task, device=cfg.rl_device, viz_rollouts=False, world_params=cfg.task.world)
+            cfg=cfg.task.task, world_cfg=cfg.task.world, device=cfg.rl_device, viz_rollouts=False)
 
         #Load bufffers from folder
         buffer_dict = buffer_dict_from_folder(data_dir)

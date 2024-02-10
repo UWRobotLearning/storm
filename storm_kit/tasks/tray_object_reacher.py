@@ -124,9 +124,26 @@ class TrayObjectReacher(ArmReacher):
 
         with record_function("tray_object_reacher:friction_cone_cost"):
             friction_cone_cost = self.friction_cost.forward(ee_acc_twist_batch[...,3:6], ee_vel_twist_batch[...,0:3], ee_acc_twist_batch[...,0:3], ee_rot)
-            cost+=friction_cone_cost
+            cost +=friction_cone_cost
         
         return cost, cost_terms
+
+
+    def compute_success(self, state_dict:Dict[str,torch.Tensor]):
+        ee_pos = state_dict['ee_pos']
+        ee_vel = state_dict['ee_vel_twist']
+        q_vel = state_dict['q_vel']
+        if ee_pos.ndim == 2:
+            goal_ee_pos = self.goal_ee_pos.reshape_as(ee_pos)
+        elif ee_pos.ndim == 3:
+            goal_ee_pos = self.goal_ee_pos.unsqueeze(1).reshape_as(ee_pos)
+        elif ee_pos.ndim == 4:
+            goal_ee_pos = self.goal_ee_pos.unsqueeze(1).unsqueeze(1).repeat(1, ee_pos.shape[1], ee_pos.shape[2], 1)
+
+        dist_err = 100*torch.norm(ee_pos - goal_ee_pos, p=2, dim=-1) #l2 err in cm
+        twist_norm = torch.norm(ee_vel, p=2, dim=-1)
+        success = (dist_err < 1.0) & (twist_norm < 0.01)
+        return success
 
     #     q_pos_batch = state_dict['q_pos']
     #     orig_size = q_pos_batch.size()[0:-1]
@@ -185,28 +202,7 @@ class TrayObjectReacher(ArmReacher):
     #     return super().compute_termination(
     #         state_dict, act_batch, compute_full_state)
 
-    # def compute_success(self, state_dict:Dict[str,torch.Tensor]):
-    #     ee_pos = state_dict['ee_pos']
-    #     ee_rot = state_dict['ee_rot']
-    #     ee_vel = state_dict['ee_vel_twist']
-    #     q_vel = state_dict['q_vel']
-    #     if ee_pos.ndim == 2:
-    #         goal_ee_pos = self.goal_ee_pos.reshape_as(ee_pos)
-    #         goal_ee_rot = self.goal_ee_rot.reshape_as(ee_rot)
-    #     elif ee_pos.ndim == 3:
-    #         goal_ee_pos = self.goal_ee_pos.unsqueeze(1).reshape_as(ee_pos)
-    #         goal_ee_rot = self.goal_ee_rot.unsqueeze(1).reshape_as(ee_rot)
-    #     elif ee_pos.ndim == 4:
-    #         goal_ee_pos = self.goal_ee_pos.unsqueeze(1).unsqueeze(1).repeat(1, ee_pos.shape[1], ee_pos.shape[2], 1)
-    #         goal_ee_rot = self.goal_ee_rot.unsqueeze(1).unsqueeze(1).repeat(1, ee_rot.shape[1], ee_rot.shape[2], 1, 1)
 
-    #     dist_err = 100*torch.norm(ee_pos - goal_ee_pos, p=2, dim=-1) #l2 err in cm
-    #     rotation_diff = torch.matmul(ee_rot, goal_ee_rot.transpose(-1,-2))
-    #     trace = rotation_diff.diagonal(offset=0, dim1=-1, dim2=-2).sum(-1)
-    #     rot_err = torch.rad2deg(torch.acos((trace - 1.)/2.0))
-    #     twist_norm = torch.norm(ee_vel, p=2, dim=-1)
-    #     success = (dist_err < 1.0) & (rot_err < 1.0) & (twist_norm < 0.01)
-    #     return success
 
 
     # def compute_metrics(self, episode_data: Dict[str, torch.Tensor]) -> Dict[str, float]:
