@@ -8,6 +8,7 @@ import numpy as np
 import rospy
 from geometry_msgs.msg import PoseStamped 
 from sensor_msgs.msg import JointState
+import time
 
 from storm_kit.learning.policies import MPCPolicy, JointControlWrapper
 from storm_kit.tasks import ArmReacher
@@ -23,7 +24,7 @@ class PandaRealRobotEnv():
             auto_reset_on_episode_end:bool = True):
         self.cfg = cfg
         self.max_episode_length = cfg['env']['episodeLength']
-        self.n_dofs = cfg.n_dofs
+        self.n_dofs = cfg.joint_control.n_dofs #for compatibility with new configs
         self.device = device
         self.num_envs = cfg.env.get('num_envs', 1)
         self.robot_default_dof_pos = self.cfg["env"]["robot_default_dof_pos"]
@@ -113,11 +114,11 @@ class PandaRealRobotEnv():
         self.robot_state['q_vel'] = torch.tensor(msg.velocity).unsqueeze(0)
         self.robot_state['q_acc'] = torch.zeros_like(self.robot_state['q_vel'])
 
-        self.robot_state_tensor = torch.cat((
-            self.robot_state['q_pos'],
-            self.robot_state['q_vel'],
-            self.robot_state['q_acc']
-        )).unsqueeze(0)
+        # self.robot_state_tensor = torch.cat((
+        #     self.robot_state['q_pos'],
+        #     self.robot_state['q_vel'],
+        #     self.robot_state['q_acc']
+        # )).unsqueeze(0)
 
 
     def allocate_buffers(self):
@@ -141,6 +142,7 @@ class PandaRealRobotEnv():
     def pre_physics_steps(self, actions:torch.Tensor):
         command_dict = copy.deepcopy(
             self.state_filter.predict_internal_state(actions))
+
         return command_dict
 
     def step(self, actions:torch.Tensor):
@@ -175,7 +177,7 @@ class PandaRealRobotEnv():
                 rospy.loginfo('[PandaRobotEnv]: Waiting for robot state.')
         
         self.first_iter = False
-        self.rate.sleep()
+        # self.rate.sleep()
         state_dict = self.post_physics_step() 
 
         return state_dict, self.reset_buf
@@ -222,7 +224,6 @@ class PandaRealRobotEnv():
             try:
                 policy_input = {
                     'states': self.get_state_dict()}
-
                 action, policy_info = self.reset_policy.get_action(policy_input, deterministic=True)
                 command_tensor = policy_info['command']
 
@@ -244,7 +245,7 @@ class PandaRealRobotEnv():
                 if (curr_error <= 0.005) or (curr_num_steps == max_steps -1):
                     print('[PandaRobotEnv]: Reset joint error = {}', curr_error)
                     break
-                self.rate.sleep()
+                # self.rate.sleep()
             except KeyboardInterrupt:
                 self.close()
 
@@ -271,11 +272,16 @@ class PandaRealRobotEnv():
         reset_cfg = compose(config_name="config", overrides=["task=FrankaReacherRealRobot", "mpc=FrankaReacherRealRobotMPC"])
 
         mpc_config = reset_cfg.mpc
-        mpc_config.rollout.cost.goal_pose.weight = [0.0, 0.0]
-        mpc_config.rollout.cost.joint_l2.weight = 5.0
-        mpc_config.rollout.cost.ee_vel_twist.weight = 0.0
-        mpc_config.rollout.cost.zero_q_vel.weight = 0.1
-        mpc_config.rollout.cost.stop_cost.weight = 2.0
+        # mpc_config.rollout.cost.goal_pose.weight = [0.0, 0.0]
+        # mpc_config.rollout.cost.joint_l2.weight = 5.0
+        # mpc_config.rollout.cost.ee_vel_twist.weight = 0.0
+        # mpc_config.rollout.cost.zero_q_vel.weight = 0.1
+        # mpc_config.rollout.cost.stop_cost.weight = 2.0
+        mpc_config.task.cost.goal_pose.weight = [0.0, 0.0]
+        mpc_config.task.cost.joint_l2.weight = 5.0
+        mpc_config.task.cost.ee_vel_twist.weight = 0.0
+        mpc_config.task.cost.zero_q_vel.weight = 0.1
+        mpc_config.task.cost.stop_cost.weight = 2.0
         mpc_config.mppi.update_cov = False
 
         self.reset_policy = MPCPolicy(
@@ -321,6 +327,7 @@ class PandaRealRobotEnv():
 @hydra.main(config_name="config", config_path="../../content/configs/gym")
 def main(cfg: DictConfig):
     torch.set_default_dtype(torch.float32)
+    print("rl device", cfg.rl_device)
     env = PandaRealRobotEnv(cfg.task, device=cfg.rl_device, headless=cfg.headless)
     env.reset()
     env.close()

@@ -418,8 +418,9 @@ class ArmReacher(ArmTask):
             self.goal_state = torch.as_tensor(joint_goal, device=self.device)
             link_pose_dict = self.robot_model.compute_forward_kinematics(
                 self.goal_state[:,0:self.n_dofs], torch.zeros_like(self.goal_state[:,0:self.n_dofs])) #=self.cfg.model.ee_link_name)
-
-            self.goal_ee_pos, self.goal_ee_rot = link_pose_dict[self.ee_link_name]
+            # print("link_pose_dict", link_pose_dict)
+            print("self.ee_link_name", self.ee_link_name)
+            self.goal_ee_pos, self.goal_ee_rot = link_pose_dict[0][self.ee_link_name]
             self.goal_ee_quat = matrix_to_quaternion(self.goal_ee_rot)
 
         return True

@@ -32,6 +32,7 @@ from copy import deepcopy
 from .control_base import Controller
 from .control_utils import generate_noise, scale_ctrl, gaussian_entropy, matrix_cholesky
 from .sample_libs import StompSampleLib, HaltonSampleLib, RandomSampleLib, HaltonStompSampleLib, MultipleSampleLib
+import time
 
 class GaussianMPC(Controller):
     """
@@ -179,6 +180,7 @@ class GaussianMPC(Controller):
     #     return act_seq
 
     def sample(self, state, shift_steps:int=1, n_iters=None, deterministic:bool=False, calc_val:bool=False):
+        st = time.time()
         distrib_info, aux_info =  self.optimize(state, shift_steps, n_iters, calc_val=calc_val)
         
         value = distrib_info['optimal_value'] if 'optimal_value' in distrib_info else 0.0
@@ -186,6 +188,7 @@ class GaussianMPC(Controller):
             return distrib_info['mean'].data , value, aux_info
         
         samples = self.generate_noise(distrib_info) #, num_samples)
+        print("Time to sample: ", time.time() - st)
         return samples, value, aux_info
 
     def generate_noise(self, distrib_info): #, num_samples):

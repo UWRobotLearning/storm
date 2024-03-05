@@ -571,7 +571,7 @@ def relabel_dataset(dataset, task):
         new_observations = task.compute_observations(full_state_dict, compute_full_state=False, cost_terms=cost_terms)
         new_success = task.compute_success(full_state_dict)
 
-    dataset["observations"] = new_observations.to(dataset.device)
+    dataset["observations"] = new_observations.to(dataset.device) #TODO Neel - Relabel terminal state observations
     dataset["costs"] = new_cost.to(dataset.device)
     dataset["terminals"] = new_terminals.to(dataset.device)
     dataset["success"] = new_success.to(dataset.device)    

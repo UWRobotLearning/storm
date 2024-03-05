@@ -9,7 +9,7 @@ class GymEnvWrapper():
             self.dummy_obs = torch.zeros([1,task.obs_dim], device=self.task.device)
 
     
-    def step(self, action, compute_cost:bool=True, compute_termination:bool=True):
+    def step(self, action, compute_cost:bool=False, compute_termination:bool=False):
         if self.task is None:
             #mujoco
             if torch.is_tensor(action): action = action.cpu().numpy()
@@ -33,7 +33,6 @@ class GymEnvWrapper():
                 done_task, term_cost, term_info = self.task.compute_termination(full_state_dict)
                 done = done_env or done_task.item()
                 cost += term_cost.item()
-
         return obs, cost, done, {'state': next_state_dict}
 
     def reset(self, rng=None):

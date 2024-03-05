@@ -42,9 +42,9 @@ class MPCNode():
         self.joint_names = rospy.get_param('~robot_joint_names', None)
         self.save_data = rospy.get_param('~save_data', False)
         self.load_pretrained_policy = rospy.get_param('~load_pretrained', False)
-
+        # print("config used: ", self.config)
         self.control_dt = self.config.task.joint_control.control_dt
-        self.n_dofs = self.config.task.n_dofs
+        self.n_dofs = self.config.task.joint_control.n_dofs
         self.device = self.config.rl_device
         
         #STORM Initialization
@@ -61,7 +61,7 @@ class MPCNode():
         self.policy = MPCPolicy(
             obs_dim=1, act_dim=1, 
             config=self.config.mpc, task_cls=task_cls, 
-            dynamics_model_cls=dynamics_model_cls, device=self.device)
+            dynamics_model_cls=dynamics_model_cls, device=self.config.rl_device)
 
         #buffers for different messages
         self.mpc_command = JointState()
@@ -129,6 +129,7 @@ class MPCNode():
 
                 #get mpc command
                 # st=time.time()
+
                 action, policy_info = self.policy.get_action(policy_input, deterministic=True)
                 # print(time.time()-st)
                 self.state, _ = self.env.step(action)

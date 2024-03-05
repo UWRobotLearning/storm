@@ -46,12 +46,14 @@ class MPCPolicy(Policy):
     @torch.no_grad()
     @torch.autocast(device_type='cuda', enabled=False, dtype=torch.float16)
     def get_action(self, obs_dict, deterministic=False): #, num_samples=1):
-        st = time.time()
         state_dict = obs_dict['states']
+        for key, tensor in state_dict.items():
+            print(f"Device of tensor '{key}':", tensor.device)
         with record_function('mpc_policy:get_action'):
+            st = time.time()
             curr_action_seq, _, _ = self.controller.sample(
                 state_dict, shift_steps=1, deterministic=deterministic)#, calc_val=False, num_samples=num_samples)
-        print('policy get action time', time.time()-st)
+            print("Time to get action: ", time.time() - st)
         action = curr_action_seq[:, 0]
         info = {}
         return action, info
@@ -74,12 +76,14 @@ class MPCPolicy(Policy):
         # rollout = self.init_rollout(task_cls)
         # task_params = self.cfg.rollout
         task, dynamics_model = self.init_rollout(task_cls, dynamics_model_cls)
+        print('dynamics_model: ', dynamics_model)
         task_params = self.cfg.task
         model_params = self.cfg.model
 
         mppi_params = self.cfg.mppi
         with open_dict(mppi_params):
             mppi_params.d_action = dynamics_model.n_dofs #dynamics_model.d_action
+            print("mppi_params.d_action: ", mppi_params.d_action)
             mppi_params.action_lows =  [-1.0 * task_params.max_acc] * dynamics_model.n_dofs #dynamics_model.d_action # * torch.ones(#dynamics_model.d_action, **self.tensor_args)
             mppi_params.action_highs = [ task_params.max_acc] * dynamics_model.n_dofs #dynamics_model.d_action # * torch.ones(#dynamics_model.d_action, **self.tensor_args)
         
@@ -94,6 +98,16 @@ class MPCPolicy(Policy):
             self.init_action[:,:,:] += init_q
         init_mean = self.init_action
 
+        # controller = MPPI(
+        #     **mppi_params, 
+        #     init_mean=init_mean,
+        #     task=task,
+        #     dynamics_model=dynamics_model,
+        #     sampling_policy=sampling_policy,
+        #     vf=vf, qf=qf,
+        #     tensor_args=self.tensor_args)
+        # return controller
+
         controller = torch.compile(MPPI(
             **mppi_params, 
             init_mean=init_mean,
@@ -102,6 +116,7 @@ class MPCPolicy(Policy):
             sampling_policy=sampling_policy,
             vf=vf, qf=qf,
             tensor_args=self.tensor_args))
+        print("controller: ", controller)
         return controller
 
 
@@ -109,6 +124,7 @@ class MPCPolicy(Policy):
         world_cfg = self.cfg.world
         rollout_cfg = self.cfg.task
         model_cfg = self.cfg.model
+        print("model_cfg: ", model_cfg)
         
         with open_dict(rollout_cfg):
            rollout_cfg['horizon'] = self.cfg['mppi']['horizon']
@@ -130,6 +146,16 @@ class MPCPolicy(Policy):
             # control_space=task_params['control_space'],
             device=self.device
         ))
+        # dynamics_model = dynamics_model_cls(
+        #     cfg = model_cfg,
+        #     # batch_size=task_params['batch_size'],
+        #     # horizon=task_params['horizon'],
+        #     # ee_link_name=task_params['model']['ee_link_name'],
+        #     # link_names=task_params['model']['link_names'],
+        #     # dt_traj_params=task_params['model']['dt_traj_params'],
+        #     # control_space=task_params['control_space'],
+        #     device=self.device
+        # )
 
         return task, dynamics_model
 

@@ -13,6 +13,7 @@ import rospkg
 
 from storm_kit.differentiable_robot_model import DifferentiableRobotModel
 from storm_kit.differentiable_robot_model.spatial_vector_algebra import matrix_to_quaternion
+from hydra import initialize, compose
 
 
 class InteractiveMarkerGoalPub():
@@ -27,6 +28,7 @@ class InteractiveMarkerGoalPub():
         self.goal_pub_freq = rospy.get_param('~goal_pub_freq', 10)
         self.fixed_frame = rospy.get_param('~fixed_frame', 'base_link')
         self.robot_urdf = os.path.join(self.storm_path, rospy.get_param('~robot_urdf', 'content/assets/urdf/franka_description/franka_panda_no_gripper.urdf'))
+        # self.robot_config = os.path.join(self.storm_path, rospy.get_param('~robot_config', 'content/configs/task/robot/FrankaPandaReal.yaml'))
         self.ee_frame = rospy.get_param('~ee_frame', 'ee_link')
         
 
@@ -39,8 +41,12 @@ class InteractiveMarkerGoalPub():
         self.state_sub = rospy.Subscriber(self.joint_states_topic, JointState, self.robot_state_callback, queue_size=1)
 
         #STORM Related
-        self.robot_model = DifferentiableRobotModel(self.robot_urdf, None, 
-                            device=self.device)
+        initialize(config_path="../../../../content/configs/gym", job_name="robot_world_publisher")
+        self.config = compose(config_name="config", overrides=["task=FrankaReacherRealRobot"])
+        self.robot_config = self.config.task.robot        
+        # self.robot_model = DifferentiableRobotModel(self.robot_config,
+        #                     device=self.device)
+        self.robot_model = torch.jit.script(DifferentiableRobotModel(self.robot_config))
             
         #Buffers
         self.rate = rospy.Rate(self.goal_pub_freq)
@@ -192,7 +198,7 @@ class InteractiveMarkerGoalPub():
 
         link_pos_seq = self.robot_model.compute_forward_kinematics(
             q_robot, torch.zeros_like(q_robot))
-        curr_ee_pos, curr_ee_rot = link_pos_seq[self.ee_frame]
+        curr_ee_pos, curr_ee_rot = link_pos_seq[0][self.ee_frame]
         curr_ee_quat = matrix_to_quaternion(curr_ee_rot)
         # self.curr_ee_quat = self.curr_ee_quat / torch.norm(self.curr_ee_quat) #normalize quaternion
 
@@ -206,6 +212,7 @@ class InteractiveMarkerGoalPub():
         self.ee_goal.pose.orientation.x = curr_ee_quat[0][1].item() 
         self.ee_goal.pose.orientation.y = curr_ee_quat[0][2].item() 
         self.ee_goal.pose.orientation.z = curr_ee_quat[0][3].item()
+        print("robot config",self.robot_config)
     
     def close(self):
         self.ee_goal_pub.unregister()

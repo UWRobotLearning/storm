@@ -39,7 +39,7 @@ def get_env_and_task(task_name:str, cfg=None): #log max_episode_steps
         else:
             from storm_kit.envs.panda_real_robot_env import PandaRealRobotEnv
             env = PandaRealRobotEnv(
-                cfg.task.env, cfg.task.world, device=cfg.rl_device,
+                cfg.task, device=cfg.rl_device,
                 headless=cfg.headless, safe_mode=False
             )
         task = task_cls(

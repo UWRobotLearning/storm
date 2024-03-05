@@ -32,16 +32,15 @@ class RobotWorldPublisher():
 
         initialize(config_path="../../../content/configs/gym", job_name="robot_world_publisher")
         self.config = compose(config_name="config", overrides=["task=FrankaReacherRealRobot"])
-        self.robot_collision_config = self.config.task.task.robot_collision_params
-        self.ee_link_name = self.config.task.ee_link_name
-        self.n_dofs = self.config.task.n_dofs
-        self.urdf_path = join_path(get_assets_path(), self.robot_collision_config['urdf_path'])
-        self.link_names = self.robot_collision_config['link_names']
+        self.robot_collision_config = self.config.task.robot.robot_collision_params
+        self.ee_link_name = self.config.task.robot.ee_link_name
+        self.n_dofs = self.config.task.joint_control.n_dofs
+        self.urdf_path = join_path(get_assets_path(), self.config.task.robot.urdf_path)
+        self.link_names = self.robot_collision_config['collision_link_names']
         self.world_params = self.config.task.world['world_model']
         self.task = ArmTask(
-            cfg=self.config.task.task, device=self.device, viz_rollouts=False, world_params=self.config.task.world
+            cfg=self.config.task.task, world_cfg=self.config.task.world, device=self.device, viz_rollouts=False
         )
-
         self.tstep = 0
         self.tstep_tensor = torch.as_tensor([self.tstep], device=self.device).unsqueeze(0)
         self.start_t = None
@@ -55,7 +54,8 @@ class RobotWorldPublisher():
         self.rate = rospy.Rate(500)
         self.state_sub_on = False
 
-        self.robot_model = DifferentiableRobotModel(self.urdf_path)
+        self.robot_model = torch.jit.script(DifferentiableRobotModel(self.config.task.robot,device=self.device))
+        # self.robot_model = torch.jit.script(DifferentiableRobotModel(self.robot_cfg, device=self.device))
         self.collision_model = RobotSphereCollision(self.robot_collision_config)
         # self.collision_model.build_batch_features(batch_size=1, clone_pose=True, clone_objs=True)
 
@@ -115,10 +115,11 @@ class RobotWorldPublisher():
         # link_pos_seq = torch.cat(link_pos_seq, axis=1)
         # link_rot_seq = torch.cat(link_rot_seq, axis=1)
         # self.collision_model.update_batch_robot_collision_objs(link_pos_seq, link_rot_seq)
+        # print(link_pose_dict[0])
         for link_name in self.link_names:
-            link_pos  = link_pose_dict[link_name][0].unsqueeze(1)
-            link_rot = link_pose_dict[link_name][1].unsqueeze(1)
-            link_pose_dict[link_name] = (link_pos, link_rot)
+            link_pos  = link_pose_dict[0][link_name][0].unsqueeze(1)
+            link_rot = link_pose_dict[0][link_name][1].unsqueeze(1)
+            link_pose_dict[0][link_name] = (link_pos, link_rot)
 
         self.collision_model.update_batch_robot_collision_objs(link_pose_dict)
         spheres = self.collision_model.get_batch_robot_link_spheres()

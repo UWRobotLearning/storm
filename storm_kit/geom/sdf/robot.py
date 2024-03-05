@@ -334,16 +334,18 @@ class RobotSphereCollision:
             robot_collision_params (Dict): loaded from yml file
         """        
 
-        robot_links = self.robot_collision_params['link_names']
+        robot_links = self.robot_collision_params['collision_link_names']
         ignore_dict = self.robot_collision_params['self_collision_ignore']
 
         # load collision file:
-        coll_yml = join_path(get_configs_path(), self.robot_collision_params['collision_spheres'])
+        # coll_yml = join_path(get_configs_path(), self.robot_collision_params['collision_spheres'])
 
-        with open(coll_yml) as file:
-            coll_params = yaml.load(file, Loader=yaml.FullLoader)
+        # with open(coll_yml) as file:
+        #     coll_params = yaml.load(file, Loader=yaml.FullLoader)
 
-        collision_spheres = coll_params['collision_spheres']
+        # collision_spheres = coll_params['collision_spheres']
+
+        collision_spheres = self.robot_collision_params['collision_spheres']
         
         # self._link_collision_trans = torch.empty((len(robot_links), 3), device=self.device)
         # self._link_collision_rot = torch.empty((len(robot_links), 3, 3), device=self.device)
@@ -475,14 +477,15 @@ class RobotSphereCollision:
 
         # curr_batch_size = links_pos.shape[0]
         link_names = list(self._w_batch_link_spheres.keys())
-        curr_batch_size = link_pose_dict[link_names[0]][0].shape[0]
+        # print("link_pose_dict", link_pose_dict)
+        curr_batch_size = link_pose_dict[0][link_names[0]][0].shape[0]
         if curr_batch_size != self.batch_size:
             self.batch_size = curr_batch_size
             self.allocate_buffers(self.batch_size)
 
         # for i in range(len(self.w_batch_link_spheres)):
         for i,link_name in enumerate(self._w_batch_link_spheres.keys()):
-            link_pos, link_rot = link_pose_dict[link_name]
+            link_pos, link_rot = link_pose_dict[0][link_name]
             # self._w_batch_link_spheres[link_name][...,:3] = transform_point(
             #     self._batch_link_spheres[link_name][...,:3], link_rot[:,i,:,:], link_pos[:,i,:].unsqueeze(-2))
             self._w_batch_link_spheres[link_name][...,:3] = transform_point(

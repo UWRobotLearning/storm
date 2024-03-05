@@ -115,6 +115,12 @@ class ArmTask(nn.Module):
                 horizon = self.horizon + 1,
                 device=self.device)
 
+        # self.primitive_collision_cost = PrimitiveCollisionCost(
+        #     world_cfg=world_cfg, # robot_collision_params=cfg.robot_collision_params,
+        #     world_collision_params=cfg.world_collision_params, 
+        #     batch_size= self.batch_size * self.horizon, #self.num_instances * 
+        #     device=self.device, **self.cfg['cost']['primitive_collision'])
+        
         self.primitive_collision_cost = torch.compile(PrimitiveCollisionCost(
             world_cfg=world_cfg, # robot_collision_params=cfg.robot_collision_params,
             world_collision_params=cfg.world_collision_params, 
