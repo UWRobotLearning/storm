@@ -53,6 +53,8 @@ class PandaRealRobotEnv():
             'q_pos': torch.zeros(1,7),
             'q_vel': torch.zeros(1,7),
             'q_acc': torch.zeros(1,7)}
+        # self.robot_state['q_acc'] = torch.zeros_like(self.robot_state['q_vel'])
+
         self.robot_state_tensor = None
 
         #ROS Initialization
@@ -60,7 +62,7 @@ class PandaRealRobotEnv():
         self.state_sub = rospy.Subscriber(self.joint_states_topic, JointState, self.robot_state_callback, queue_size=1)
 
         self.control_freq = float(1.0/self.control_dt)
-        self.rate = rospy.Rate(self.control_freq)
+        # self.rate = rospy.Rate(self.control_freq)
 
         self.state_sub_on = False
         self.tstep = 0
@@ -112,7 +114,6 @@ class PandaRealRobotEnv():
         # self.robot_state.effort = msg.effort[2:]
         self.robot_state['q_pos'] = torch.tensor(msg.position).unsqueeze(0)
         self.robot_state['q_vel'] = torch.tensor(msg.velocity).unsqueeze(0)
-        self.robot_state['q_acc'] = torch.zeros_like(self.robot_state['q_vel'])
 
         # self.robot_state_tensor = torch.cat((
         #     self.robot_state['q_pos'],
@@ -140,6 +141,7 @@ class PandaRealRobotEnv():
         pass
 
     def pre_physics_steps(self, actions:torch.Tensor):
+        #XXX Remove deepcopies
         command_dict = copy.deepcopy(
             self.state_filter.predict_internal_state(actions))
 
@@ -177,7 +179,7 @@ class PandaRealRobotEnv():
                 rospy.loginfo('[PandaRobotEnv]: Waiting for robot state.')
         
         self.first_iter = False
-        # self.rate.sleep()
+        self.rate.sleep()
         state_dict = self.post_physics_step() 
 
         return state_dict, self.reset_buf
@@ -189,7 +191,7 @@ class PandaRealRobotEnv():
         if len(env_ids) > 0 and self.auto_reset_on_episode_end:
             self.reset()
         state_dict = self.get_state_dict()
-        state_dict = self.state_filter.filter_joint_state(copy.deepcopy(state_dict))
+        state_dict = self.state_filter.filter_joint_state(copy.deepcopy(state_dict)) #XXX remove deepcopy?
 
         self.reset_buf[:] = torch.where(
             self.progress_buf >= self.max_episode_length, torch.ones_like(self.reset_buf), self.reset_buf)
@@ -197,6 +199,8 @@ class PandaRealRobotEnv():
         return state_dict
 
     def get_state_dict(self):
+        #XX remove deepcopy
+        #XX check dict to device
         state_dict = copy.deepcopy(self.robot_state)
         state_dict['tstep'] = torch.as_tensor([self.tstep]).unsqueeze(0)
         state_dict = dict_to_device(state_dict, self.device)

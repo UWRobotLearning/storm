@@ -91,7 +91,7 @@ class RobotWorldPublisher():
                 marker_list = self.get_sphere_marker_list(robot_spheres)
                 self.robot_sphere_marker_array.markers = marker_list
 
-                _, cost, done_task, cost_terms, done_cost, done_info = self.task.forward(self.robot_state, None)
+                # _, cost, done_task, cost_terms, done_cost, done_info = self.task.forward(self.robot_state, None)
                 # print(cost_terms['manip_cost'], cost_terms['manip_score'])
                 # print(done_info['self_coll_dist'], done_info['self_cost_w'])
                 #publish world

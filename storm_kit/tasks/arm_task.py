@@ -115,17 +115,17 @@ class ArmTask(nn.Module):
                 horizon = self.horizon + 1,
                 device=self.device)
 
-        # self.primitive_collision_cost = PrimitiveCollisionCost(
-        #     world_cfg=world_cfg, # robot_collision_params=cfg.robot_collision_params,
-        #     world_collision_params=cfg.world_collision_params, 
-        #     batch_size= self.batch_size * self.horizon, #self.num_instances * 
-        #     device=self.device, **self.cfg['cost']['primitive_collision'])
-        
-        self.primitive_collision_cost = torch.compile(PrimitiveCollisionCost(
+        self.primitive_collision_cost = PrimitiveCollisionCost(
             world_cfg=world_cfg, # robot_collision_params=cfg.robot_collision_params,
             world_collision_params=cfg.world_collision_params, 
             batch_size= self.batch_size * self.horizon, #self.num_instances * 
-            device=self.device, **self.cfg['cost']['primitive_collision']))
+            device=self.device, **self.cfg['cost']['primitive_collision'])
+        
+        # self.primitive_collision_cost = torch.compile(PrimitiveCollisionCost(
+        #     world_cfg=world_cfg, # robot_collision_params=cfg.robot_collision_params,
+        #     world_collision_params=cfg.world_collision_params, 
+        #     batch_size= self.batch_size * self.horizon, #self.num_instances * 
+        #     device=self.device, **self.cfg['cost']['primitive_collision']))
 
         # if cfg['cost']['robot_self_collision']['weight'] > 0.0:
         # self.robot_self_collision_cost = RobotSelfCollisionCost(
@@ -314,7 +314,7 @@ class ArmTask(nn.Module):
 
         return obs
 
-
+    @torch.jit.export
     def compute_termination(self, 
                             state_dict: Dict[str,torch.Tensor], 
                             act_batch: Optional[torch.Tensor]=None,
@@ -338,6 +338,7 @@ class ArmTask(nn.Module):
                 # link_pos_batch = link_pos_batch.view(-1, self.num_links, 3)
                 # link_rot_batch = link_rot_batch.view(-1, self.num_links, 3, 3)
                 # link_pose_dict = state_dict['link_pose_dict']
+                print("entered primitive collision cost")
                 link_spheres_dict = state_dict['link_spheres_dict']
                 self_coll_dist = state_dict['self_coll_dist']
                 # coll_cost, coll_cost_info = self.primitive_collision_cost.forward(link_pos_batch, link_rot_batch)
@@ -347,21 +348,22 @@ class ArmTask(nn.Module):
                 termination = torch.logical_or(termination, collision_violation)
                 term_cost += coll_cost
                 info = coll_cost_info
+        if self.cfg['cost']['state_bound']['weight'] > 0:
+            with record_function('arm_task:bound_cost'):
+                print("entered bound cost")
+                state_batch = torch.cat((q_pos_batch, q_vel_batch, q_acc_batch), dim=-1).view(-1, 3*self.n_dofs)
+                bound_cost, bound_cost_info = self.bound_cost.forward(state_batch)
+                in_bounds = bound_cost_info['in_bounds']#[..., 0:2*self.n_dofs] #only use qpos and qvel
+                bounds_violation = torch.logical_not(in_bounds).sum(-1)
+                termination = torch.logical_or(termination, bounds_violation)
+                term_cost += bound_cost
+                info['in_bounds'] = bound_cost_info['in_bounds'].view(*orig_size, -1)
+                info['bound_dist'] = bound_cost_info['bound_dist'].view(*orig_size, -1)
 
-        with record_function('arm_task:bound_cost'):
-            state_batch = torch.cat((q_pos_batch, q_vel_batch, q_acc_batch), dim=-1).view(-1, 3*self.n_dofs)
-            bound_cost, bound_cost_info = self.bound_cost.forward(state_batch)
-            in_bounds = bound_cost_info['in_bounds']#[..., 0:2*self.n_dofs] #only use qpos and qvel
-            bounds_violation = torch.logical_not(in_bounds).sum(-1)
-            termination = torch.logical_or(termination, bounds_violation)
-            term_cost += bound_cost
-            info['in_bounds'] = bound_cost_info['in_bounds'].view(*orig_size, -1)
-            info['bound_dist'] = bound_cost_info['bound_dist'].view(*orig_size, -1)
-
-        with record_function('arm_task:compute_success'):
-            success = self.compute_success(state_dict).flatten()
-            termination = torch.logical_or(termination, success)
-            info['success'] = success
+            with record_function('arm_task:compute_success'):
+                success = self.compute_success(state_dict).flatten()
+                termination = torch.logical_or(termination, success)
+                info['success'] = success
             
         # termination = torch.logical_or(collision_violation, bounds_violation)
         # termination_cost = coll_cost +  bound_cost
@@ -382,35 +384,45 @@ class ArmTask(nn.Module):
     @torch.jit.export
     def compute_full_state(self, state_dict: Dict[str,torch.Tensor], debug:bool=False)->Dict[str, Union[torch.Tensor, Dict[str, torch.Tensor], Dict[str, Tuple[torch.Tensor, torch.Tensor]]]]:
         # if 'state_seq' not in state_dict:
+        # print('in compute full state')
+        # for k in state_dict:
+        #     print(k, state_dict[k].device)
+
         q_pos = state_dict['q_pos'].to(device=self.device)
         q_vel = state_dict['q_vel'].to(device=self.device)
         q_acc = state_dict['q_acc'].to(device=self.device)
 
         # ee_pos_batch, ee_rot_batch, lin_jac_batch, ang_jac_batch, ee_lin_vel, ee_ang_vel = self.robot_model.compute_fk_and_jacobian(
         #     q_pos.reshape(-1, q_pos.shape[-1]), q_vel.view(-1, self.n_dofs), self.cfg['ee_link_name'])
-
+        st=time.time()
+        #check time + device
         with record_function("arm_task: fk + jacobian"):
             link_pose_dict, link_spheres_dict, self_coll_dist, lin_jac, ang_jac = self.robot_model.compute_fk_and_jacobian(
                 q_pos.view(-1, self.n_dofs), q_vel.view(-1, self.n_dofs),
-                link_name=self.ee_link_name)
-
+                link_name=self.ee_link_name) #could be issue
+        print('compute_full_state:fk', time.time()-st)
+        
         ee_pos, ee_rot = link_pose_dict[self.ee_link_name]
-        ee_quat = matrix_to_quaternion(ee_rot)
+        st1 = time.time()
+        ee_quat = matrix_to_quaternion(ee_rot) #Could be issue
+        print("compute_full_state:quat", time.time()-st1)
 
         # ee_pos = ee_pos.view(*orig_size, -1)
         # ee_rot = ee_rot.view(*orig_size, 3, 3)
         # ee_quat = ee_quat.view(*orig_size, -1)
         # lin_jac = lin_jac.view(*orig_size, 3, -1)
         # ang_jac = ang_jac.view(*orig_size, 3, -1)
+        st3 = time.time()
         ee_pos = ee_pos.view(*q_pos.shape[0:-1], -1)
         ee_rot = ee_rot.view(*q_pos.shape[0:-1], 3, 3)
         ee_quat = ee_quat.view(*q_pos.shape[0:-1], -1)
         lin_jac = lin_jac.view(*q_pos.shape[0:-1], 3, -1)
         ang_jac = ang_jac.view(*q_pos.shape[0:-1], 3, -1)
 
-        ee_jac = torch.cat((ang_jac, lin_jac), dim=-2)
+        ee_jac = torch.cat((ang_jac, lin_jac), dim=-2) #check
         ee_vel_twist = torch.matmul(ee_jac, q_vel.unsqueeze(-1)).squeeze(-1)
         ee_acc_twist = torch.matmul(ee_jac, q_acc.unsqueeze(-1)).squeeze(-1)
+        print("compute_full_state:reshape", time.time()-st3)
 
         # get link poses:
         # link_pos_list = []

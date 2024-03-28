@@ -11,11 +11,11 @@ import time
 from hydra import compose, initialize
 import isaacgym #this is annoying and needed because we are importing isaacgymenvs task map for using hydra.
 import torch
-torch.multiprocessing.set_start_method('spawn',force=True)
-torch.set_num_threads(8)
-torch.backends.cudnn.benchmark = False
-torch.backends.cuda.matmul.allow_tf32 = True
-torch.backends.cudnn.allow_tf32 = True
+# torch.multiprocessing.set_start_method('spawn',force=True)
+# torch.set_num_threads(8)
+# torch.backends.cudnn.benchmark = False
+# torch.backends.cuda.matmul.allow_tf32 = True
+# torch.backends.cudnn.allow_tf32 = True
 
 #ROS Imports
 import rospy
@@ -126,7 +126,6 @@ class MPCNode():
                 policy_input = {
                     'states': self.state
                 }
-
                 #get mpc command
                 # st=time.time()
 
@@ -141,6 +140,7 @@ class MPCNode():
                     rospy.loginfo('[MPCPoseReacher]: Controller running')
                     self.start_t = rospy.get_time()
                 self.tstep = rospy.get_time() - self.start_t
+
 
             else:
                 if (not self.state_sub_on) and (self.first_iter):

@@ -48,11 +48,13 @@ class MPCPolicy(Policy):
     def get_action(self, obs_dict, deterministic=False): #, num_samples=1):
         state_dict = obs_dict['states']
         for key, tensor in state_dict.items():
-            print(f"Device of tensor '{key}':", tensor.device)
+            pass
+            # print(f"Device of tensor '{key}':", tensor.device)
         with record_function('mpc_policy:get_action'):
             st = time.time()
             curr_action_seq, _, _ = self.controller.sample(
                 state_dict, shift_steps=1, deterministic=deterministic)#, calc_val=False, num_samples=num_samples)
+            # torch.cuda.synchronize()
             print("Time to get action: ", time.time() - st)
         action = curr_action_seq[:, 0]
         info = {}

@@ -182,13 +182,12 @@ class GaussianMPC(Controller):
     def sample(self, state, shift_steps:int=1, n_iters=None, deterministic:bool=False, calc_val:bool=False):
         st = time.time()
         distrib_info, aux_info =  self.optimize(state, shift_steps, n_iters, calc_val=calc_val)
-        
+        # torch.cuda.synchronize()
         value = distrib_info['optimal_value'] if 'optimal_value' in distrib_info else 0.0
         if deterministic:
+            print("Time to sample: ", time.time() - st)
             return distrib_info['mean'].data , value, aux_info
-        
         samples = self.generate_noise(distrib_info) #, num_samples)
-        print("Time to sample: ", time.time() - st)
         return samples, value, aux_info
 
     def generate_noise(self, distrib_info): #, num_samples):
@@ -271,22 +270,36 @@ class GaussianMPC(Controller):
             ----------
             state : dict or torch.Tensor
          """
-        
+        st= time.time()
         act_seq = self.sample_action_sequences(state=state)
-        
+        # print("generate rollouts overhead 1: ", time.time() - st)
+        # print('in generate rollouts, before rollout open loop')
+        # for k in state:
+        #     print(k, state[k].device)
+
         with record_function('mpc:dynamics_model_rollout'):
             state_dict = self.dynamics_model.rollout_open_loop(state, act_seq)
+
+        # print('in generate rollouts, after rollout open loop')
+        # for k in state_dict:
+        #     print(k, state_dict[k].device)
+        
+            # print("generate rollouts overhead 2: ", time.time() - st)
+
         # if act_seq is None: act_seq = cl_act_seq
         # act_seq = torch.cat([act_seq, cl_act_seq], dim=1) if cl_act_seq is not None else act_seq
 
         with record_function('gaussian_mpc:compute_full_state'):
             full_state_dict = self.task.compute_full_state(state_dict)
+            print("generate rollouts overhead 3: ", time.time() - st)
 
         with record_function("gaussian_mpc:compute_cost"):
             cost_seq, cost_terms = self.task.compute_cost(full_state_dict, act_seq)
+            print("generate rollouts overhead 4: ", time.time() - st)
 
         with record_function("gaussian_mpc:compute_termination"):
-            term_seq, term_cost, term_info = self.task.compute_termination(full_state_dict, act_seq)
+            term_seq, term_cost, term_info = self.task.compute_termination(full_state_dict, act_seq, compute_full_state=False)
+            print("generate rollouts overhead 5: ", time.time() - st)
 
         cost_terms = {**cost_terms, **term_info}
 
@@ -297,6 +310,7 @@ class GaussianMPC(Controller):
         if self.vf is not None:
             with record_function("gaussian_mpc:value_fn_inference"):
                 obs = self.task.compute_observations(full_state_dict, compute_full_state=False, cost_terms=cost_terms)
+                print("generate rollouts overhead 6: ", time.time() - st)
                 #normalize obs
                 # if self.obs_mean is not None:
                 #     obs -= self.obs_mean

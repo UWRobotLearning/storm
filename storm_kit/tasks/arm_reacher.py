@@ -166,7 +166,7 @@ class ArmReacher(ArmTask):
         
         return cost, cost_terms
 
-
+    @torch.jit.export
     def compute_termination(self, 
             state_dict: Dict[str,torch.Tensor], 
             act_batch: Optional[torch.Tensor]=None,

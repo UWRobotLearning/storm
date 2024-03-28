@@ -25,6 +25,7 @@ from abc import abstractmethod
 import torch
 import torch.nn as nn
 from torch.profiler import record_function
+import time
 
 class Controller(nn.Module):
     """Base class for sampling based controllers."""
@@ -219,7 +220,7 @@ class Controller(nn.Module):
         info: dict
             dictionary with side-information
         """
-
+        st = time.time()
         n_iters = n_iters if n_iters is not None else self.n_iters
 
         aux_info = {} #TODO: Return rollout trajectories? 
@@ -228,6 +229,7 @@ class Controller(nn.Module):
         if self.hotstart:
             with record_function('mpc:hotstart'):
                 self._shift(shift_steps)
+                print("Time taken to hotstart: ", time.time() - st)
         else:
             self.reset_distribution()
             
@@ -235,16 +237,20 @@ class Controller(nn.Module):
         # with torch.cuda.amp.autocast(enabled=True):
         with torch.no_grad():
             for _ in range(n_iters):
+                print("Iteration: ", _)
                 # generate random simulated trajectories
                 with record_function('mpc:generate_rollouts'):
                     trajectory = self.generate_rollouts(state)
+                    print("Time taken to generate rollouts: ", time.time() - st)
 
                 # update distribution parameters
                 with record_function("mpc:update_distribution"):
                     distrib_info = self._update_distribution(trajectory)
+                    print("Time taken to update distribution: ", time.time() - st)
 
                 # check if converged
                 if self.check_convergence():
+                    print("time taken to converge: ", time.time() - st)
                     break
 
         self.trajectories = trajectory
@@ -253,10 +259,12 @@ class Controller(nn.Module):
         value = 0.0
         if calc_val:
             value = self.compute_value(state)
+            print("Time taken to compute value: ", time.time() - st)
 
         self.num_steps += 1
 
         distrib_info['optimal_value'] = value
+        print("Time taken to optimize: ", time.time() - st)
         return distrib_info, aux_info
     
     @abstractmethod

@@ -385,7 +385,7 @@ class ArmBase(RolloutBase):
             q_pos = state_dict['q_pos'].to(device=self.device)
             q_vel = state_dict['q_vel'].to(device=self.device)
             q_acc = state_dict['q_acc'].to(device=self.device)
-            tstep = state_dict['tstep']
+            tstep = state_dict['tstep'].to(device = self.device)
 
             current_state_tensor = torch.cat((q_pos, q_vel, q_acc, tstep), dim=-1)
             
