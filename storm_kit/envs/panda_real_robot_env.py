@@ -36,8 +36,7 @@ class PandaRealRobotEnv():
         self.joint_states_topic = rospy.get_param('~joint_states_topic', 'joint_states')
         self.joint_command_topic = rospy.get_param('~joint_command_topic', 'franka_motion_control/joint_command')
         self.joint_names = rospy.get_param('~robot_joint_names', ['panda_joint1', 'panda_joint2', 'panda_joint3', 'panda_joint4', 'panda_joint5', 'panda_joint6', 'panda_joint7'])
-        
-        self.control_dt = self.cfg.joint_control.control_dt
+        self.control_dt = 0.02 #self.cfg.joint_control.control_dt
         self.robot_default_dof_pos = torch.tensor(self.robot_default_dof_pos, device=self.device).unsqueeze(0)
 
         self.mpc_command = JointState()
@@ -62,7 +61,7 @@ class PandaRealRobotEnv():
         self.state_sub = rospy.Subscriber(self.joint_states_topic, JointState, self.robot_state_callback, queue_size=1)
 
         self.control_freq = float(1.0/self.control_dt)
-        # self.rate = rospy.Rate(self.control_freq)
+        self.rate = rospy.Rate(self.control_freq)
 
         self.state_sub_on = False
         self.tstep = 0
@@ -249,7 +248,7 @@ class PandaRealRobotEnv():
                 if (curr_error <= 0.005) or (curr_num_steps == max_steps -1):
                     print('[PandaRobotEnv]: Reset joint error = {}', curr_error)
                     break
-                # self.rate.sleep()
+                self.rate.sleep()
             except KeyboardInterrupt:
                 self.close()
 

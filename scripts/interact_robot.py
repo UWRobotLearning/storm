@@ -149,7 +149,7 @@ class MPCNode():
                     rospy.loginfo('[MPCPoseReacher]: Waiting for ee goal.')
             
             self.first_iter = False
-            self.rate.sleep()
+            # self.rate.sleep()
     
     def close(self):        
         self.env.close()
