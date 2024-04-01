@@ -31,6 +31,7 @@ from copy import deepcopy
 from .control_base import Controller
 from .control_utils import generate_noise, scale_ctrl, gaussian_entropy, matrix_cholesky
 from .sample_libs import StompSampleLib, HaltonSampleLib, RandomSampleLib, HaltonStompSampleLib, MultipleSampleLib
+import time
 
 class GaussianMPC(Controller):
     """
@@ -266,7 +267,7 @@ class GaussianMPC(Controller):
             ----------
             state : dict or torch.Tensor
          """
-        
+        st = time.time()
         num_policy_rollouts = 0
         if self.num_cl_particles > 0 and self.use_cl_std:
             num_policy_rollouts = self.num_cl_particles
@@ -278,16 +279,18 @@ class GaussianMPC(Controller):
                 deterministic=True)
             num_policy_rollouts = 0
             self.mean_action_cl.data = rl_info['cl_act_seq'][:,0]
+            print('CL rollout time', time.time()-st)
         
         cl_act_seq = None
         act_seq = self.sample_action_sequences(state=state)
+        print('Sample time', time.time()-st)
         with record_function('mpc:dynamics_model_rollout'):
             state_dict, rollout_info = self.dynamics_model.compute_rollouts(
                 state, act_seq, sampling_policy=self.sampling_policy,
                 num_policy_rollouts=num_policy_rollouts,
             )
         cl_act_seq = rollout_info['cl_act_seq']
-        
+        print('Rollout time', time.time()-st)   
         if act_seq is None: act_seq = cl_act_seq
         act_seq = torch.cat([act_seq, cl_act_seq], dim=1) if cl_act_seq is not None else act_seq
 
@@ -300,9 +303,11 @@ class GaussianMPC(Controller):
         # import pdb; pdb.set_trace()
         with record_function("gaussian_mpc:compute_cost"):
             cost_seq, cost_terms = self.task.compute_cost(state_dict, act_seq)
+            print('Cost time', time.time()-st)
 
         with record_function("gaussian_mpc:compute_termination"):
             term_seq, term_cost, term_info = self.task.compute_termination(state_dict, act_seq)
+            print('Term time', time.time()-st)
 
         cost_terms = {**cost_terms, **term_info}
 
