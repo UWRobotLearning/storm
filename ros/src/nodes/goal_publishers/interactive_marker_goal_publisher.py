@@ -25,7 +25,7 @@ class InteractiveMarkerGoalPub():
 
         self.joint_states_topic = rospy.get_param('~joint_states_topic', 'joint_states')
         self.ee_goal_topic = rospy.get_param('~ee_goal_topic', 'ee_goal')
-        self.goal_pub_freq = rospy.get_param('~goal_pub_freq', 10)
+        self.goal_pub_freq = rospy.get_param('~goal_pub_freq', 50)
         self.fixed_frame = rospy.get_param('~fixed_frame', 'base_link')
         self.robot_urdf = os.path.join(self.storm_path, rospy.get_param('~robot_urdf', 'content/assets/urdf/franka_description/franka_panda_no_gripper.urdf'))
         # self.robot_config = os.path.join(self.storm_path, rospy.get_param('~robot_config', 'content/configs/task/robot/FrankaPandaReal.yaml'))
@@ -41,9 +41,12 @@ class InteractiveMarkerGoalPub():
         self.state_sub = rospy.Subscriber(self.joint_states_topic, JointState, self.robot_state_callback, queue_size=1)
 
         #STORM Related
-        initialize(config_path="../../../../content/configs/gym", job_name="robot_world_publisher")
+        initialize(config_path="../../../../content/configs/gym", job_name="goal_pub")
         self.config = compose(config_name="config", overrides=["task=FrankaReacherRealRobot"])
-        self.robot_config = self.config.task.robot        
+        self.robot_config = self.config.task.robot   
+
+        # self.robot_config = os.path.join(self.storm_path, rospy.get_param('~robot_config', 'content/configs/gym/task/robot/FrankaPandaReal.yaml'))
+
         # self.robot_model = DifferentiableRobotModel(self.robot_config,
         #                     device=self.device)
         self.robot_model = torch.jit.script(DifferentiableRobotModel(self.robot_config))

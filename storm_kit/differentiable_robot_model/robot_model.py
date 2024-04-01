@@ -430,11 +430,9 @@ class DifferentiableRobotModel(torch.nn.Module):
             self, q:torch.Tensor, qd:torch.Tensor, link_name: str
     ) -> Tuple[Dict[str, Tuple[torch.Tensor, torch.Tensor]], Dict[str, torch.Tensor], torch.Tensor, torch.Tensor, torch.Tensor]:
 
-        
         with record_function("robot_model:fk"):
             # ee_pos, ee_rot = self.compute_forward_kinematics(q, qd) #, link_name)
             link_pose_dict, link_collision_spheres_dict, self_collision_dist = self.compute_forward_kinematics(q, qd) #, link_name)
-
         ee_pos = link_pose_dict[link_name][0]
         ee_rot = link_pose_dict[link_name][1]
 
@@ -446,7 +444,6 @@ class DifferentiableRobotModel(torch.nn.Module):
         ang_jac = self._ang_jac
 
         parent_joint_id = self._bodies[self._name_to_idx_map[link_name]].joint_id
-        
         with record_function("robot_model:jac"):
             # while link_name != self._bodies[0].name:
             for i, idx in enumerate(self._controlled_joints):
@@ -465,7 +462,6 @@ class DifferentiableRobotModel(torch.nn.Module):
 
                 # link_name = self._urdf_model.get_name_of_parent_body(link_name)
                 # joint_id = self._bodies[self._name_to_idx_map[link_name]].joint_id
-
         # return ee_pos, ee_rot, lin_jac, ang_jac, ee_lin_vel, ee_ang_vel
         return link_pose_dict, link_collision_spheres_dict, self_collision_dist, lin_jac, ang_jac
 

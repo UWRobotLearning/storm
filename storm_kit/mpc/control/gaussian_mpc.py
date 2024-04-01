@@ -259,6 +259,84 @@ class GaussianMPC(Controller):
         "Generate rollouts from closed loop policy"
         pass
     
+    # def generate_rollouts(self, state):
+    #     """
+    #         Samples a batch of actions, rolls out trajectories for each particle
+    #         and returns the resulting observations, costs,  
+    #         actions
+
+    #         Parameters
+    #         ----------
+    #         state : dict or torch.Tensor
+    #      """
+    #     st = time.time()
+    #     num_policy_rollouts = 0
+    #     if self.num_cl_particles > 0 and self.use_cl_std:
+    #         num_policy_rollouts = self.num_cl_particles
+    #     elif self.num_cl_particles > 0 and (not self.use_cl_std):
+    #         #rollout cl policy to get mean
+    #         state_tensor = torch.cat([state[k] for k in state], dim=-1).to(self.device)
+    #         _, rl_info = self.dynamics_model.rollout_closed_loop(
+    #             state_tensor, self.sampling_policy, num_rollouts=1,
+    #             deterministic=True)
+    #         num_policy_rollouts = 0
+    #         self.mean_action_cl.data = rl_info['cl_act_seq'][:,0]
+    #         print('CL rollout time', time.time()-st)
+        
+    #     cl_act_seq = None
+    #     act_seq = self.sample_action_sequences(state=state)
+    #     print('Sample time', time.time()-st)
+    #     with record_function('mpc:dynamics_model_rollout'):
+    #         state_dict, rollout_info = self.dynamics_model.compute_rollouts(
+    #             state, act_seq, sampling_policy=self.sampling_policy,
+    #             num_policy_rollouts=num_policy_rollouts,
+    #         )
+    #     cl_act_seq = rollout_info['cl_act_seq']
+    #     print('Rollout time', time.time()-st)   
+    #     if act_seq is None: act_seq = cl_act_seq
+    #     act_seq = torch.cat([act_seq, cl_act_seq], dim=1) if cl_act_seq is not None else act_seq
+
+    #     # print(state_dict.keys())
+    #     # input('....')
+    #     # print('before')
+    #     # state_before = deepcopy(state_dict)
+
+    #     # full_state_dict = self.task.compute_full_state(state_dict)
+    #     # import pdb; pdb.set_trace()
+    #     with record_function("gaussian_mpc:compute_cost"):
+    #         cost_seq, cost_terms = self.task.compute_cost(state_dict, act_seq)
+    #         print('Cost time', time.time()-st)
+
+    #     with record_function("gaussian_mpc:compute_termination"):
+    #         term_seq, term_cost, term_info = self.task.compute_termination(state_dict, act_seq)
+    #         print('Term time', time.time()-st)
+
+    #     cost_terms = {**cost_terms, **term_info}
+
+    #     # if term_cost is not None:
+    #     #     cost_seq += term_cost
+    #     q_preds = None
+    #     v_preds = None
+    #     if self.vf is not None:
+    #         with record_function("gaussian_mpc:value_fn_inference"):
+    #             obs = self.task.compute_observations(state_dict, compute_full_state=False, cost_terms=cost_terms)
+    #             # q_preds = self.qf({'obs': obs}, act_seq).clamp(min=self.V_min, max=self.V_max) #, max=self.V_max
+    #             v_preds, _ = self.vf({'obs': obs.view(-1, obs.shape[-1])})#.clamp(min=self.V_min, max=self.V_max)
+    #             v_preds = v_preds.view(self.state_batch_size, self.num_particles, self.horizon)
+    #             v_preds = self.V_std * v_preds + self.V_mean #unnormalize
+
+    #     sim_trajs = dict(
+    #         actions=act_seq,
+    #         costs=cost_seq,
+    #         terminals=term_seq,
+    #         term_cost=term_cost,
+    #         ee_pos_seq=state_dict['ee_pos'],
+    #         value_preds=v_preds,
+    #         q_value_preds=q_preds,
+    #     )
+
+    #     return sim_trajs
+
     @torch.no_grad()
     def generate_rollouts(self, state:Dict[str, torch.Tensor]):
         """

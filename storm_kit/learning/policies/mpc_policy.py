@@ -6,6 +6,7 @@ from torch.profiler import record_function
 import time
 from storm_kit.learning.policies import Policy
 from storm_kit.mpc.control import MPPI
+from torch.utils._pytree import tree_map
 from storm_kit.util_file import join_path, get_assets_path
 
 class MPCPolicy(Policy):
@@ -47,18 +48,57 @@ class MPCPolicy(Policy):
     @torch.autocast(device_type='cuda', enabled=False, dtype=torch.float16)
     def get_action(self, obs_dict, deterministic=False): #, num_samples=1):
         state_dict = obs_dict['states']
+        # state_dict_to_device = tree_map(lambda x: x.to('cuda' if torch.cuda.is_available() else 'cpu'), state_dict)
         for key, tensor in state_dict.items():
             pass
             # print(f"Device of tensor '{key}':", tensor.device)
         with record_function('mpc_policy:get_action'):
-            st = time.time()
-            curr_action_seq, _, _ = self.controller.sample(
-                state_dict, shift_steps=1, deterministic=deterministic)#, calc_val=False, num_samples=num_samples)
+            # st = time.time()
+            # curr_action_seq, _, _ = self.controller.sample(
+            #     state_dict, shift_steps=1, deterministic=deterministic)#, calc_val=False, num_samples=num_samples)
             # torch.cuda.synchronize()
-            print("Time to get action: ", time.time() - st)
+            # print("Time to get action: ", time.time() - st)
+            st = torch.cuda.Event(enable_timing=True)
+            en = torch.cuda.Event(enable_timing=True)
+            st.record()
+            curr_action_seq, _, _ = self.controller.sample(
+                state_dict, shift_steps=1, deterministic=deterministic)
+            torch.cuda.synchronize()
+            en.record()
+            torch.cuda.synchronize()  # Wait for the events to be recorded!
+            print("Time to get action: ", st.elapsed_time(en))
+
         action = curr_action_seq[:, 0]
         info = {}
         return action, info
+        
+    # @torch.no_grad()
+    # @torch.autocast(device_type='cuda', enabled=False, dtype=torch.float16)
+    # def get_action(self, obs_dict, deterministic=False):
+    #     state_dict = obs_dict['states']
+    #     #wrap the core logic in a new function for compilation.
+    #     def compiled_action_logic(state_dict, deterministic):
+    #         with torch.profiler.record_function('mpc_policy:get_action'):
+    #             st = torch.cuda.Event(enable_timing=True)
+    #             en = torch.cuda.Event(enable_timing=True)
+    #             st.record()
+    #             curr_action_seq, _, _ = self.controller.sample(
+    #                 state_dict, shift_steps=1, deterministic=deterministic)
+    #             torch.cuda.synchronize()
+    #             en.record()
+    #             torch.cuda.synchronize()  # Wait for the events to be recorded!
+    #             print("Time to get action: ", st.elapsed_time(en))
+    #         action = curr_action_seq[:, 0]
+    #         return action
+        
+    #     #use torch.compile to optimize the compiled_action_logic function.
+    #     optimized_action_logic = torch.compile(compiled_action_logic)
+        
+    #     #ensure that tensors are moved to the appropriate device before calling the compiled function.
+    #     state_dict_to_device = tree_map(lambda x: x.to('cuda' if torch.cuda.is_available() else 'cpu'), state_dict)
+    #     action = optimized_action_logic(state_dict_to_device, deterministic)
+    #     info = {}
+    #     return action, info
 
     def log_prob(self, input_dict: Dict[str, torch.Tensor], actions: torch.Tensor):
         dist = self.forward(input_dict)
@@ -108,7 +148,7 @@ class MPCPolicy(Policy):
         #     sampling_policy=sampling_policy,
         #     vf=vf, qf=qf,
         #     tensor_args=self.tensor_args)
-        # return controller
+    # return controller
 
         controller = torch.compile(MPPI(
             **mppi_params, 

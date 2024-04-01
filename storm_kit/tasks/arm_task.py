@@ -115,17 +115,17 @@ class ArmTask(nn.Module):
                 horizon = self.horizon + 1,
                 device=self.device)
 
-        self.primitive_collision_cost = PrimitiveCollisionCost(
-            world_cfg=world_cfg, # robot_collision_params=cfg.robot_collision_params,
-            world_collision_params=cfg.world_collision_params, 
-            batch_size= self.batch_size * self.horizon, #self.num_instances * 
-            device=self.device, **self.cfg['cost']['primitive_collision'])
-        
-        # self.primitive_collision_cost = torch.compile(PrimitiveCollisionCost(
+        # self.primitive_collision_cost = PrimitiveCollisionCost(
         #     world_cfg=world_cfg, # robot_collision_params=cfg.robot_collision_params,
         #     world_collision_params=cfg.world_collision_params, 
         #     batch_size= self.batch_size * self.horizon, #self.num_instances * 
-        #     device=self.device, **self.cfg['cost']['primitive_collision']))
+        #     device=self.device, **self.cfg['cost']['primitive_collision'])
+        
+        self.primitive_collision_cost = torch.compile(PrimitiveCollisionCost(
+            world_cfg=world_cfg, # robot_collision_params=cfg.robot_collision_params,
+            world_collision_params=cfg.world_collision_params, 
+            batch_size= self.batch_size * self.horizon, #self.num_instances * 
+            device=self.device, **self.cfg['cost']['primitive_collision']))
 
         # if cfg['cost']['robot_self_collision']['weight'] > 0.0:
         # self.robot_self_collision_cost = RobotSelfCollisionCost(
@@ -388,9 +388,9 @@ class ArmTask(nn.Module):
         # for k in state_dict:
         #     print(k, state_dict[k].device)
 
-        q_pos = state_dict['q_pos'].to(device=self.device)
-        q_vel = state_dict['q_vel'].to(device=self.device)
-        q_acc = state_dict['q_acc'].to(device=self.device)
+        q_pos = state_dict['q_pos']
+        q_vel = state_dict['q_vel']
+        q_acc = state_dict['q_acc']
 
         # ee_pos_batch, ee_rot_batch, lin_jac_batch, ang_jac_batch, ee_lin_vel, ee_ang_vel = self.robot_model.compute_fk_and_jacobian(
         #     q_pos.reshape(-1, q_pos.shape[-1]), q_vel.view(-1, self.n_dofs), self.cfg['ee_link_name'])
