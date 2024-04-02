@@ -20,6 +20,8 @@ from storm_kit.differentiable_robot_model.urdf_utils import URDFRobotModel
 from storm_kit.geom.geom_types import tensor_sphere
 from storm_kit.util_file import join_path, get_assets_path
 from torch.profiler import record_function
+from hydra import initialize, compose
+
 
 # import diff_robot_data
 
@@ -1106,18 +1108,23 @@ if __name__ == "__main__":
     import os
     from storm_kit.util_file import get_assets_path
     import time 
-    urdf_path = os.path.abspath(os.path.join(get_assets_path(), 'urdf/franka_description/franka_panda_no_gripper.urdf'))
+    # urdf_path = os.path.abspath(os.path.join(get_assets_path(), 'urdf/franka_description/franka_panda_no_gripper.urdf'))
+    initialize(config_path="../../content/configs/gym", job_name="test")
+    config = compose(config_name="config", overrides=["task=FrankaReacherRealRobot"])
     device = torch.device('cuda:0')
-    robot_model = torch.jit.script(DifferentiableRobotModel(urdf_path, device=device))
+    robot_model = torch.jit.script(DifferentiableRobotModel(config.task.robot, device=device))
 
     #generate fake data
-    batch_size = 100000
+    batch_size = 12000
     q_pos = torch.randn(batch_size, 7, device=device)
     q_vel = torch.randn(batch_size, 7, device=device)
     q_acc = torch.randn(batch_size, 7, device=device)
     
     st = time.time()
-    robot_model.compute_fk_and_jacobian(q_pos, link_name='ee_link')
+    # robot_model.compute_fk_and_jacobian(q_pos, link_name='ee_link')
+    link_pose_dict, link_spheres_dict, self_coll_dist, lin_jac, ang_jac = robot_model.compute_fk_and_jacobian(
+                q_pos, q_vel,
+                link_name='ee_link')
     print(time.time()-st)
 
 
