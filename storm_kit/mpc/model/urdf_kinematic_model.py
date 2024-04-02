@@ -62,7 +62,9 @@ class URDFKinematicModel(nn.Module):
         self.horizon:int = cfg['horizon'] #horizon
         self.num_traj_points:int = self.horizon 
 
-        self.robot_model = torch.jit.script(DifferentiableRobotModel(cfg.robot, device=self.device))
+        # self.robot_model = torch.jit.script(DifferentiableRobotModel(cfg.robot, device=self.device))
+        self.robot_model = DifferentiableRobotModel(cfg.robot, device=self.device)
+
         #self.robot_model.half()
         self.n_dofs:int = self.robot_model._n_dofs
         self.d_state:int = 3 * self.n_dofs + 1

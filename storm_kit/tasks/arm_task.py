@@ -66,7 +66,8 @@ class ArmTask(nn.Module):
         self.ee_link_name:str = self.robot_cfg['ee_link_name']
         self.device:torch.device = device
 
-        self.robot_model = torch.jit.script(DifferentiableRobotModel(self.robot_cfg, device=self.device))
+        # self.robot_model = torch.jit.script(DifferentiableRobotModel(self.robot_cfg, device=self.device)) #to debug speed issue
+        self.robot_model = DifferentiableRobotModel(self.robot_cfg, device=self.device)
         self.n_dofs:int = self.robot_model._n_dofs
         self.robot_default_dof_pos:torch.Tensor = torch.as_tensor(self.robot_cfg['default_dof_pos'], device=self.device).unsqueeze(0)
 

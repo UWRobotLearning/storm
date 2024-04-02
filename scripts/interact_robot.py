@@ -43,7 +43,7 @@ class MPCNode():
         self.save_data = rospy.get_param('~save_data', False)
         self.load_pretrained_policy = rospy.get_param('~load_pretrained', False)
         # print("config used: ", self.config)
-        self.control_dt = 0.01 #self.config.task.joint_control.control_dt
+        self.control_dt = self.config.task.joint_control.control_dt
         self.n_dofs = self.config.task.joint_control.n_dofs
         self.device = self.config.rl_device
         

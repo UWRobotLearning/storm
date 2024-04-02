@@ -430,12 +430,13 @@ class DifferentiableRobotModel(torch.nn.Module):
             self, q:torch.Tensor, qd:torch.Tensor, link_name: str
     ) -> Tuple[Dict[str, Tuple[torch.Tensor, torch.Tensor]], Dict[str, torch.Tensor], torch.Tensor, torch.Tensor, torch.Tensor]:
 
+        # st = time.time()
         with record_function("robot_model:fk"):
             # ee_pos, ee_rot = self.compute_forward_kinematics(q, qd) #, link_name)
             link_pose_dict, link_collision_spheres_dict, self_collision_dist = self.compute_forward_kinematics(q, qd) #, link_name)
         ee_pos = link_pose_dict[link_name][0]
         ee_rot = link_pose_dict[link_name][1]
-
+        # print('Time taken for FK:', time.time()-st)
         # e_pose = self._bodies[self._name_to_idx_map[link_name]].pose
         # p_e = e_pose.translation()
 

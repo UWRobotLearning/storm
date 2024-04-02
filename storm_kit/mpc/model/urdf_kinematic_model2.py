@@ -31,7 +31,7 @@ from storm_kit.differentiable_robot_model.spatial_vector_algebra import matrix_t
 from .integration_utils import build_int_matrix, build_fd_matrix, tensor_step_acc, tensor_step_vel, tensor_step_pos, tensor_step_jerk
 from storm_kit.learning.policies import Policy
 
-class URDFKinematicModel(nn.Module):
+class URDFKinematicModel2(nn.Module):
     link_names: List[str]
     robot_keys: List[str]
     joint_lim_dicts: List[Dict[str, float]]

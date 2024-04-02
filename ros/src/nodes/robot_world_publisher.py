@@ -54,7 +54,8 @@ class RobotWorldPublisher():
         self.rate = rospy.Rate(500)
         self.state_sub_on = False
 
-        self.robot_model = torch.jit.script(DifferentiableRobotModel(self.config.task.robot,device=self.device))
+        # self.robot_model = torch.jit.script(DifferentiableRobotModel(self.config.task.robot,device=self.device))
+        self.robot_model = DifferentiableRobotModel(self.config.task.robot,device=self.device)    
         # self.robot_model = torch.jit.script(DifferentiableRobotModel(self.robot_cfg, device=self.device))
         self.collision_model = RobotSphereCollision(self.robot_collision_config)
         # self.collision_model.build_batch_features(batch_size=1, clone_pose=True, clone_objs=True)
