@@ -916,13 +916,13 @@ if __name__ == "__main__":
     robot_model = torch.jit.script(DifferentiableRobotModel(urdf_path, device=device))
 
     #generate fake data
-    batch_size = 100000
+    batch_size = 12000
     q_pos = torch.randn(batch_size, 7, device=device)
     q_vel = torch.randn(batch_size, 7, device=device)
     q_acc = torch.randn(batch_size, 7, device=device)
     
     st = time.time()
-    robot_model.compute_fk_and_jacobian(q_pos, link_name='ee_link')
+    robot_model.compute_fk_and_jacobian(q_pos, q_vel, link_name='ee_link')
     print(time.time()-st)
 
 
