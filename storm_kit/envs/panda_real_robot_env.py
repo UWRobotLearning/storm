@@ -36,7 +36,7 @@ class PandaRealRobotEnv():
         self.joint_states_topic = rospy.get_param('~joint_states_topic', 'joint_states')
         self.joint_command_topic = rospy.get_param('~joint_command_topic', 'franka_motion_control/joint_command')
         self.joint_names = rospy.get_param('~robot_joint_names', ['panda_joint1', 'panda_joint2', 'panda_joint3', 'panda_joint4', 'panda_joint5', 'panda_joint6', 'panda_joint7'])
-        self.control_dt = 0.01 #self.cfg.joint_control.control_dt
+        self.control_dt = self.cfg.joint_control.control_dt
         self.robot_default_dof_pos = torch.tensor(self.robot_default_dof_pos, device=self.device).unsqueeze(0)
 
         self.mpc_command = JointState()

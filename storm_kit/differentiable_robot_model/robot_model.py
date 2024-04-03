@@ -233,6 +233,7 @@ class DifferentiableRobotModel(torch.nn.Module):
             urdf_path=self._urdf_path, device=self._device)
         
     def allocate_buffers(self, batch_size:int):
+        print('Allocating buffers')
         self._base_lin_vel = torch.zeros((batch_size, 3), device=self._device)
         self._base_ang_vel = torch.zeros((batch_size, 3), device=self._device)
         self._base_pose_trans = torch.zeros((batch_size, 3), device=self._device)
@@ -1112,7 +1113,7 @@ if __name__ == "__main__":
     initialize(config_path="../../content/configs/gym", job_name="test")
     config = compose(config_name="config", overrides=["task=FrankaReacherRealRobot"])
     device = torch.device('cuda:0')
-    robot_model = torch.jit.script(DifferentiableRobotModel(config.task.robot, device=device))
+    robot_model = DifferentiableRobotModel(config.task.robot, device=device)
 
     #generate fake data
     batch_size = 12000

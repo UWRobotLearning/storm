@@ -50,7 +50,7 @@ class InteractiveMarkerGoalPub():
         # self.robot_model = DifferentiableRobotModel(self.robot_config,
         #                     device=self.device)
         # self.robot_model = torch.jit.script(DifferentiableRobotModel(self.robot_config))
-        self.robot_model = DifferentiableRobotModel(self.robot_config)
+        self.robot_model = torch.jit.script(DifferentiableRobotModel(self.robot_config, device=self.device))
     
         #Buffers
         self.rate = rospy.Rate(self.goal_pub_freq)

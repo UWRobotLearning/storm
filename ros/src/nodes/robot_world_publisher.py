@@ -16,6 +16,7 @@ from storm_kit.differentiable_robot_model import DifferentiableRobotModel
 from storm_kit.differentiable_robot_model.spatial_vector_algebra import quaternion_to_matrix, CoordinateTransform
 from storm_kit.geom.sdf.robot import RobotSphereCollision
 from storm_kit.tasks.arm_reacher import ArmTask
+import numpy as np
 
 class RobotWorldPublisher():
     def __init__(self) -> None:
@@ -51,13 +52,14 @@ class RobotWorldPublisher():
         self.marker_pub = rospy.Publisher("/robot_collision_spheres", MarkerArray, queue_size=1, tcp_nodelay=True, latch=False)
         self.world_marker_pub = rospy.Publisher("/world", MarkerArray, queue_size=1, tcp_nodelay=True, latch=False)
         self.state_sub = rospy.Subscriber(self.joint_states_topic, JointState, self.robot_state_callback, queue_size=1)
-        self.rate = rospy.Rate(500)
+        self.rate = rospy.Rate(100)
         self.state_sub_on = False
+        self.zeros_array = np.zeros(shape = (1, 12, 4), dtype=np.float32) #for testing
 
         # self.robot_model = torch.jit.script(DifferentiableRobotModel(self.config.task.robot,device=self.device))
-        self.robot_model = DifferentiableRobotModel(self.config.task.robot,device=self.device)    
+        self.robot_model = torch.jit.script(DifferentiableRobotModel(self.config.task.robot,device=self.device))    
         # self.robot_model = torch.jit.script(DifferentiableRobotModel(self.robot_cfg, device=self.device))
-        self.collision_model = RobotSphereCollision(self.robot_collision_config)
+        # self.collision_model = RobotSphereCollision(self.robot_collision_config)
         # self.collision_model.build_batch_features(batch_size=1, clone_pose=True, clone_objs=True)
 
 
@@ -89,6 +91,7 @@ class RobotWorldPublisher():
 
                 #publish robot spheres
                 robot_spheres = self.get_robot_collision_spheres(self.robot_state)
+                # print("robot spheres",robot_spheres)
                 marker_list = self.get_sphere_marker_list(robot_spheres)
                 self.robot_sphere_marker_array.markers = marker_list
 
@@ -100,39 +103,55 @@ class RobotWorldPublisher():
                 world_marker_list = self.get_world_marker_list()
                 self.world_marker_pub.publish(world_marker_list)
 
-            self.rate.sleep()
+            # self.rate.sleep()
 
     def get_robot_collision_spheres(self, robot_state):
-        link_pose_dict = self.robot_model.compute_forward_kinematics(
-            robot_state['q_pos'], robot_state['q_vel']) # link_name=self.ee_link_name)
-        
-        # link_pos_seq, link_rot_seq = [], []
-        # for _,k in enumerate(self.link_names):
-        #     # link_pos, link_rot = self.robot_model.get_link_pose(k)
-        #     link_pos, link_rot = link_pose_dict[k]
-        #     link_pos_seq.append(link_pos.unsqueeze(1))
-        #     link_rot_seq.append(link_rot.unsqueeze(1))
-
-        # link_pos_seq = torch.cat(link_pos_seq, axis=1)
-        # link_rot_seq = torch.cat(link_rot_seq, axis=1)
-        # self.collision_model.update_batch_robot_collision_objs(link_pos_seq, link_rot_seq)
-        # print(link_pose_dict[0])
-        for link_name in self.link_names:
-            link_pos  = link_pose_dict[0][link_name][0].unsqueeze(1)
-            link_rot = link_pose_dict[0][link_name][1].unsqueeze(1)
-            link_pose_dict[0][link_name] = (link_pos, link_rot)
-
-        self.collision_model.update_batch_robot_collision_objs(link_pose_dict)
-        spheres = self.collision_model.get_batch_robot_link_spheres()
+        #uncomment for testing
+        # _,robot_batch_spheres,_ = self.robot_model.compute_forward_kinematics(
+        #     robot_state['q_pos'], robot_state['q_vel']) # link_name=self.ee_link_name)
+        # spheres_list = []
+        # for k in robot_batch_spheres:
+        #     spheres_list.append(robot_batch_spheres[k].numpy())
+        # return spheres_list
+    
+        #approach:2
+        _, robot_batch_spheres, _, _, _ = self.robot_model.compute_fk_and_jacobian(
+                robot_state['q_pos'].view(-1, self.n_dofs), robot_state['q_pos'].view(-1, self.n_dofs),
+                link_name=self.ee_link_name)
         spheres_list = []
-        for k in spheres:
-            spheres_list.append(spheres[k].numpy())
+        for k in robot_batch_spheres:
+            spheres_list.append(robot_batch_spheres[k].numpy())
+        return spheres_list
+        
+        # # link_pos_seq, link_rot_seq = [], []
+        # # for _,k in enumerate(self.link_names):
+        # #     # link_pos, link_rot = self.robot_model.get_link_pose(k)
+        # #     link_pos, link_rot = link_pose_dict[k]
+        # #     link_pos_seq.append(link_pos.unsqueeze(1))
+        # #     link_rot_seq.append(link_rot.unsqueeze(1))
 
+        # # link_pos_seq = torch.cat(link_pos_seq, axis=1)
+        # # link_rot_seq = torch.cat(link_rot_seq, axis=1)
+        # # self.collision_model.update_batch_robot_collision_objs(link_pos_seq, link_rot_seq)
+        # # print(link_pose_dict[0])
+        # for link_name in self.link_names:
+        #     link_pos  = link_pose_dict[0][link_name][0].unsqueeze(1)
+        #     link_rot = link_pose_dict[0][link_name][1].unsqueeze(1)
+        #     link_pose_dict[0][link_name] = (link_pos, link_rot)
+
+        # self.collision_model.update_batch_robot_collision_objs(link_pose_dict)
+        # spheres = self.collision_model.get_batch_robot_link_spheres()
+        # spheres_list = []
+        # for k in spheres:
+        #     spheres_list.append(spheres[k].numpy())
+        ####################################################
 
         # self.collision_model.update_batch_robot_collision_objs(link_pos_seq, link_rot_seq)
         # res = self.collision_model.check_self_collisions(link_pos_seq, link_rot_seq)
         # res = torch.max(res, dim=-1)[0]
-        return spheres_list
+
+        # return spheres_list
+        # return self.zeros_array
 
     def get_sphere_marker_list(self, sphere_list):
         markers_list = []
