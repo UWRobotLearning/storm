@@ -335,7 +335,7 @@ class ArmReacher(ArmTask):
                 # self.ee_goal_buff[env_ids, 1] = goal_position_noise[1] * (2.0*torch.rand(self.ee_goal_buff[env_ids, 1].size(), device=self.device, generator=rng) - 1.0)
                 # self.ee_goal_buff[env_ids, 2] = goal_position_noise[2] * (2.0*torch.rand(self.ee_goal_buff[env_ids, 2].size(), device=self.device, generator=rng) - 1.0)
             if self.randomize_target_rotation:
-                link_pose_dict, _, _ = self.robot_model.compute_forward_kinematics(self.robot_default_dof_pos, torch.zeros_like(self.robot_default_dof_pos))
+                link_pose_dict, _, _ = self.robot_model.compute_forward_kinematics(self.robot_default_dof_pos, torch.zeros_like(self.robot_default_dof_pos), dist_calc=True)
                 ee_pos_world, ee_rot_world = link_pose_dict[self.ee_link_name][0], link_pose_dict[self.ee_link_name][1]
                 target_rotation_range = self.task_specs['target_rotation_range']
                 rl, rh = target_rotation_range[0]
@@ -417,7 +417,7 @@ class ArmReacher(ArmTask):
         if joint_goal is not None:
             self.goal_state = torch.as_tensor(joint_goal, device=self.device)
             link_pose_dict = self.robot_model.compute_forward_kinematics(
-                self.goal_state[:,0:self.n_dofs], torch.zeros_like(self.goal_state[:,0:self.n_dofs])) #=self.cfg.model.ee_link_name)
+                self.goal_state[:,0:self.n_dofs], torch.zeros_like(self.goal_state[:,0:self.n_dofs]), dist_calc=True) #=self.cfg.model.ee_link_name)
             # print("link_pose_dict", link_pose_dict)
             print("self.ee_link_name", self.ee_link_name)
             self.goal_ee_pos, self.goal_ee_rot = link_pose_dict[0][self.ee_link_name]

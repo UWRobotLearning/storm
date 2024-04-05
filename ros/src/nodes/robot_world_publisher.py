@@ -51,7 +51,7 @@ class RobotWorldPublisher():
         self.marker_pub = rospy.Publisher("/robot_collision_spheres", MarkerArray, queue_size=1, tcp_nodelay=True, latch=False)
         self.world_marker_pub = rospy.Publisher("/world", MarkerArray, queue_size=1, tcp_nodelay=True, latch=False)
         self.state_sub = rospy.Subscriber(self.joint_states_topic, JointState, self.robot_state_callback, queue_size=1)
-        self.rate = rospy.Rate(500)
+        self.rate = rospy.Rate(100)
         self.state_sub_on = False
 
         self.robot_model = torch.jit.script(DifferentiableRobotModel(self.config.task.robot,device=self.device))
@@ -102,8 +102,15 @@ class RobotWorldPublisher():
             self.rate.sleep()
 
     def get_robot_collision_spheres(self, robot_state):
-        link_pose_dict = self.robot_model.compute_forward_kinematics(
-            robot_state['q_pos'], robot_state['q_vel']) # link_name=self.ee_link_name)
+        _,robot_batch_spheres,_ = self.robot_model.compute_forward_kinematics(
+            robot_state['q_pos'], robot_state['q_vel'], dist_calc=False) # link_name=self.ee_link_name)
+        spheres_list = []
+        for k in robot_batch_spheres:
+            spheres_list.append(robot_batch_spheres[k].numpy())
+        return spheres_list
+
+        # link_pose_dict = self.robot_model.compute_forward_kinematics(
+        #     robot_state['q_pos'], robot_state['q_vel'], dist_calc=False) # link_name=self.ee_link_name)
         
         # link_pos_seq, link_rot_seq = [], []
         # for _,k in enumerate(self.link_names):
@@ -131,7 +138,7 @@ class RobotWorldPublisher():
         # self.collision_model.update_batch_robot_collision_objs(link_pos_seq, link_rot_seq)
         # res = self.collision_model.check_self_collisions(link_pos_seq, link_rot_seq)
         # res = torch.max(res, dim=-1)[0]
-        return spheres_list
+        # return spheres_list
 
     def get_sphere_marker_list(self, sphere_list):
         markers_list = []

@@ -62,7 +62,7 @@ class PandaRealRobotEnv():
         self.state_sub = rospy.Subscriber(self.joint_states_topic, JointState, self.robot_state_callback, queue_size=1)
 
         self.control_freq = float(1.0/self.control_dt)
-        # self.rate = rospy.Rate(self.control_freq)
+        self.rate = rospy.Rate(self.control_freq)
 
         self.state_sub_on = False
         self.tstep = 0

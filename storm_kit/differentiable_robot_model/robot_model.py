@@ -127,6 +127,7 @@ class DifferentiableRobotModel(torch.nn.Module):
         self._base_ang_vel:torch.Tensor = torch.zeros((self._batch_size, 3), device=self._device) #, dtype=self.dtype)
         self._base_pose_trans:torch.Tensor = torch.zeros((self._batch_size, 3), device=self._device) #, dtype=self.dtype)
         self._base_pose_rot:torch.Tensor = torch.eye(3, device=self._device).expand(self._batch_size,3,3) #, dtype=self.dtype)
+        self.zero_tensor:torch.Tensor = torch.zeros((8000, 3), device=self._device) #, dtype=self.dtype)
 
         # here we're making the joint a part of the rigid body
         # while urdfs model joints and rigid bodies separately
@@ -380,7 +381,7 @@ class DifferentiableRobotModel(torch.nn.Module):
     # @tensor_check
     @torch.jit.export
     def compute_forward_kinematics(
-        self, q: torch.Tensor, qd:torch.Tensor #, link_name: str, 
+        self, q: torch.Tensor, qd:torch.Tensor, dist_calc:bool=True #, link_name: str, 
     ) -> Tuple[Dict[str, Tuple[torch.Tensor, torch.Tensor]], Dict[str, torch.Tensor], torch.Tensor]: #recursive: bool = False
         r"""
 
@@ -401,15 +402,12 @@ class DifferentiableRobotModel(torch.nn.Module):
         # qd = torch.zeros_like(q)
         with record_function('robot_model:update_kinematic_state'):
             self.update_kinematic_state(q, qd)
-
-        dist = find_link_distance(self._w_batch_link_collision_spheres, self._self_collision_ignore_dict, self._collision_idx_to_link, self._self_collision_dist_buff)
-        # dist2 = find_link_distance2(self._w_batch_link_collision_spheres, self._self_collision_ignore_dict, self._collision_idx_to_link, self._self_collision_dist_buff2)
+        if dist_calc:
+            dist = find_link_distance(self._w_batch_link_collision_spheres, self._self_collision_ignore_dict, self._collision_idx_to_link, self._self_collision_dist_buff)
+            return self._link_pose_dict, self._w_batch_link_collision_spheres, dist
         
-        # assert torch.allclose(dist, dist2)
+        return self._link_pose_dict, self._w_batch_link_collision_spheres, self.zero_tensor
         
-        
-        return self._link_pose_dict, self._w_batch_link_collision_spheres, dist
-    
         # link_pose_dict = self._link_pose_dict
         # for link_name in self._link_names:
         #     pose = self._bodies[self._name_to_idx_map[link_name]].pose
@@ -433,7 +431,7 @@ class DifferentiableRobotModel(torch.nn.Module):
         
         with record_function("robot_model:fk"):
             # ee_pos, ee_rot = self.compute_forward_kinematics(q, qd) #, link_name)
-            link_pose_dict, link_collision_spheres_dict, self_collision_dist = self.compute_forward_kinematics(q, qd) #, link_name)
+            link_pose_dict, link_collision_spheres_dict, self_collision_dist = self.compute_forward_kinematics(q, qd, dist_calc=True) #, link_name)
 
         ee_pos = link_pose_dict[link_name][0]
         ee_rot = link_pose_dict[link_name][1]

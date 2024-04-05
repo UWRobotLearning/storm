@@ -197,7 +197,7 @@ class InteractiveMarkerGoalPub():
         # qd = torch.cat((qd_robot, qd_gripper), dim=-1)
 
         link_pos_seq = self.robot_model.compute_forward_kinematics(
-            q_robot, torch.zeros_like(q_robot))
+            q_robot, torch.zeros_like(q_robot), dist_calc=False)
         curr_ee_pos, curr_ee_rot = link_pos_seq[0][self.ee_frame]
         curr_ee_quat = matrix_to_quaternion(curr_ee_rot)
         # self.curr_ee_quat = self.curr_ee_quat / torch.norm(self.curr_ee_quat) #normalize quaternion
