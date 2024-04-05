@@ -103,21 +103,12 @@ class RobotWorldPublisher():
                 world_marker_list = self.get_world_marker_list()
                 self.world_marker_pub.publish(world_marker_list)
 
-            # self.rate.sleep()
+            self.rate.sleep()
 
     def get_robot_collision_spheres(self, robot_state):
-        #uncomment for testing
-        # _,robot_batch_spheres,_ = self.robot_model.compute_forward_kinematics(
-        #     robot_state['q_pos'], robot_state['q_vel']) # link_name=self.ee_link_name)
-        # spheres_list = []
-        # for k in robot_batch_spheres:
-        #     spheres_list.append(robot_batch_spheres[k].numpy())
-        # return spheres_list
-    
-        #approach:2
-        _, robot_batch_spheres, _, _, _ = self.robot_model.compute_fk_and_jacobian(
-                robot_state['q_pos'].view(-1, self.n_dofs), robot_state['q_pos'].view(-1, self.n_dofs),
-                link_name=self.ee_link_name)
+        #don't need distance calculation - set dist_calc to False
+        _,robot_batch_spheres,_ = self.robot_model.compute_forward_kinematics(
+            robot_state['q_pos'], robot_state['q_vel'], dist_calc=False) # link_name=self.ee_link_name)
         spheres_list = []
         for k in robot_batch_spheres:
             spheres_list.append(robot_batch_spheres[k].numpy())

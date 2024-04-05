@@ -335,7 +335,7 @@ class ArmReacher(ArmTask):
                 # self.ee_goal_buff[env_ids, 1] = goal_position_noise[1] * (2.0*torch.rand(self.ee_goal_buff[env_ids, 1].size(), device=self.device, generator=rng) - 1.0)
                 # self.ee_goal_buff[env_ids, 2] = goal_position_noise[2] * (2.0*torch.rand(self.ee_goal_buff[env_ids, 2].size(), device=self.device, generator=rng) - 1.0)
             if self.randomize_target_rotation:
-                link_pose_dict, _, _ = self.robot_model.compute_forward_kinematics(self.robot_default_dof_pos, torch.zeros_like(self.robot_default_dof_pos))
+                link_pose_dict, _, _ = self.robot_model.compute_forward_kinematics(self.robot_default_dof_pos, torch.zeros_like(self.robot_default_dof_pos), dist_calc=True)
                 ee_pos_world, ee_rot_world = link_pose_dict[self.ee_link_name][0], link_pose_dict[self.ee_link_name][1]
                 target_rotation_range = self.task_specs['target_rotation_range']
                 rl, rh = target_rotation_range[0]

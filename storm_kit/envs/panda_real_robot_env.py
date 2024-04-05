@@ -141,8 +141,9 @@ class PandaRealRobotEnv():
 
     def pre_physics_steps(self, actions:torch.Tensor):
         #XXX Remove deepcopies
-        command_dict = copy.deepcopy(
-            self.state_filter.predict_internal_state(actions))
+        # command_dict = copy.deepcopy(
+        #     self.state_filter.predict_internal_state(actions))
+        command_dict = self.state_filter.predict_internal_state(actions)
 
         return command_dict
 
