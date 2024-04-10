@@ -8,13 +8,14 @@ model:
     # urdf_path: ${task.robot_urdf}
     robot: ${..robot}
     dt_traj_params:
-      base_dt: 0.025 #0.02 #0.0166 #0.01 #0.02
+      base_dt: 0.02 #0.02 #0.0166 #0.01 #0.02
       base_ratio: 1.0 #0.5
       max_dt: 0.04
     init_state: [0.8, 0.3, 0.0, -1.57, 0.0, 1.86, 0.] #check
     control_space: ${task.task.control_space}
     link_names: ${task.task.robot_link_names}
     robot_keys: ['q_pos', 'q_vel', 'q_acc']
+    n_dofs: ${task.n_dofs}
 
 # robot_collision_params: ${task.task.robot_collision_params}
 task:
@@ -25,6 +26,7 @@ task:
   ee_link_name: ${task.ee_link_name}
   robot: ${..robot}
   world_collision_params: ${task.task.world_collision_params}
+  object: ${task.task.object} 
 
   cost:
     friction_cone_cost:

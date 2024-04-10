@@ -131,7 +131,7 @@ task:
       order: 1
 
     primitive_collision:
-      weight: 0.0 #5000.0
+      weight: 200.0 #5000.0
       distance_threshold_world: 0.03
       distance_threshold_self: 0.03
       
