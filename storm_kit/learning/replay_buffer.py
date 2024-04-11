@@ -39,15 +39,17 @@ class ReplayBuffer():
                     if v.ndim == 2:
                         dim = v.shape[1]
                     self.allocate_new_buffer(k, dim)
-                v = torch.as_tensor(v).to(self.device)
-                num_points = v.shape[0]
-                remaining = min(self.capacity - self.curr_idx, num_points)
-                if num_points > remaining:
-                    #add to front
-                    extra = num_points - remaining
-                    self.buffers[k][0:extra] = v[-extra:]
-                #add to end
-                self.buffers[k][self.curr_idx: self.curr_idx + remaining] = v[0:remaining]
+                # print("episode value", v)
+                if v is not None:
+                    v = torch.as_tensor(v).to(self.device)
+                    num_points = v.shape[0]
+                    remaining = min(self.capacity - self.curr_idx, num_points)
+                    if num_points > remaining:
+                        #add to front
+                        extra = num_points - remaining
+                        self.buffers[k][0:extra] = v[-extra:]
+                    #add to end
+                    self.buffers[k][self.curr_idx: self.curr_idx + remaining] = v[0:remaining]
             
         self.curr_idx = (self.curr_idx + num_points) % self.capacity
         self.num_stored = min(self.num_stored + num_points, self.capacity)

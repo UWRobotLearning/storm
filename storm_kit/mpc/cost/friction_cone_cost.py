@@ -107,7 +107,7 @@ class FrictionConeCost(nn.Module):
         f_t = f_t.reshape(*f_t.shape[:-1], 4, 2)
         l2_norm_ft = torch.norm(f_t, p=2, dim=-1)
         tangential_force_norm =  l2_norm_ft 
-        friction_cone_violation_norm = l2_norm_ft - self.mu*f_n #logcosh(l2_norm_ft - 0.7 * f_n)
+        friction_cone_violation_norm = l2_norm_ft - self.mu*torch.abs(f_n) #logcosh(l2_norm_ft - 0.7 * f_n)
         mask = friction_cone_violation_norm > 0
         friction_cost = friction_cone_violation_norm * mask
         total_cost = self.weight*friction_cost.sum(dim=-1) + self.tangential_cost_weight*tangential_force_norm.sum(dim=-1) #sum over all contact points

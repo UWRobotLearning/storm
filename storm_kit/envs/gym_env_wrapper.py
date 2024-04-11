@@ -27,6 +27,7 @@ class GymEnvWrapper():
                 obs = self.task.compute_observations(full_state_dict, compute_full_state=False, cost_terms=cost_terms)
             if compute_cost:
                 cost, cost_terms = self.task.compute_cost(full_state_dict)
+                print('cost_terms:', cost_terms)
                 cost = cost.item()
             done_task = False
             if compute_termination:
@@ -34,7 +35,7 @@ class GymEnvWrapper():
                 done = done_env or done_task.item()
                 cost += term_cost.item()
 
-        return obs, cost, done, {'state': next_state_dict}
+        return obs, cost, done, {'state': next_state_dict, **({'friction_cone_cost': cost_terms['friction_cone_cost']} if 'friction_cone_cost' in cost_terms else {})}
 
     def reset(self, rng=None):
         if self.task is None:

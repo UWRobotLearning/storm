@@ -111,7 +111,7 @@ def get_task_and_dataset(task_name:str, cfg=None): #log max_episode_steps
                 headless=cfg.headless, safe_mode=False
             )
         #Load dataset
-        base_dir = Path('./tmp_results/{}/{}'.format(cfg.task_name, 'policy_eval'))
+        base_dir = Path('./tmp_results/{}/{}'.format(cfg.task_name, 'policy_eval_past'))
         data_dir = os.path.join(base_dir, 'data')
 
         #Initialize task

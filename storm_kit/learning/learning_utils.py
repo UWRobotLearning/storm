@@ -352,10 +352,15 @@ def run_episode(
                 #     exit()
 
                 #step tells me about next state
+                print("env:" ,env)
+                # exit()
                 next_obs, next_reward, next_done, info = env.step(
                     action, compute_cost=compute_cost, compute_termination=compute_termination)
-
+                # exit()
                 next_state = info['state'] if 'state' in info else None
+                friction_cone_cost = info['friction_cone_cost'] if 'friction_cone_cost' in info else None
+                # print("friction_cone_cost:", friction_cone_cost)
+                # exit()
                 total_return += next_reward
                 discounted_total_return += next_reward * discount**i
 
@@ -368,6 +373,8 @@ def run_episode(
             traj_data['rewards'].append(next_reward)
             traj_data['terminals'].append(bool(terminal))
             traj_data['timeouts'].append(bool(timeout))
+            traj_data['friction_cone_cost'].append(friction_cone_cost)
+
             if reset_data is not None:
                 goal_dict = reset_data['goal_dict']
                 for k,v in goal_dict.items(): traj_data['goals/'+k].append(v)
@@ -392,7 +399,8 @@ def run_episode(
         traj_info = {
             'return': total_return,
             'discounted_return': discounted_total_return,
-            'traj_length': i+1
+            'traj_length': i+1,
+            'friction_cone_cost': friction_cone_cost
             }
 
         
@@ -465,6 +473,7 @@ def preprocess_dataset(train_dataset, env, task=None, cfg=None, normalize_score_
     # Set range of value functions
     # TODO: Check if this is right since we should take episode length into account too
     # if cfg.clip_values:
+    # what if the discount factor is 1? this will give error --> discuss with mohak
     Vmax = max(0.0, rew_or_cost.max()/(1.-discount)).item()
     Vmin = min(0.0, rew_or_cost.min()/(1.-discount), Vmax-1.0/(1-discount))
     info['V_max'] = Vmax
@@ -570,11 +579,15 @@ def relabel_dataset(dataset, task):
         new_cost += new_terminal_cost
         new_observations = task.compute_observations(full_state_dict, compute_full_state=False, cost_terms=cost_terms)
         new_success = task.compute_success(full_state_dict)
+        adjusted_costs = torch.where(new_success, torch.zeros_like(new_cost), torch.ones_like(new_cost)) #train with reward labels of 0 and 1 only
+        print("new_cost shape:", new_cost.shape)
 
     dataset["observations"] = new_observations.to(dataset.device)
     dataset["costs"] = new_cost.to(dataset.device)
     dataset["terminals"] = new_terminals.to(dataset.device)
-    dataset["success"] = new_success.to(dataset.device)    
+    dataset["success"] = new_success.to(dataset.device)
+    print("dataset cost:", dataset['costs'])
+    # exit()    
     return dataset
 
 def plot_episode(episode, block=False):
@@ -584,6 +597,7 @@ def plot_episode(episode, block=False):
     q_acc = episode['states/q_acc']
     actions = episode['actions']
     costs = episode['costs']
+    friction_cone_cost = episode['friction_cone_cost']
     returns = episode['returns'] if 'returns' in episode else None
     disc_returns = episode['disc_returns'] if 'disc_returns' in episode else None
     if torch.is_tensor(q_pos): 
@@ -596,12 +610,14 @@ def plot_episode(episode, block=False):
         actions = actions.cpu().numpy()
     if torch.is_tensor(costs):
         costs = costs.cpu().numpy()
+    if torch.is_tensor(friction_cone_cost):
+        friction_cone_cost = friction_cone_cost.cpu().numpy()
     if returns is not None and torch.is_tensor(returns):
         returns = returns.cpu().numpy()
     if disc_returns is not None and torch.is_tensor(disc_returns):
         disc_returns = disc_returns.cpu().numpy()
-    if ee_goal is not None and torch.is_tensor(ee_goal):
-        ee_goal = ee_goal.cpu().numpy()
+    # if ee_goal is not None and torch.is_tensor(ee_goal):
+    #     ee_goal = ee_goal.cpu().numpy()
 
 
     fig, ax = plt.subplots(3,1)
@@ -610,21 +626,23 @@ def plot_episode(episode, block=False):
         ax[0].plot(q_pos[:,n], label='dof_{}'.format(n+1))
         ax[1].plot(q_vel[:,n])
         ax[2].plot(actions[:,n])
-    
     ax[-1].set_xlabel('Episode Timestep')
     ax[0].set_ylabel('q_pos (rad)')
     ax[1].set_ylabel('q_vel (rad/s)')
     ax[2].set_ylabel('actions [q_acc] (rad/s^2)')
     ax[0].legend(loc='upper center', bbox_to_anchor=(0.5, 1.1), ncol=5, fancybox=True, shadow=True)    
 
-    fig2, ax2 = plt.subplots(3,1)
+    fig2, ax2 = plt.subplots(4,1)
     ax2[0].plot(costs)
+    ax2[3].plot(friction_cone_cost)
+
     if returns is not None: ax2[1].plot(returns)
     if disc_returns is not None: ax2[2].plot(disc_returns)
 
     ax2[0].set_ylabel('Costs')
     ax2[1].set_ylabel('Returns')
     ax2[2].set_ylabel('Discounted Returns')
+    ax2[3].set_ylabel('Friction Cone Cost')
     ax2[-1].set_xlabel('Episode Timestep')
 
     plt.show(block=block)

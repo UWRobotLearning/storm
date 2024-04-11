@@ -124,6 +124,7 @@ class TrayObjectReacher(ArmReacher):
 
         with record_function("tray_object_reacher:friction_cone_cost"):
             friction_cone_cost = self.friction_cost.forward(ee_acc_twist_batch[...,3:6], ee_vel_twist_batch[...,0:3], ee_acc_twist_batch[...,0:3], ee_rot)
+            cost_terms['friction_cone_cost'] = friction_cone_cost
             cost +=friction_cone_cost
         
         return cost, cost_terms
@@ -142,7 +143,7 @@ class TrayObjectReacher(ArmReacher):
 
         dist_err = 100*torch.norm(ee_pos - goal_ee_pos, p=2, dim=-1) #l2 err in cm
         twist_norm = torch.norm(ee_vel, p=2, dim=-1)
-        success = (dist_err < 1.0) & (twist_norm < 0.01)
+        success = (dist_err < 0.1) & (twist_norm < 0.01)
         return success
 
     #     q_pos_batch = state_dict['q_pos']

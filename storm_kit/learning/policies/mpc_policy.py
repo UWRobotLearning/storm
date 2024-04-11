@@ -38,7 +38,7 @@ class MPCPolicy(Policy):
         mean = distrib_info['mean'][:, 0]
         scale_tril = distrib_info['scale_tril']
         dist = MultivariateNormal(loc=mean, scale_tril=scale_tril)
-        value = distrib_info['optimal_value'] if 'optimal_value' in distrib_info else 0.
+        value = distrib_info['optimal_value'] if 'optimral_value' in distrib_info else 0.
         aux_info['base_policy_value'] = distrib_info['base_policy_value'] if 'base_policy_value' in distrib_info else 0.
         
         return dist, value, aux_info

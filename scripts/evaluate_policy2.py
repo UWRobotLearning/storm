@@ -52,7 +52,7 @@ def get_env_and_task(task_name:str, cfg=None): #log max_episode_steps
 def main(cfg: DictConfig):
     torch.set_default_dtype(torch.float32)
     torch.manual_seed(cfg.seed)    
-    base_dir = Path('./tmp_results/{}/{}'.format(cfg.task_name, 'policy_eval'))
+    base_dir = Path('./tmp_results/{}/{}'.format(cfg.task_name, 'policy_eval_past'))
     model_dir = os.path.join(base_dir, 'models')
     data_dir = os.path.join(base_dir, 'data')
     eval_rng = torch.Generator(device=cfg.rl_device)

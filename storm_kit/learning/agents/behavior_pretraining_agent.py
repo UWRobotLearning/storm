@@ -287,10 +287,6 @@ class BPAgent(nn.Module):
         max_target_value = v_target.max()
         min_target_value = v_target.min()
 
-
-
-
-
         vf_info_dict = {
             'Train/vf_loss': vf_loss.item(),
             'Train/vf_ensemble_mean': vf_pred_info['mean'].mean().item(),
