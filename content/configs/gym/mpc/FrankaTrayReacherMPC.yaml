@@ -29,12 +29,12 @@ task:
 
   cost:
     friction_cone_cost:
-      weight: 0.4
+      weight: 0.0 #2
       tangential_cost_weight: 0.0
 
     goal_pose:
       vec_weight: [1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
-      weight: [0.0, 15.0] #[5.0, 15.0] #[10.0, 50.0] #[50.0, 100.0]
+      weight: [0.0,0.0] #[1.5, 10.0] #[5.0, 15.0] #[10.0, 50.0] #[50.0, 100.0]
       cost_type: 'se3_twist'
       norm_type: 'l2'
       hinge_val: -1
@@ -68,7 +68,7 @@ task:
       # hinge_val: -1.0
       
     manipulability:
-      weight: 0.5 #30.0 #30.0 #10.0 #100.0 #0.05 #0.5 #1.0
+      weight: 0.0 #30.0 #30.0 #10.0 #100.0 #0.05 #0.5 #1.0
       thresh: 0.08 #0.1 #0.05 #0.03
 
     joint_l2:
@@ -76,7 +76,7 @@ task:
       norm_type: 'l2'
 
     stop_cost:
-      weight: 5.0 #1.0 #30.0 #50.0 #50.0 #10.0 #10.0 
+      weight: 0.0 #5.0 #1.0 #30.0 #50.0 #50.0 #10.0 #10.0 
       max_nlimit: 5.0 #1.5 #0.2
 
     stop_cost_acc:
@@ -88,7 +88,7 @@ task:
       order: 1
 
     primitive_collision:
-      weight: 2000.0
+      weight: 200.0
       distance_threshold_world: 0.03
       distance_threshold_self: 0.03
 
@@ -97,7 +97,7 @@ task:
     #   distance_threshold: 0.05
 
     state_bound:
-      weight: 2000.0 
+      weight: 200.0 
       bound_thresh: 0.03
 
     retract_state : [0.00, 0.0, 0.00, -1.5, 0.00, 2.0, 0.0] #check
@@ -110,15 +110,15 @@ mppi:
   init_cov          : 0.1 #0.005 #.5 #.5
   gamma             : 0.99 
   td_lam            : 1.0
-  n_iters           : 1
-  step_size_mean    : 0.98
-  step_size_cov     : 0.7
-  beta              : 0.01
+  n_iters           : 2
+  step_size_mean    : 0.9 #0.9
+  step_size_cov     : 0.1 #0.7
+  beta              : 0.1
   alpha             : 1
   num_particles     : 400
   update_cov        : True
   cov_type          : 'full_AxA'
-  kappa             : 0.01
+  kappa             : 0.05
   null_act_frac     : 0.01
   cl_act_frac       : 1.0
   use_cl_std        : False #whether to use std of closed loop policy for exploration

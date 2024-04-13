@@ -15,8 +15,8 @@
     </collision>
     <inertial>
       <origin xyz="0 0 0" /> 
-      <mass value="0.5"/>
-      <inertia ixx="0.05" ixy="0.0" ixz="0.0" iyy="0.05" iyz="0.0" izz="0.05"/>
+      <mass value="0.06"/>
+      <inertia ixx="0.000028" ixy="0.0" ixz="0.0" iyy="0.000028" iyz="0.0" izz="0.000028"/>
     </inertial>
   </link>
 </robot>
