@@ -263,6 +263,7 @@ class ArmReacher(ArmTask):
         #max ee vel
         ee_vel_twist = torch.norm(state_dict['ee_vel_twist'], p=2, dim=-1)
         ee_vel_twist_final = ee_vel_twist[-1].item()
+        ee_vel_twist_max = ee_vel_twist.max().item()
 
         #termination
         term, term_cost, term_info = self.compute_termination(state_dict)
@@ -299,7 +300,8 @@ class ArmReacher(ArmTask):
             'world_collision': world_collision_violation,
             'self_collision': self_collision_violation,
             'bounds_violation': bounds_violation,
-            'success': success}
+            'success': success,
+            'ee vel twist max': ee_vel_twist_max}
             # 'last_10_dist_err': last_n_dist_err,
             # 'last_10_dist_err_rel': last_n_dist_err_rel,
             # 'max_q_vel': max_q_vel,

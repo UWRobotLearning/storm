@@ -117,14 +117,20 @@ class TrayObjectReacher(ArmReacher):
         cost, cost_terms = super(TrayObjectReacher, self).compute_cost(
             state_dict = state_dict,
             action_batch = action_batch)
+        print("cost", cost.shape)
 
+        q_pos_batch = state_dict['q_pos']
+        orig_size = q_pos_batch.size()[0:-1]
         ee_pos, ee_rot = state_dict['ee_pos'], state_dict['ee_rot']
         ee_vel_twist_batch = state_dict['ee_vel_twist']
         ee_acc_twist_batch = state_dict['ee_acc_twist']
 
         with record_function("tray_object_reacher:friction_cone_cost"):
             friction_cone_cost = self.friction_cost.forward(ee_acc_twist_batch[...,3:6], ee_vel_twist_batch[...,0:3], ee_acc_twist_batch[...,0:3], ee_rot)
-            cost +=friction_cone_cost
+            print("friction cone cost shape", friction_cone_cost.shape)
+            summed_friction_cost = friction_cone_cost.sum(dim=-1)
+            # friction_cone_cost = friction_cone_cost.view(orig_size)
+            cost +=summed_friction_cost
         
         return cost, cost_terms
 
@@ -144,7 +150,28 @@ class TrayObjectReacher(ArmReacher):
         twist_norm = torch.norm(ee_vel, p=2, dim=-1)
         success = (dist_err < 1.0) & (twist_norm < 0.01)
         return success
+    
+    def compute_metrics(self, episode_data: Dict[str, torch.Tensor]):
+        episode_metrics = super(TrayObjectReacher, self).compute_metrics(episode_data)
+        q_pos = torch.as_tensor(episode_data['states/q_pos']).to(self.device)
+        q_vel = torch.as_tensor(episode_data['states/q_vel']).to(self.device)
+        q_acc = torch.as_tensor(episode_data['states/q_acc']).to(self.device)
+        orig_size = q_pos.size()[0:-1]
 
+        state_dict = {'q_pos': q_pos, 'q_vel': q_vel, 'q_acc': q_acc}
+        state_dict = self.compute_full_state(state_dict)
+        ee_vel_twist_batch = state_dict['ee_vel_twist']
+        ee_acc_twist_batch = state_dict['ee_acc_twist']
+        ee_pos, ee_rot = state_dict['ee_pos'], state_dict['ee_rot']
+        with record_function("tray_object_reacher:friction_cone_cost"):
+            friction_cone_cost = self.friction_cost.forward(ee_acc_twist_batch[...,3:6], ee_vel_twist_batch[...,0:3], ee_acc_twist_batch[...,0:3], ee_rot)
+            # friction_cone_cost = friction_cone_cost.view(orig_size)
+            friction_cone_cost = friction_cone_cost.sum(dim=-1)
+            print("friction cone cost", friction_cone_cost)
+            mask = friction_cone_cost > 0.0
+            num_violations = mask.sum().item()
+            episode_metrics['number_of_friction_cone_violations'] = num_violations
+        return episode_metrics
     #     q_pos_batch = state_dict['q_pos']
     #     orig_size = q_pos_batch.size()[0:-1]
     #     ee_pos, ee_rot = state_dict['ee_pos'], state_dict['ee_rot']
