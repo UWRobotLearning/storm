@@ -338,7 +338,7 @@ class ArmTask(nn.Module):
                 # link_pos_batch = link_pos_batch.view(-1, self.num_links, 3)
                 # link_rot_batch = link_rot_batch.view(-1, self.num_links, 3, 3)
                 # link_pose_dict = state_dict['link_pose_dict']
-                print("entered primitive collision cost")
+                # print("entered primitive collision cost")
                 link_spheres_dict = state_dict['link_spheres_dict']
                 self_coll_dist = state_dict['self_coll_dist']
                 # coll_cost, coll_cost_info = self.primitive_collision_cost.forward(link_pos_batch, link_rot_batch)
@@ -350,7 +350,7 @@ class ArmTask(nn.Module):
                 info = coll_cost_info
         if self.cfg['cost']['state_bound']['weight'] > 0:
             with record_function('arm_task:bound_cost'):
-                print("entered bound cost")
+                # print("entered bound cost")
                 state_batch = torch.cat((q_pos_batch, q_vel_batch, q_acc_batch), dim=-1).view(-1, 3*self.n_dofs)
                 bound_cost, bound_cost_info = self.bound_cost.forward(state_batch)
                 in_bounds = bound_cost_info['in_bounds']#[..., 0:2*self.n_dofs] #only use qpos and qvel
@@ -400,12 +400,12 @@ class ArmTask(nn.Module):
             link_pose_dict, link_spheres_dict, self_coll_dist, lin_jac, ang_jac = self.robot_model.compute_fk_and_jacobian(
                 q_pos.view(-1, self.n_dofs), q_vel.view(-1, self.n_dofs),
                 link_name=self.ee_link_name) #could be issue
-        print('compute_full_state:fk', time.time()-st)
+        # print('compute_full_state:fk', time.time()-st)
         
         ee_pos, ee_rot = link_pose_dict[self.ee_link_name]
         st1 = time.time()
         ee_quat = matrix_to_quaternion(ee_rot) #Could be issue
-        print("compute_full_state:quat", time.time()-st1)
+        # print("compute_full_state:quat", time.time()-st1)
 
         # ee_pos = ee_pos.view(*orig_size, -1)
         # ee_rot = ee_rot.view(*orig_size, 3, 3)
@@ -422,7 +422,7 @@ class ArmTask(nn.Module):
         ee_jac = torch.cat((ang_jac, lin_jac), dim=-2) #check
         ee_vel_twist = torch.matmul(ee_jac, q_vel.unsqueeze(-1)).squeeze(-1)
         ee_acc_twist = torch.matmul(ee_jac, q_acc.unsqueeze(-1)).squeeze(-1)
-        print("compute_full_state:reshape", time.time()-st3)
+        # print("compute_full_state:reshape", time.time()-st3)
 
         # get link poses:
         # link_pos_list = []

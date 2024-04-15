@@ -187,7 +187,7 @@ class GaussianMPC(Controller):
             return distrib_info['mean'].data , value, aux_info
         
         samples = self.generate_noise(distrib_info) #, num_samples)
-        print("Time to sample: ", time.time() - st)
+        # print("Time to sample: ", time.time() - st)
         return samples, value, aux_info
 
     def generate_noise(self, distrib_info): #, num_samples):

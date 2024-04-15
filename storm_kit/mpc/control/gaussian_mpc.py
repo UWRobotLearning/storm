@@ -185,7 +185,7 @@ class GaussianMPC(Controller):
         # torch.cuda.synchronize()
         value = distrib_info['optimal_value'] if 'optimal_value' in distrib_info else 0.0
         if deterministic:
-            print("Time to sample: ", time.time() - st)
+            # print("Time to sample: ", time.time() - st)
             return distrib_info['mean'].data , value, aux_info
         samples = self.generate_noise(distrib_info) #, num_samples)
         return samples, value, aux_info
@@ -291,15 +291,15 @@ class GaussianMPC(Controller):
 
         with record_function('gaussian_mpc:compute_full_state'):
             full_state_dict = self.task.compute_full_state(state_dict)
-            print("generate rollouts overhead 3: ", time.time() - st)
+            # print("generate rollouts overhead 3: ", time.time() - st)
 
         with record_function("gaussian_mpc:compute_cost"):
             cost_seq, cost_terms = self.task.compute_cost(full_state_dict, act_seq)
-            print("generate rollouts overhead 4: ", time.time() - st)
+            # print("generate rollouts overhead 4: ", time.time() - st)
 
         with record_function("gaussian_mpc:compute_termination"):
             term_seq, term_cost, term_info = self.task.compute_termination(full_state_dict, act_seq, compute_full_state=False)
-            print("generate rollouts overhead 5: ", time.time() - st)
+            # print("generate rollouts overhead 5: ", time.time() - st)
 
         cost_terms = {**cost_terms, **term_info}
 
@@ -310,7 +310,7 @@ class GaussianMPC(Controller):
         if self.vf is not None:
             with record_function("gaussian_mpc:value_fn_inference"):
                 obs = self.task.compute_observations(full_state_dict, compute_full_state=False, cost_terms=cost_terms)
-                print("generate rollouts overhead 6: ", time.time() - st)
+                # print("generate rollouts overhead 6: ", time.time() - st)
                 #normalize obs
                 # if self.obs_mean is not None:
                 #     obs -= self.obs_mean

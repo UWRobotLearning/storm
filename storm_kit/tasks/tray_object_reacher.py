@@ -117,7 +117,7 @@ class TrayObjectReacher(ArmReacher):
         cost, cost_terms = super(TrayObjectReacher, self).compute_cost(
             state_dict = state_dict,
             action_batch = action_batch)
-        print("cost", cost.shape)
+        # print("cost", cost.shape)
 
         q_pos_batch = state_dict['q_pos']
         orig_size = q_pos_batch.size()[0:-1]
@@ -127,7 +127,7 @@ class TrayObjectReacher(ArmReacher):
 
         with record_function("tray_object_reacher:friction_cone_cost"):
             friction_cone_cost = self.friction_cost.forward(ee_acc_twist_batch[...,3:6], ee_vel_twist_batch[...,0:3], ee_acc_twist_batch[...,0:3], ee_rot)
-            print("friction cone cost shape", friction_cone_cost.shape)
+            # print("friction cone cost shape", friction_cone_cost.shape)
             summed_friction_cost = friction_cone_cost.sum(dim=-1)
             # friction_cone_cost = friction_cone_cost.view(orig_size)
             cost +=summed_friction_cost
@@ -148,7 +148,7 @@ class TrayObjectReacher(ArmReacher):
 
         dist_err = 100*torch.norm(ee_pos - goal_ee_pos, p=2, dim=-1) #l2 err in cm
         twist_norm = torch.norm(ee_vel, p=2, dim=-1)
-        success = (dist_err < 1.0) & (twist_norm < 0.01)
+        success = (dist_err < 1.0) | (twist_norm < 0.01)
         return success
     
     def compute_metrics(self, episode_data: Dict[str, torch.Tensor]):

@@ -143,11 +143,20 @@ class ArmReacher(ArmTask):
             elif ee_pos.ndim == 4:
                 goal_ee_pos = self.goal_ee_pos.unsqueeze(1).unsqueeze(1).repeat(1, ee_pos.shape[1], ee_pos.shape[2], 1)
                 goal_ee_rot = self.goal_ee_rot.unsqueeze(1).unsqueeze(1).repeat(1, ee_rot.shape[1], ee_rot.shape[2], 1, 1)
-
-            with record_function("pose_cost"):
+            goal_ee_pos_error = torch.norm(ee_pos - goal_ee_pos, p=2, dim=-1, keepdim=False) #should take norm along last dim
+            if self.cfg['cost']['goal_pose']['is_hinge']:
                 goal_cost, goal_cost_info = self.goal_cost.forward(
-                    ee_pos.view(-1, 3), ee_rot.view(-1, 3, 3),
-                    goal_ee_pos.view(-1, 3), goal_ee_rot.view(-1, 3, 3))
+                ee_pos.view(-1, 3), ee_rot.view(-1, 3, 3),
+                goal_ee_pos.view(-1, 3), goal_ee_rot.view(-1, 3, 3), goal_ee_pos_error)
+            # print("Weight vector", self.cfg['cost']['goal_pose']['weight'])
+            else:
+                goal_cost, goal_cost_info = self.goal_cost.forward(
+                ee_pos.view(-1, 3), ee_rot.view(-1, 3, 3),
+                goal_ee_pos.view(-1, 3), goal_ee_rot.view(-1, 3, 3))
+            # with record_function("pose_cost"):
+            #     goal_cost, goal_cost_info = self.goal_cost.forward(
+            #         ee_pos.view(-1, 3), ee_rot.view(-1, 3, 3),
+            #         goal_ee_pos.view(-1, 3), goal_ee_rot.view(-1, 3, 3))
                 
                 goal_cost = goal_cost.view(orig_size)
                 cost_terms['goal_pose_cost'] = goal_cost

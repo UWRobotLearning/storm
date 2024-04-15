@@ -79,8 +79,8 @@ task:
     # default_ee_target: [0.4, -0.3, 0.5, 0.0, 0.707, 0.707, 0.0]
     randomize_target_position: True
     randomize_target_rotation: True
-    # target_position_range: [[0.3, 0.6], [-0.2, 0.2], [0.1, 0.6]] #xyz (meters)
-    target_position_range: [[0.3, 0.5], [-0.2, 0.1], [0.4, 0.6]]
+    target_position_range: [[0.3, 0.6], [-0.4, 0.4], [0.4, 0.6]] #xyz (meters)
+    # target_position_range: [[0.3, 0.5], [-0.2, 0.1], [0.4, 0.6]]
     target_rotation_range: [[0.0, 0.0], [0.0, 0.0], [0.0, 0.0]] #radians
 
   # task_specs:
@@ -103,7 +103,7 @@ task:
       cost_type: 'se3_twist'
       norm_type: 'l2'
       hinge_val: 0.01
-      # is_hinge: False
+      is_hinge: True
       convergence_val: [0.0, 0.0] # orientation, position
       logcosh_alpha: [1.0, 1.0] #orientation, position (shaping used only for logcosh)
 

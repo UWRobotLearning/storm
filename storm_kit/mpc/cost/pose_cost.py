@@ -40,8 +40,8 @@ class PoseCost(nn.Module):
     """
     def __init__(
             self, weight:torch.Tensor, vec_weight:torch.Tensor, cost_type:str = 'se3_transform', 
-            norm_type:str='squared_l2', device:torch.device=torch.device("cpu"), hinge_val:float=100.0,
-            convergence_val:torch.Tensor=torch.zeros(2), logcosh_alpha:torch.Tensor=torch.ones(2)):
+            norm_type:str='squared_l2', device:torch.device=torch.device("cpu"), hinge_val:float=0.01,
+            convergence_val:torch.Tensor=torch.zeros(2), logcosh_alpha:torch.Tensor=torch.ones(2),is_hinge:bool=False):
         
         # super(PoseCost, self).__init__(weight=1.0, norm_type=norm_type, device=device)
         super().__init__()
@@ -63,13 +63,14 @@ class PoseCost(nn.Module):
             self.Z = torch.zeros(1, device=self.device)
         
         self.hinge_val:float = hinge_val
+        self.is_hinge = is_hinge
         self.convergence_val:torch.Tensor = torch.as_tensor(convergence_val, device=self.device)
         self.logcosh_alpha:torch.Tensor= torch.as_tensor(logcosh_alpha, device=self.device)
         self.norm_cost = NormCost(weight=1.0, norm_type=norm_type, device=device)
 
     def forward(
             self, ee_pos_batch:torch.Tensor, ee_rot_batch:torch.Tensor, 
-            ee_goal_pos:torch.Tensor, ee_goal_rot:torch.Tensor) -> Tuple[torch.Tensor, Dict[str, torch.Tensor]]:
+            ee_goal_pos:torch.Tensor, ee_goal_rot:torch.Tensor, hinge_x:Optional[torch.Tensor]=None) -> Tuple[torch.Tensor, Dict[str, torch.Tensor]]:
 
         ee_pos_batch = ee_pos_batch.to(device=self.device)
         ee_rot_batch = ee_rot_batch.to(device=self.device)
@@ -108,7 +109,7 @@ class PoseCost(nn.Module):
         # if self.cost_type == "se3_transform":
         #     cost, info = self.forward_se3_transform(goal_to_ee_transform)
         # elif self.cost_type == "se3_twist":
-        cost, info = self.forward_se3_twist(goal_to_ee_transform)
+        cost, info = self.forward_se3_twist(goal_to_ee_transform, hinge_x)
         # elif self.cost_type == "quaternion":
         #     cost, info = self.forward_quaternion(ee_pos_batch, ee_rot_batch, ee_goal_pos, ee_goal_rot)
         
@@ -172,7 +173,7 @@ class PoseCost(nn.Module):
 
 
     def forward_se3_twist(
-            self, goal_to_ee_transform:CoordinateTransform)->Tuple[torch.Tensor, Dict[str, torch.Tensor]]:
+            self, goal_to_ee_transform:CoordinateTransform, hinge_x:Optional[torch.Tensor]=None)->Tuple[torch.Tensor, Dict[str, torch.Tensor]]:
         
         _, omega, v = logMapSE3(goal_to_ee_transform.rotation(), goal_to_ee_transform.translation())
 
@@ -180,8 +181,14 @@ class PoseCost(nn.Module):
         rotation_err = self.norm_cost.forward(self.rot_vec_weight * omega, keepdim=False, logcosh_alpha=self.logcosh_alpha[0])
         rotation_err[rotation_err < self.convergence_val[0]] = 0.0
         position_err[position_err < self.convergence_val[1]] = 0.0
-
-        cost = self.rot_err_weight * rotation_err + self.trans_err_weight * position_err
+        if hinge_x is not None:
+            hinge_mask = hinge_x > self.hinge_val
+            hinge_mask = hinge_mask.flatten()
+            adjusted_rot_weight = torch.where(hinge_mask,  self.Z, self.rot_err_weight)
+            print("rot_err_weight ", adjusted_rot_weight)
+            cost = adjusted_rot_weight * rotation_err + self.trans_err_weight * position_err
+        else:
+            cost = self.rot_err_weight * rotation_err + self.trans_err_weight * position_err
         
         info = dict(
             rotation_err=rotation_err,
