@@ -99,7 +99,7 @@ task:
 
     goal_pose:
       vec_weight: [1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
-      weight: [1.0, 5.0] #[10.0, 50.0] #[50.0, 100.0]
+      weight: [5.0, 20.0] #[10.0, 50.0] #[50.0, 100.0]
       cost_type: 'se3_twist'
       norm_type: 'l2'
       hinge_val: 0.01

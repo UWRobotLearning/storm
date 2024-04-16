@@ -50,6 +50,7 @@ class PoseCost(nn.Module):
         # self.weight = weight
         self.rot_err_weight:float = weight[0]
         self.trans_err_weight:float = weight[1]
+        self.zero:float = torch.zeros(1, device=self.device)
         self.vec_weight:torch.Tensor = torch.as_tensor(vec_weight, device=self.device)
         self.trans_vec_weight:torch.Tensor = self.vec_weight[3:6]
 
@@ -60,8 +61,9 @@ class PoseCost(nn.Module):
         if self.cost_type in ['se3_transform', 'se3_twist']:
             self.rot_vec_weight= self.vec_weight[0:3]
             self.I = torch.eye(3,3,device=self.device)
-            self.Z = torch.zeros(1, device=self.device)
-        
+            self.Z:float = torch.zeros(1, device=self.device)
+            self.rot_zeroes = torch.zeros(1, dtype=self.rot_err_weight.dtype, device=device)
+
         self.hinge_val:float = hinge_val
         self.is_hinge = is_hinge
         self.convergence_val:torch.Tensor = torch.as_tensor(convergence_val, device=self.device)
@@ -179,14 +181,16 @@ class PoseCost(nn.Module):
 
         position_err = self.norm_cost.forward(self.trans_vec_weight * v, keepdim=False, logcosh_alpha=self.logcosh_alpha[1])
         rotation_err = self.norm_cost.forward(self.rot_vec_weight * omega, keepdim=False, logcosh_alpha=self.logcosh_alpha[0])
-        rotation_err[rotation_err < self.convergence_val[0]] = 0.0
+        # rotation_err[rotation_err < self.convergence_val[0]] = 0.0
         position_err[position_err < self.convergence_val[1]] = 0.0
         if hinge_x is not None:
-            hinge_mask = hinge_x > self.hinge_val
+            hinge_mask = rotation_err > self.hinge_val
             hinge_mask = hinge_mask.flatten()
-            adjusted_rot_weight = torch.where(hinge_mask,  self.Z, self.rot_err_weight)
-            print("rot_err_weight ", adjusted_rot_weight)
-            cost = adjusted_rot_weight * rotation_err + self.trans_err_weight * position_err
+            # adjusted_rot_weight = torch.where(hinge_mask, self.zero, self.rot_err_weight)
+            # self.rot_err_weight[hinge_mask] = 0.0
+            # print("rot_err_weight ", adjusted_rot_weight)
+            rotation_err[hinge_mask] = 0.0
+            cost = self.rot_err_weight * rotation_err + self.trans_err_weight * position_err
         else:
             cost = self.rot_err_weight * rotation_err + self.trans_err_weight * position_err
         

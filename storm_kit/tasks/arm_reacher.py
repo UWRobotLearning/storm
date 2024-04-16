@@ -158,14 +158,14 @@ class ArmReacher(ArmTask):
             #         ee_pos.view(-1, 3), ee_rot.view(-1, 3, 3),
             #         goal_ee_pos.view(-1, 3), goal_ee_rot.view(-1, 3, 3))
                 
-                goal_cost = goal_cost.view(orig_size)
-                cost_terms['goal_pose_cost'] = goal_cost
-                cost_terms['rotation_err'] = goal_cost_info['rotation_err'].view(orig_size)
-                cost_terms['translation_err'] = goal_cost_info['translation_err'].view(orig_size)
-                cost_terms['translation_residual'] = goal_cost_info['translation_residual'].view(*orig_size,-1)
-                cost_terms['rotation_residual'] = goal_cost_info['rotation_residual'].view(*orig_size,-1)
-                # goal_cost[:,:,0:-1] = 0.
-                cost += goal_cost
+            goal_cost = goal_cost.view(orig_size)
+            cost_terms['goal_pose_cost'] = goal_cost
+            cost_terms['rotation_err'] = goal_cost_info['rotation_err'].view(orig_size)
+            cost_terms['translation_err'] = goal_cost_info['translation_err'].view(orig_size)
+            cost_terms['translation_residual'] = goal_cost_info['translation_residual'].view(*orig_size,-1)
+            cost_terms['rotation_residual'] = goal_cost_info['rotation_residual'].view(*orig_size,-1)
+            # goal_cost[:,:,0:-1] = 0.
+            cost += goal_cost
         
         # joint l2 cost
         if self.cfg['cost']['joint_l2']['weight'] > 0.0 and goal_state is not None:
