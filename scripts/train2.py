@@ -120,8 +120,8 @@ def get_task_and_dataset(task_name:str, cfg=None): #log max_episode_steps
 
         #Load bufffers from folder
         buffer_dict = buffer_dict_from_folder(data_dir)
-        replay_buffer = buffer_dict['mpc_buffer_0.pt']
-
+        replay_buffer = buffer_dict['mpc_buffer_600ep.pt']
+        
     return env, task, replay_buffer
 
 def get_mpc_policy(cfg, policy=None, vf=None, qf=None, prediction_metrics=None):
@@ -144,6 +144,8 @@ def main(cfg: DictConfig):
     np.random.seed(cfg.seed)
 
     env, task, dataset = get_task_and_dataset(cfg.task_name, cfg)
+    print('Dataset obs shape:', dataset['observations'].shape)
+    # exit()
     train_dataset, val_dataset, terminal_dataset, dataset_info = preprocess_dataset(
         dataset, env, task, cfg.train.agent, 
         normalize_score_fn=lambda returns: normalize_score(cfg.task_name, returns))
@@ -292,7 +294,7 @@ def main(cfg: DictConfig):
             print(f'Epoch {epoch_num}: Saving current agent to {model_dir}')
             agent_state = agent.state_dict()
             agent_state['normalization_stats'] = normalization_stats
-            torch.save(agent_state, os.path.join(model_dir, 'agent_checkpoint.pt'))
+            torch.save(agent_state, os.path.join(model_dir, 'agent_checkpoint_600ep.pt'))
     
         pbar.set_postfix(train_metrics)
 

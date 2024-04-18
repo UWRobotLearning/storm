@@ -167,7 +167,7 @@ class TrayObjectReacher(ArmReacher):
             friction_cone_cost = self.friction_cost.forward(ee_acc_twist_batch[...,3:6], ee_vel_twist_batch[...,0:3], ee_acc_twist_batch[...,0:3], ee_rot)
             # friction_cone_cost = friction_cone_cost.view(orig_size)
             friction_cone_cost = friction_cone_cost.sum(dim=-1)
-            print("friction cone cost", friction_cone_cost)
+            # print("friction cone cost", friction_cone_cost)
             mask = friction_cone_cost > 0.0
             num_violations = mask.sum().item()
             episode_metrics['number_of_friction_cone_violations'] = num_violations
