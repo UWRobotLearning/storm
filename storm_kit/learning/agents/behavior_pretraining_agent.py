@@ -1,6 +1,7 @@
 import copy
 from collections import defaultdict
 from typing import Optional, Dict
+from hydra.utils import instantiate
 import numpy as np
 import torch
 import torch.optim as optim
@@ -50,19 +51,17 @@ class BPAgent(nn.Module):
         self.use_target_networks = self.cfg['use_target_networks']
 
         if self.policy is not None:
-            self.policy_optimizer = optim.Adam(self.policy.parameters(), lr=self.cfg['policy_optimizer']['lr'])
+            self.policy_optimizer = instantiate(self.cfg['policy_optimizer'], params=self.policy.parameters())
             self.target_policy = copy.deepcopy(self.policy).requires_grad_(False) if self.use_target_networks else None
 
         if self.qf is not None:
-            self.qf_optimizer = optim.Adam(self.qf.parameters(), lr=self.cfg['qf_optimizer']['lr'])
+            self.qf_optimizer = instantiate(self.cfg['qf_optimizer'], params=self.qf.parameters())
             self.target_qf = copy.deepcopy(self.qf).requires_grad_(False) if self.use_target_networks else None
 
         if self.vf is not None:
-            self.vf_optimizer = optim.Adam(self.vf.parameters(), lr=self.cfg['vf_optimizer']['lr'])
+            self.vf_optimizer = instantiate(self.cfg['vf_optimizer'], params=self.vf.parameters())
             self.target_vf = copy.deepcopy(self.vf).requires_grad_(False) if self.use_target_networks else None
         
-
-
     def update(
             self, batch:Dict[str, torch.Tensor], 
             step_num:int, normalization_stats:Dict[str, float] = {'disc_return_mean': 0.0, 'disc_return_std': 1.0}, 

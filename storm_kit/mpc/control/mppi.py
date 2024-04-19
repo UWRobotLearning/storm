@@ -336,18 +336,38 @@ class MPPI(GaussianMPC):
 
     def _compute_traj_returns(self, trajectories, normalize:bool=False)->torch.Tensor:
         costs = trajectories["costs"]
-        value_preds = trajectories['value_preds']
+        # value_preds = trajectories['value_preds']
         terminals = trajectories['terminals'].float()
         term_cost = trajectories['term_cost']
         
         costs = costs + term_cost
-        # print(value_preds)
-        if value_preds is not None:
-            # value_preds = value_preds * (1. - terminals) + costs * terminals
-            # costs[..., -1] += value_preds[..., -1]
-            costs += value_preds #* (1-terminals)
-        traj_returns = cost_to_go(costs, self.gammalam_seq)
 
+        if self.vf is not None:
+            with record_function("gaussian_mpc:value_fn_inference"):
+                state_seq = trajectories['state_seq']
+                cost_terms = trajectories['cost_terms']
+                obs = self.task.compute_observations(
+                    state_seq, compute_full_state=False, cost_terms=cost_terms)
+                #normalize obs
+                # if self.obs_mean is not None:
+                #     obs -= self.obs_mean
+                # if self.obs_std is not None:
+                #     obs /= self.obs_std
+                # obs = self.normalize_observations(obs)
+                # q_preds = self.qf({'obs': obs}, act_seq).clamp(min=self.V_min, max=self.V_max) #, max=self.V_max
+                # v_preds, _ = self.vf({'obs': obs.view(-1, obs.shape[-1])})#.clamp(min=self.V_min, max=self.V_max) #inference
+                v_preds, v_info = self.vf(obs.view(-1, obs.shape[-1]), denormalized=True)
+                v_preds = v_preds.view(self.state_batch_size, self.num_particles, self.horizon)
+                # v_preds = self.unnormalize_value_predictions(v_preds)
+                # v_preds = self.V_std * v_preds + self.V_mean #unnormalize
+                # v_preds += self.V_mean
+
+                # v_preds = v_preds * (1. - terminals) + costs * terminals
+                # costs[..., -1] += v_preds[..., -1]
+                costs += v_preds #* (1-terminals)
+
+
+        traj_returns = cost_to_go(costs, self.gammalam_seq)
         # if not self.time_based_weights: traj_returns = traj_returns[:,0]
         traj_returns = traj_returns[...,0] #- value_preds[...,0]
         if normalize:

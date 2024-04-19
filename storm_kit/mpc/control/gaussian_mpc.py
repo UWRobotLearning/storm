@@ -287,35 +287,16 @@ class GaussianMPC(Controller):
 
         cost_terms = {**cost_terms, **term_info}
 
-        # if term_cost is not None:
-        #     cost_seq += term_cost
-        q_preds = None
-        v_preds = None
-        if self.vf is not None:
-            with record_function("gaussian_mpc:value_fn_inference"):
-                obs = self.task.compute_observations(full_state_dict, compute_full_state=False, cost_terms=cost_terms)
-                #normalize obs
-                # if self.obs_mean is not None:
-                #     obs -= self.obs_mean
-                # if self.obs_std is not None:
-                #     obs /= self.obs_std
-                # obs = self.normalize_observations(obs)
-                # q_preds = self.qf({'obs': obs}, act_seq).clamp(min=self.V_min, max=self.V_max) #, max=self.V_max
-                # v_preds, _ = self.vf({'obs': obs.view(-1, obs.shape[-1])})#.clamp(min=self.V_min, max=self.V_max) #inference
-                v_preds, v_info = self.vf(obs.view(-1, obs.shape[-1]), denormalized=True)
-                v_preds = v_preds.view(self.state_batch_size, self.num_particles, self.horizon)
-                # v_preds = self.unnormalize_value_predictions(v_preds)
-                # v_preds = self.V_std * v_preds + self.V_mean #unnormalize
-                # v_preds += self.V_mean
-
         sim_trajs = dict(
             actions=act_seq,
             costs=cost_seq,
             terminals=term_seq,
             term_cost=term_cost,
             ee_pos_seq=full_state_dict['ee_pos'],
-            value_preds=v_preds,
-            q_value_preds=q_preds,
+            state_seq=full_state_dict,
+            cost_terms=cost_terms,
+            # value_preds=v_preds,
+            # q_value_preds=q_preds,
         )
 
         return sim_trajs

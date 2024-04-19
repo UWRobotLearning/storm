@@ -36,7 +36,7 @@ vf:
     layer_norm: true
   ensemble_size: 100
   aggregation: 'log_sum_exp'
-  prediction_temp: 10.0 
+  prediction_temp: 5.0 
   prior_factor: 0.0
   w_init: 0.0 #3e-3
 
@@ -48,13 +48,13 @@ agent:
   terminal_batch_size: 64
   train_val_split_ratio: 0.95
   policy_optimizer:
-    __target__: torch.optim.Adam
+    _target_: torch.optim.AdamW
     lr: 3e-4
   qf_optimizer:
-    __target__: torch.optim.Adam
+    _target_: torch.optim.AdamW
     lr: 3e-4
   vf_optimizer:
-    __target__: torch.optim.Adam
+    _target_: torch.optim.AdamW
     lr: 3e-4
   polyak_tau: 5e-3
   log_freq: 100
