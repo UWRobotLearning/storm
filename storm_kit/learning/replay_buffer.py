@@ -195,6 +195,7 @@ def train_val_split(dataset, split_ratio):
     #TODO: Randomize the trajectories
     episode_list = [episode for episode in dataset.episode_iterator()]
     num_episodes = len(episode_list)
+    print('Number of episodes = {}'.format(num_episodes))
     num_train_episodes = int(split_ratio * num_episodes)
     train_episodes = episode_list[0: num_train_episodes]
     validation_episodes = episode_list[num_train_episodes:]

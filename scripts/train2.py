@@ -120,7 +120,7 @@ def get_task_and_dataset(task_name:str, cfg=None): #log max_episode_steps
 
         #Load bufffers from folder
         buffer_dict = buffer_dict_from_folder(data_dir)
-        replay_buffer = buffer_dict['mpc_buffer_600ep.pt']
+        replay_buffer = buffer_dict['mpc_buffer_50ep.pt']
         
     return env, task, replay_buffer
 
@@ -266,7 +266,7 @@ def main(cfg: DictConfig):
                 tb_writer.add_scalar(k, v, total_train_steps)
              # if cfg.wandb_activate: wandb.log(eval_info, step=step_num)
 
-        #Run through trainign batches
+        #Run through training batches
         for batch_num, batch in enumerate(train_dataset.batch_iterator(cfg.train.agent['train_batch_size'])):
             batch = dict_to_device(batch, cfg.rl_device)
             full_batch = batch
@@ -294,7 +294,7 @@ def main(cfg: DictConfig):
             print(f'Epoch {epoch_num}: Saving current agent to {model_dir}')
             agent_state = agent.state_dict()
             agent_state['normalization_stats'] = normalization_stats
-            torch.save(agent_state, os.path.join(model_dir, 'agent_checkpoint_600ep.pt'))
+            torch.save(agent_state, os.path.join(model_dir, 'agent_checkpoint_50ep.pt'))
     
         pbar.set_postfix(train_metrics)
 

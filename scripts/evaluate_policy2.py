@@ -87,7 +87,7 @@ def main(cfg: DictConfig):
     if eval_pretrained or load_pretrained:
         #load pretrained policy weights
         pretrained_policy = GaussianPolicy(obs_dim=obs_dim, act_dim=act_dim, config=cfg.train.policy, act_lows=act_lows, act_highs=act_highs, device=cfg.rl_device) #task=None,
-        checkpoint_path = Path(f'./tmp_results/{cfg.task_name}/BP/models/agent_checkpoint_550ep.pt')
+        checkpoint_path = Path(f'./tmp_results/{cfg.task_name}/BP/models/agent_checkpoint_50ep.pt')
         print('Loading agent checkpoint from {}'.format(checkpoint_path))
         try:
             checkpoint = torch.load(checkpoint_path)
@@ -110,7 +110,7 @@ def main(cfg: DictConfig):
         #load pretrained critic weights
         pretrained_vf = EnsembleValueFunction(
             obs_dim=obs_dim, config=cfg.train.vf, device=cfg.rl_device)
-        checkpoint_path = Path(f'./tmp_results/{cfg.task_name}/BP/models/agent_checkpoint_550ep.pt')
+        checkpoint_path = Path(f'./tmp_results/{cfg.task_name}/BP/models/agent_checkpoint_50ep.pt')
         print('Loading agent checkpoint from {}'.format(checkpoint_path))
         try:
             checkpoint = torch.load(checkpoint_path)
@@ -161,9 +161,13 @@ def main(cfg: DictConfig):
     # print(eval_episodes[0])
     # exit()
     buffer_1 = ReplayBuffer(capacity=eval_info['Eval/num_steps'])
-    buffer_2 = ReplayBuffer(capacity=eval_info['Eval/num_steps'])
-    buffer_3 = ReplayBuffer(capacity=eval_info['Eval/num_steps'])
-    buffer_4 = ReplayBuffer(capacity=eval_info['Eval/num_steps'])
+    # buffer_2 = ReplayBuffer(capacity=eval_info['Eval/num_steps'])
+    # buffer_3 = ReplayBuffer(capacity=eval_info['Eval/num_steps'])
+    # buffer_4 = ReplayBuffer(capacity=eval_info['Eval/num_steps'])
+    # buffer_5 = ReplayBuffer(capacity=eval_info['Eval/num_steps'])
+    # buffer_6 = ReplayBuffer(capacity=eval_info['Eval/num_steps'])
+    # buffer_7 = ReplayBuffer(capacity=eval_info['Eval/num_steps'])
+    # buffer_8 = ReplayBuffer(capacity=eval_info['Eval/num_steps'])
     # for episode in eval_episodes:
     #     episode_metrics = task.compute_metrics(episode)
     #     buffer.add_batch(episode)
@@ -174,8 +178,8 @@ def main(cfg: DictConfig):
     #     print(episode_metrics)
 
     #more modular
-    buffers = [buffer_1]#, buffer_2, buffer_3, buffer_4]
-    len_buffer = [600]#,550,500,450] #define up to which episode index each buffer should store data
+    buffers = [buffer_1]#, buffer_2, buffer_3, buffer_4, buffer_5, buffer_6,buffer_7, buffer_8]
+    len_buffer = [400]#,350,300,250,200,150,100,50] #define up to which episode index each buffer should store data
     for index, episode in enumerate(eval_episodes, start=1):
         episode_metrics = task.compute_metrics(episode)
         #add episodes to each buffer based on its permissible length
@@ -184,7 +188,7 @@ def main(cfg: DictConfig):
                 buffer.add_batch(episode)
         if cfg.debug:
             plot_episode(episode, block=False)
-        print(f"Episode {index}: {episode_metrics}")
+        # print(f"Episode {index}: {episode_metrics}")
     #sanity check for buffer contents
     for buf_index, buffer in enumerate(buffers, start=1):
             print(f"Buffer {buf_index}: {buffer}")

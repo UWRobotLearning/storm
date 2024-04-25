@@ -131,6 +131,8 @@ class TrayObjectReacher(ArmReacher):
             summed_friction_cost = friction_cone_cost.sum(dim=-1)
             # friction_cone_cost = friction_cone_cost.view(orig_size)
             cost +=summed_friction_cost
+
+        # cost_terms['friction_cone_cost'] = summed_friction_cost
         
         return cost, cost_terms
 
@@ -148,7 +150,7 @@ class TrayObjectReacher(ArmReacher):
 
         dist_err = 100*torch.norm(ee_pos - goal_ee_pos, p=2, dim=-1) #l2 err in cm
         twist_norm = torch.norm(ee_vel, p=2, dim=-1)
-        success = (dist_err < 1.0) & (twist_norm < 0.01)
+        success = (dist_err < 1.5) & (twist_norm < 0.03)
         return success
     
     def compute_metrics(self, episode_data: Dict[str, torch.Tensor]):

@@ -29,12 +29,12 @@ task:
 
   cost:
     friction_cone_cost:
-      weight: 0.0 #5.0 #2
+      weight: 0.0 #5.0 #5.0 #2
       tangential_cost_weight: 0.0
 
     goal_pose:
       vec_weight: [1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
-      weight: [0.0,0.0] #[3.0,15.0]
+      weight: [0.0,15.0] #[3.0,15.0]
       cost_type: 'se3_twist'
       norm_type: 'l2'
       hinge_val: 0.01 #-1
@@ -111,7 +111,7 @@ mppi:
   init_cov          : 0.1 #0.005 #.5 #.5
   gamma             : 0.99 
   td_lam            : 1.0
-  n_iters           : 2
+  n_iters           : 1 #2
   step_size_mean    : 0.9 #0.9
   step_size_cov     : 0.1 #0.7
   beta              : 0.1
