@@ -249,7 +249,7 @@ class PandaRealRobotEnv():
                 if (curr_error <= 0.005) or (curr_num_steps == max_steps -1):
                     print('[PandaRobotEnv]: Reset joint error = {}', curr_error)
                     break
-                # self.rate.sleep()
+                self.rate.sleep()
             except KeyboardInterrupt:
                 self.close()
 

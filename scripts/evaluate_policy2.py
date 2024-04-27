@@ -179,7 +179,7 @@ def main(cfg: DictConfig):
 
     #more modular
     buffers = [buffer_1]#, buffer_2, buffer_3, buffer_4, buffer_5, buffer_6,buffer_7, buffer_8]
-    len_buffer = [400]#,350,300,250,200,150,100,50] #define up to which episode index each buffer should store data
+    len_buffer = [50]#,350,300,250,200,150,100,50] #define up to which episode index each buffer should store data
     for index, episode in enumerate(eval_episodes, start=1):
         episode_metrics = task.compute_metrics(episode)
         #add episodes to each buffer based on its permissible length
@@ -205,7 +205,7 @@ def main(cfg: DictConfig):
         # buffer_2.save(os.path.join(data_dir, '{}_buffer_3ep.pt'.format(agent_tag)))
         # buffer_3.save(os.path.join(data_dir, '{}_buffer_1ep.pt'.format(agent_tag)))
         for buffer, length in zip(buffers, len_buffer):
-            buffer_filename = os.path.join(data_dir, f'{agent_tag}_buffer_{length}ep.pt')
+            buffer_filename = os.path.join(data_dir, f'{agent_tag}_buffer_{length}ep_real_robot.pt')
             buffer.save(buffer_filename)
             print(f'Saving buffer to {buffer_filename}')
 

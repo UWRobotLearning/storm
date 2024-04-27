@@ -247,7 +247,7 @@ class RobotWorldPublisher():
         self.state_sub.unregister()
 
 if __name__ == "__main__":
-    rospy.init_node("robot_world_publisher", anonymous=True, disable_signals=True)    
+    rospy.init_node("robot_world_publisher", anonymous=True, disable_signals=False)    
     torch.set_default_dtype(torch.float32)
 
     obj = RobotWorldPublisher()

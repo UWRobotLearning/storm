@@ -340,23 +340,26 @@ class IsaacGymRobotEnv():
                         object_actor = self.gym.create_actor(env_ptr, object_asset, self.object_start_pose_world, "cube_{}".format(j), i, 4, 0)
                         self.gym.set_rigid_body_color(env_ptr, object_actor, 0, gymapi.MESH_VISUAL_AND_COLLISION, object_color_2)
                     obj_props = self.gym.get_actor_rigid_shape_properties(env_ptr, object_actor)
+                    # print("object props", obj_props)
                     obj_props[0].friction = 0.5
                     obj_props[0].rolling_friction = 0.5  # default = 0.0
-                    # obj_props[0].torsion_friction = 0.0  # default = 0.0
+                    obj_props[0].torsion_friction = 0.5  # default = 0.0
                     # obj_props[0].restitution = 0.0  # default = 0.0
                     # obj_props[0].compliance = 0.0  # default = 0.0
                     # obj_props[0].thickness = 0.0  # default = 0.0
-                    obj_props = self.gym.get_actor_rigid_body_properties(env_ptr, object_actor)
+                    # self.gym.get_actor_rigid_body_properties(env_ptr, object_actor)
                     # for b in range(len(body_props)):
                     #     body_props[b].flags = gymapi.RIGID_BODY_NONE
-                    self.gym.set_actor_rigid_body_properties(env_ptr, object_actor, obj_props)
+                    self.gym.set_actor_rigid_shape_properties(env_ptr, object_actor, obj_props)
                     env_objects.append(object_actor)
             #set rigid properties for tray
             robot_props = self.gym.get_actor_rigid_shape_properties(env_ptr, robot_actor)
-            robot_props[-1].friction = 0.5 #for tray link
-            robot_props[-1].rolling_friction = 0.5  # default = 0.0
-            # robot_props[0].torsion_friction = 0.0  # default = 0.0
-            # robot_props[0].restitution = 0.0  # default = 0.0
+            # print("robot props", robot_props)
+            # exit()
+            robot_props[-3].friction = 0.5 #for tray link
+            robot_props[-3].rolling_friction = 0.5  # default = 0.0
+            robot_props[-3].torsion_friction = 0.5  # default = 0.0
+            # robot_props[-3].restitution = 0.0  # default = 0.0
             # robot_props[0].compliance = 0.0  # default = 0.0
             # robot_props[0].thickness = 0.0  # default = 0.0
             self.gym.set_actor_rigid_shape_properties(env_ptr, robot_actor, robot_props)
