@@ -30,12 +30,12 @@ task:
 
   cost:
     friction_cone_cost:
-      weight: 3
+      weight: 0.0 #2.5
       tangential_cost_weight: 0.0
 
     goal_pose:
       vec_weight: [1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
-      weight: [2.0, 8.0] #[10.0, 50.0] #[50.0, 100.0]
+      weight: [0.2, 5.0] #[10.0, 50.0] #[50.0, 100.0]
       cost_type: 'se3_twist'
       norm_type: 'l2'
       hinge_val: -1
@@ -44,7 +44,7 @@ task:
       logcosh_alpha: [5.0, 5.0] #orientation, position (shaping used only for logcosh)
 
     ee_vel_twist:
-      weight: 8e-2 #0.0 #3e-3 #1.0
+      weight: 9e-2 #0.0 #3e-3 #1.0
       norm_type: 'l2'
       # hinge_val: 0.01
       # vec_weight: [1.0, 1.0, 1.0] 
@@ -55,7 +55,7 @@ task:
       # vec_weight: [1.0, 1.0, 1.0] 
 
     zero_q_vel:
-      weight: 8e-2 
+      weight: 9e-2 
       norm_type: 'l2'
       # hinge_val: 0.2 #0.2
 

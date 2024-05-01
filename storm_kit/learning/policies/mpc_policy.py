@@ -55,7 +55,7 @@ class MPCPolicy(Policy):
             curr_action_seq, _, _ = self.controller.sample(
                 state_dict, shift_steps=1, deterministic=deterministic)#, calc_val=False, num_samples=num_samples)
             # torch.cuda.synchronize()
-            print("Time to get action: ", time.time() - st)
+            # print("Time to get action: ", time.time() - st)
         action = curr_action_seq[:, 0]
         info = {}
         return action, info

@@ -68,49 +68,50 @@ class ArmReacher(ArmTask):
         # new_size = reduce(mul, list(orig_size))  
         # obs = obs.view(new_size, -1)
 
-        ee_pos = state_dict['ee_pos']
-        ee_quat = state_dict['ee_quat']
-        ee_rot = state_dict['ee_rot']
-        orig_size = ee_pos.size()[0:-1]
+        #COMMENT FOR TESTING --> VALUE FUNCTION INPUT
+        # ee_pos = state_dict['ee_pos']
+        # ee_quat = state_dict['ee_quat']
+        # ee_rot = state_dict['ee_rot']
+        # orig_size = ee_pos.size()[0:-1]
 
-        if ee_pos.ndim == 2:
-            ee_goal_pos = self.goal_ee_pos.expand_as(ee_pos)
-            ee_goal_quat = self.goal_ee_quat.expand_as(ee_quat)
-            ee_goal_rot = self.goal_ee_rot.expand_as(ee_rot)
-        elif ee_pos.ndim == 3:
-            ee_goal_pos = self.goal_ee_pos.unsqueeze(1).expand_as(ee_pos)
-            ee_goal_quat = self.goal_ee_quat.unsqueeze(1).expand_as(ee_quat)
-            ee_goal_rot = self.goal_ee_rot.unsqueeze(1).expand_as(ee_rot)
-        elif ee_pos.ndim == 4:
-            ee_goal_pos = self.goal_ee_pos.unsqueeze(1).unsqueeze(1).expand_as(ee_pos)
-            ee_goal_quat = self.goal_ee_quat.unsqueeze(1).unsqueeze(1).expand_as(ee_quat)
-            ee_goal_rot = self.goal_ee_rot.unsqueeze(1).unsqueeze(1).expand_as(ee_rot)
+        # if ee_pos.ndim == 2:
+        #     ee_goal_pos = self.goal_ee_pos.expand_as(ee_pos)
+        #     ee_goal_quat = self.goal_ee_quat.expand_as(ee_quat)
+        #     ee_goal_rot = self.goal_ee_rot.expand_as(ee_rot)
+        # elif ee_pos.ndim == 3:
+        #     ee_goal_pos = self.goal_ee_pos.unsqueeze(1).expand_as(ee_pos)
+        #     ee_goal_quat = self.goal_ee_quat.unsqueeze(1).expand_as(ee_quat)
+        #     ee_goal_rot = self.goal_ee_rot.unsqueeze(1).expand_as(ee_rot)
+        # elif ee_pos.ndim == 4:
+        #     ee_goal_pos = self.goal_ee_pos.unsqueeze(1).unsqueeze(1).expand_as(ee_pos)
+        #     ee_goal_quat = self.goal_ee_quat.unsqueeze(1).unsqueeze(1).expand_as(ee_quat)
+        #     ee_goal_rot = self.goal_ee_rot.unsqueeze(1).unsqueeze(1).expand_as(ee_rot)
 
-            # ee_goal_pos = ee_goal_pos.view(ee_goal_pos.shape[0], *(1,)*(len(target_shape)-ee_goal_pos.ndim), ee_goal_pos.shape[-1]).expand(target_shape)
-            # ee_goal_quat = ee_goal_quat.view(ee_goal_quat.shape[0], *(1,)*(len(target_shape)-ee_goal_quat.ndim), ee_goal_quat.shape[-1]).expand(target_shape)
+        #     # ee_goal_pos = ee_goal_pos.view(ee_goal_pos.shape[0], *(1,)*(len(target_shape)-ee_goal_pos.ndim), ee_goal_pos.shape[-1]).expand(target_shape)
+        #     # ee_goal_quat = ee_goal_quat.view(ee_goal_quat.shape[0], *(1,)*(len(target_shape)-ee_goal_quat.ndim), ee_goal_quat.shape[-1]).expand(target_shape)
         
-        # if cost_terms is None:
+        # # if cost_terms is None:
 
-        _, pose_cost_info = self.goal_cost.forward(
-            ee_pos.view(-1, 3), ee_rot.view(-1,3,3), 
-            ee_goal_pos.view(-1,3), ee_goal_rot.view(-1,3,3)
-        )
+        # _, pose_cost_info = self.goal_cost.forward(
+        #     ee_pos.view(-1, 3), ee_rot.view(-1,3,3), 
+        #     ee_goal_pos.view(-1,3), ee_goal_rot.view(-1,3,3)
+        # )
 
-        translation_res = pose_cost_info['translation_residual'].view(*orig_size,-1)
-        rotation_res = pose_cost_info['rotation_residual'].view(*orig_size,-1)
-        # else:
-        #     translation_res = cost_terms['translation_residual']
-        #     rotation_res = cost_terms['rotation_residual']
-        # ee_goal_pos, ee_goal_quat
+        # translation_res = pose_cost_info['translation_residual'].view(*orig_size,-1)
+        # rotation_res = pose_cost_info['rotation_residual'].view(*orig_size,-1)
+        # # else:
+        # #     translation_res = cost_terms['translation_residual']
+        # #     rotation_res = cost_terms['rotation_residual']
+        # # ee_goal_pos, ee_goal_quat
+        # # obs = torch.cat(
+        # #     (obs,
+        # #     translation_res, rotation_res), dim=-1)
+        # # ee_goal_rot_obs = ee_goal_rot[..., 0:2].flatten(-2,-1)
+        # goal_pos_err = ee_goal_pos-ee_pos
+        # # goal_rot_err = torch.matmul(
+        # #     ee_goal_rot.transpose(-1,-2), ee_rot).flatten(-2,-1)
         # obs = torch.cat(
-        #     (obs,
-        #     translation_res, rotation_res), dim=-1)
-        # ee_goal_rot_obs = ee_goal_rot[..., 0:2].flatten(-2,-1)
-        goal_pos_err = ee_goal_pos-ee_pos
-        # goal_rot_err = torch.matmul(
-        #     ee_goal_rot.transpose(-1,-2), ee_rot).flatten(-2,-1)
-        obs = torch.cat(
-            (obs, translation_res, rotation_res), dim=-1) # ee_goal_pos, ee_goal_rot.flatten(-2,-1),  goal_pos_err, goal_rot_err ,
+        #     (obs, translation_res, rotation_res), dim=-1) # ee_goal_pos, ee_goal_rot.flatten(-2,-1),  goal_pos_err, goal_rot_err ,
 
         return obs
 
@@ -438,7 +439,8 @@ class ArmReacher(ArmTask):
     
     @property
     def obs_dim(self)->int:
-        return super().obs_dim + 6
+        # return super().obs_dim + 6 #for stability value function training 
+        return super().obs_dim
 
     @property
     def action_lims(self)->Tuple[torch.Tensor, torch.Tensor]:

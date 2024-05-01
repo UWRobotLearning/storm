@@ -229,7 +229,7 @@ class BPAgent(nn.Module):
     def compute_vf_loss(
             self, batch:Dict[str, torch.Tensor], 
             step_num:int, normalization_stats:Dict[str, float] = {'disc_return_mean': 0.0, 'disc_return_std': 1.0, 'obs_mean': None, 'obs_std': None}):
-        
+        # import pdb; pdb.set_trace()
         r_c_batch = batch['costs'] if 'costs' in batch else batch['rewards']
         observations = batch['observations']
         next_observations = batch['next_observations']
