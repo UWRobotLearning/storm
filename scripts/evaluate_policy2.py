@@ -51,7 +51,8 @@ def get_env_and_task(task_name:str, cfg=None): #log max_episode_steps
 @hydra.main(config_name="config", config_path="../content/configs/gym")
 def main(cfg: DictConfig):
     torch.set_default_dtype(torch.float32)
-    torch.manual_seed(cfg.seed)    
+    torch.manual_seed(cfg.seed)
+    # torch.manual_seed(2)    
     base_dir = Path('./tmp_results/{}/{}'.format(cfg.task_name, 'policy_eval'))
     model_dir = os.path.join(base_dir, 'models')
     data_dir = os.path.join(base_dir, 'data')
@@ -87,7 +88,7 @@ def main(cfg: DictConfig):
     if eval_pretrained or load_pretrained:
         #load pretrained policy weights
         pretrained_policy = GaussianPolicy(obs_dim=obs_dim, act_dim=act_dim, config=cfg.train.policy, act_lows=act_lows, act_highs=act_highs, device=cfg.rl_device) #task=None,
-        checkpoint_path = Path(f'./tmp_results/{cfg.task_name}/BP/models/agent_checkpoint_50ep.pt')
+        checkpoint_path = Path(f'./tmp_results/{cfg.task_name}/BP/models/agent_checkpoint_50ep_no_goal_obs.pt')
         print('Loading agent checkpoint from {}'.format(checkpoint_path))
         try:
             checkpoint = torch.load(checkpoint_path)
@@ -110,7 +111,7 @@ def main(cfg: DictConfig):
         #load pretrained critic weights
         pretrained_vf = EnsembleValueFunction(
             obs_dim=obs_dim, config=cfg.train.vf, device=cfg.rl_device)
-        checkpoint_path = Path(f'./tmp_results/{cfg.task_name}/BP/models/agent_checkpoint_50ep.pt')
+        checkpoint_path = Path(f'./tmp_results/{cfg.task_name}/BP/models/agent_checkpoint_50ep_no_goal_obs.pt')
         print('Loading agent checkpoint from {}'.format(checkpoint_path))
         try:
             checkpoint = torch.load(checkpoint_path)
@@ -179,7 +180,7 @@ def main(cfg: DictConfig):
 
     #more modular
     buffers = [buffer_1]#, buffer_2, buffer_3, buffer_4, buffer_5, buffer_6,buffer_7, buffer_8]
-    len_buffer = [150]#,350,300,250,200,150,100,50] #define up to which episode index each buffer should store data
+    len_buffer = [50]#,350,300,250,200,150,100,50] #define up to which episode index each buffer should store data
     for index, episode in enumerate(eval_episodes, start=1):
         episode_metrics = task.compute_metrics(episode)
         #add episodes to each buffer based on its permissible length
@@ -205,7 +206,7 @@ def main(cfg: DictConfig):
         # buffer_2.save(os.path.join(data_dir, '{}_buffer_3ep.pt'.format(agent_tag)))
         # buffer_3.save(os.path.join(data_dir, '{}_buffer_1ep.pt'.format(agent_tag)))
         for buffer, length in zip(buffers, len_buffer):
-            buffer_filename = os.path.join(data_dir, f'{agent_tag}_buffer_{length}ep_real_robot.pt')
+            buffer_filename = os.path.join(data_dir, f'{agent_tag}_buffer_{length}ep_no_goal_obs.pt')
             buffer.save(buffer_filename)
             print(f'Saving buffer to {buffer_filename}')
 

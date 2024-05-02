@@ -553,9 +553,13 @@ def relabel_dataset(dataset, task):
     q_pos = torch.as_tensor(dataset['states/q_pos']).to(device)
     q_vel = torch.as_tensor(dataset['states/q_vel']).to(device)
     q_acc = torch.as_tensor(dataset['states/q_acc']).to(device)
+    next_q_pos = torch.as_tensor(dataset['next_states/q_pos']).to(device)
+    next_q_vel = torch.as_tensor(dataset['next_states/q_vel']).to(device)
+    next_q_acc = torch.as_tensor(dataset['next_states/q_acc']).to(device)
     actions = torch.as_tensor(dataset['actions']).to(device)
     
     state_dict = {'q_pos': q_pos, 'q_vel': q_vel, 'q_acc': q_acc}
+    next_state_dict = {'q_pos': next_q_pos, 'q_vel': next_q_vel, 'q_acc': next_q_acc}
     goal_dict = {}
     for k,v in dataset.items():
         split = k.split("/")
@@ -565,13 +569,19 @@ def relabel_dataset(dataset, task):
     with torch.no_grad():
         task.update_params({'goal_dict': goal_dict})
         full_state_dict = task.compute_full_state(state_dict)
+        full_state_dict_next = task.compute_full_state(next_state_dict)
         new_cost, cost_terms = task.compute_cost(full_state_dict, actions)
+        # new_cost_next, cost_terms_next = task.compute_cost(full_state_dict_next, actions)
         new_terminals, new_terminal_cost, term_info = task.compute_termination(full_state_dict)
         new_cost += new_terminal_cost
         new_observations = task.compute_observations(full_state_dict, compute_full_state=False, cost_terms=cost_terms)
+        new_observations_next = task.compute_observations(full_state_dict_next, compute_full_state=False, cost_terms=None)
         new_success = task.compute_success(full_state_dict)
-
+    # import pdb; pdb.set_trace()
     dataset["observations"] = new_observations.to(dataset.device) #TODO Neel - Relabel terminal state observations
+    #slicing to make the next observations the same size as the current observations
+    # dataset['next_observations'] = dataset['next_observations'][:, :18].to(dataset.device)
+    dataset["next_observations"] = new_observations_next.to(dataset.device)
     dataset["costs"] = new_cost.to(dataset.device)
     dataset["terminals"] = new_terminals.to(dataset.device)
     dataset["success"] = new_success.to(dataset.device)    

@@ -341,9 +341,9 @@ class IsaacGymRobotEnv():
                         self.gym.set_rigid_body_color(env_ptr, object_actor, 0, gymapi.MESH_VISUAL_AND_COLLISION, object_color_2)
                     obj_props = self.gym.get_actor_rigid_shape_properties(env_ptr, object_actor)
                     # print("object props", obj_props)
-                    obj_props[0].friction = 0.5
-                    obj_props[0].rolling_friction = 0.5  # default = 0.0
-                    obj_props[0].torsion_friction = 0.5  # default = 0.0
+                    obj_props[0].friction = 0.3
+                    obj_props[0].rolling_friction = 0.3  # default = 0.0
+                    obj_props[0].torsion_friction = 0.3  # default = 0.0
                     # obj_props[0].restitution = 0.0  # default = 0.0
                     # obj_props[0].compliance = 0.0  # default = 0.0
                     # obj_props[0].thickness = 0.0  # default = 0.0
@@ -356,9 +356,9 @@ class IsaacGymRobotEnv():
             robot_props = self.gym.get_actor_rigid_shape_properties(env_ptr, robot_actor)
             # print("robot props", robot_props)
             # exit()
-            robot_props[-3].friction = 0.5 #for tray link
-            robot_props[-3].rolling_friction = 0.5  # default = 0.0
-            robot_props[-3].torsion_friction = 0.5  # default = 0.0
+            robot_props[-3].friction = 0.3 #for tray link
+            robot_props[-3].rolling_friction = 0.3  # default = 0.0
+            robot_props[-3].torsion_friction = 0.3  # default = 0.0
             # robot_props[-3].restitution = 0.0  # default = 0.0
             # robot_props[0].compliance = 0.0  # default = 0.0
             # robot_props[0].thickness = 0.0  # default = 0.0
