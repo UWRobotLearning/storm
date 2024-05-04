@@ -700,13 +700,13 @@ class IsaacGymRobotEnv():
         self.reset_buf[env_ids] = 0 
         self.prev_action_buff[env_ids] = torch.zeros_like(self.prev_action_buff[env_ids])
         
-        #for resetting object states
-        if self.num_objects>0:
-            self.object_reset(env_ids)
-        
         if reset_data is not None:
             if 'goal_dict' in reset_data:
                 self.update_goal(reset_data['goal_dict'])
+
+        #for resetting object states
+        if self.num_objects>0:
+            self.object_reset(env_ids, reset_data)
 
         self.last_sim_time = torch.ones(self.num_envs, 1, device=self.device) * self.gym.get_sim_time(self.sim)
         state_dict = self.get_state_dict()
@@ -718,10 +718,16 @@ class IsaacGymRobotEnv():
         return state_dict 
 
     #only for object reset
-    def object_reset(self, env_ids, reset_data=None):
+    def object_reset(self, env_ids, reset_data):
         object_asset_file = self.cfg["asset"].get("assetFileNameObjects")
         len_obj_urdfs = len(object_asset_file)
-        self.object_state_1[env_ids] = self.cube1_reset_pose
+        if reset_data is not None and 'cube_pos_noise' in reset_data:
+            print("reset data", reset_data['cube_pos_noise'])
+            print(self.cube1_reset_pose[env_ids,:3])
+            self.object_state_1[env_ids,:3] = self.cube1_reset_pose[env_ids,:3] + reset_data['cube_pos_noise']
+        else:
+            self.object_state_1[env_ids] = self.cube1_reset_pose
+
         if self.num_objects > 1:
             self.object_state_2[env_ids] = self.cube2_reset_pose
         index = -self.num_objects

@@ -53,6 +53,10 @@ class TrayObjectReacher(ArmReacher):
         # self.object_config = self.load_config(config_path)
         # self.friction_cost = FrictionConeCost(**self.object_config['friction_cone_cost']['cube1'], device=self.device)
 
+        self.task_specs = cfg.get('task_specs', None)
+        if self.task_specs is not None:
+            self.randomize_cube_location = self.task_specs['randomize_cube_location']
+            self.cube_pos_buffer = torch.zeros(self.num_instances, 3, device=self.device)
         object_params = self.cfg['object']
         self.friction_cost = FrictionConeCost(**self.cfg['cost']['friction_cone_cost'], object_params = self.cfg['object'], device=self.device)
 
@@ -324,52 +328,71 @@ class TrayObjectReacher(ArmReacher):
     #     env_ids = torch.arange(self.num_instances, device=self.device)
     #     return self.reset_idx(env_ids, rng=rng)
 
-    # def reset_idx(self, env_ids, rng:Optional[torch.Generator]=None):
-    #     reset_data = {}
-    #     if self.task_specs is not None:
-    #         goal_position_noise = self.task_specs['target_position_noise']
-    #         goal_rotation_noise = self.task_specs['target_rotation_noise']
-
-    #         self.ee_goal_buff[env_ids] = self.default_ee_goal
-
-    #         # if goal_position_noise > 0.:
-    #         #randomize goal position around the default
-    #         self.ee_goal_buff[env_ids, 0] = self.ee_goal_buff[env_ids, 0] +  goal_position_noise[0] * (2.0*torch.rand(self.ee_goal_buff[env_ids, 0].size(), device=self.device, generator=rng) - 1.0)
-    #         self.ee_goal_buff[env_ids, 1] = self.ee_goal_buff[env_ids, 1] +  goal_position_noise[1] * (2.0*torch.rand(self.ee_goal_buff[env_ids, 1].size(), device=self.device, generator=rng) - 1.0)
-    #         self.ee_goal_buff[env_ids, 2] = self.ee_goal_buff[env_ids, 2] +  goal_position_noise[2] * (2.0*torch.rand(self.ee_goal_buff[env_ids, 2].size(), device=self.device, generator=rng) - 1.0)
+#TODO: Cube random position noise
+    def reset_idx(self, env_ids, rng:Optional[torch.Generator]=None):
+        reset_data = super(TrayObjectReacher, self).reset_idx(env_ids, rng=rng)
         
-    #         # if goal_rotation_noise > 0.:
-    #         #randomize goal orientation around defualt
-    #         # TODO: fix
-    #         # default_quat = self.ee_goal_buff[env_ids, 3:7]
-    #         # default_euler = matrix_to_euler_angles(quaternion_to_matrix(default_quat), convention='XYZ')
-    #         # roll = default_euler[:,0] + goal_rotation_noise[0] * (2.0*torch.rand(env_ids.shape[0], 1, device=self.device, generator=rng) - 1.0)
-    #         # pitch = default_euler[:,1] + goal_rotation_noise[1] * (2.0*torch.rand(env_ids.shape[0], 1, device=self.device, generator=rng) - 1.0)
-    #         # yaw = default_euler[:,2] + goal_rotation_noise[2] * (2.0*torch.rand(env_ids.shape[0], 1, device=self.device, generator=rng) - 1.0)
-    #         # print(default_euler)
-    #         # quat = matrix_to_quaternion(euler_angles_to_matrix(torch.cat([roll, pitch, yaw], dim=-1), convention='XYZ'))
-    #         # self.ee_goal_buff[env_ids, 3:7] = quat 
-    #         # print(self.ee_goal_buff)          
+        if self.task_specs is not None:
+            # self.cube_pos_buffer[env_ids] = self.default_ee_goal
+            if self.randomize_cube_location:
+                # print("resetting cube position")
+                # exit()
+                target_cube_pos_range = self.task_specs['target_cube_pos_range']
+                xl, xh = target_cube_pos_range[0]
+                yl, yh = target_cube_pos_range[1]
+                zl, zh = target_cube_pos_range[2]
+                self.cube_pos_buffer[env_ids,0] =  torch.zeros(len(env_ids), 1, device=self.device).uniform_(xl, xh, generator=rng)
+                self.cube_pos_buffer[env_ids,1] =  torch.zeros(len(env_ids), 1, device=self.device).uniform_(yl, yh, generator=rng)
+                self.cube_pos_buffer[env_ids,2] =  torch.zeros(len(env_ids), 1, device=self.device).uniform_(zl, zh, generator=rng)
+                reset_data['cube_pos_noise'] = self.cube_pos_buffer #dict(cube_pos_noise=self.cube_pos_buffer)
+                # print(reset_data["cube_pos_noise"])
+                # exit()
 
-    #         #     roll = -torch.pi + 2*torch.pi * torch.rand(
-    #         #         size=(env_ids.shape[0],1), device=self.device) #roll from [-pi, pi)
-    #         #     pitch = -torch.pi + 2*torch.pi * torch.rand(
-    #         #         size=(env_ids.shape[0],1), device=self.device) #pitch from [-pi, pi)
-    #         #     yaw = -torch.pi + 2*torch.pi * torch.rand(
-    #         #         size=(env_ids.shape[0],1), device=self.device) #yaw from [-pi, pi)
-    #         #     quat = matrix_to_quaternion(rpy_angles_to_matrix(torch.cat([roll, pitch, yaw], dim=-1)))
-    #         #     curr_target_buff[env_ids, 3:7] = quat
-    #         self.goal_ee_pos = self.ee_goal_buff[..., 0:3]
-    #         self.goal_ee_quat = self.ee_goal_buff[..., 3:7]
-    #         self.goal_ee_rot = quaternion_to_matrix(self.goal_ee_quat)
+        return reset_data
+            
+        #     goal_position_noise = self.task_specs['target_position_noise']
+        #     goal_rotation_noise = self.task_specs['target_rotation_noise']
 
-    #         # self.prev_state_buff[env_ids] = torch.zeros_like(self.prev_state_buff[env_ids])
-    #         goal_dict = dict(ee_goal=self.ee_goal_buff)
-    #         reset_data['goal_dict'] = goal_dict
+        #     self.ee_goal_buff[env_ids] = self.default_ee_goal
 
-    #     print(goal_dict)
+        #     # if goal_position_noise > 0.:
+        #     #randomize goal position around the default
+        #     self.ee_goal_buff[env_ids, 0] = self.ee_goal_buff[env_ids, 0] +  goal_position_noise[0] * (2.0*torch.rand(self.ee_goal_buff[env_ids, 0].size(), device=self.device, generator=rng) - 1.0)
+        #     self.ee_goal_buff[env_ids, 1] = self.ee_goal_buff[env_ids, 1] +  goal_position_noise[1] * (2.0*torch.rand(self.ee_goal_buff[env_ids, 1].size(), device=self.device, generator=rng) - 1.0)
+        #     self.ee_goal_buff[env_ids, 2] = self.ee_goal_buff[env_ids, 2] +  goal_position_noise[2] * (2.0*torch.rand(self.ee_goal_buff[env_ids, 2].size(), device=self.device, generator=rng) - 1.0)
+        
+        #     # if goal_rotation_noise > 0.:
+        #     #randomize goal orientation around defualt
+        #     # TODO: fix
+        #     # default_quat = self.ee_goal_buff[env_ids, 3:7]
+        #     # default_euler = matrix_to_euler_angles(quaternion_to_matrix(default_quat), convention='XYZ')
+        #     # roll = default_euler[:,0] + goal_rotation_noise[0] * (2.0*torch.rand(env_ids.shape[0], 1, device=self.device, generator=rng) - 1.0)
+        #     # pitch = default_euler[:,1] + goal_rotation_noise[1] * (2.0*torch.rand(env_ids.shape[0], 1, device=self.device, generator=rng) - 1.0)
+        #     # yaw = default_euler[:,2] + goal_rotation_noise[2] * (2.0*torch.rand(env_ids.shape[0], 1, device=self.device, generator=rng) - 1.0)
+        #     # print(default_euler)
+        #     # quat = matrix_to_quaternion(euler_angles_to_matrix(torch.cat([roll, pitch, yaw], dim=-1), convention='XYZ'))
+        #     # self.ee_goal_buff[env_ids, 3:7] = quat 
+        #     # print(self.ee_goal_buff)          
 
-    #     return reset_data
+        #     #     roll = -torch.pi + 2*torch.pi * torch.rand(
+        #     #         size=(env_ids.shape[0],1), device=self.device) #roll from [-pi, pi)
+        #     #     pitch = -torch.pi + 2*torch.pi * torch.rand(
+        #     #         size=(env_ids.shape[0],1), device=self.device) #pitch from [-pi, pi)
+        #     #     yaw = -torch.pi + 2*torch.pi * torch.rand(
+        #     #         size=(env_ids.shape[0],1), device=self.device) #yaw from [-pi, pi)
+        #     #     quat = matrix_to_quaternion(rpy_angles_to_matrix(torch.cat([roll, pitch, yaw], dim=-1)))
+        #     #     curr_target_buff[env_ids, 3:7] = quat
+        #     self.goal_ee_pos = self.ee_goal_buff[..., 0:3]
+        #     self.goal_ee_quat = self.ee_goal_buff[..., 3:7]
+        #     self.goal_ee_rot = quaternion_to_matrix(self.goal_ee_quat)
+
+        #     # self.prev_state_buff[env_ids] = torch.zeros_like(self.prev_state_buff[env_ids])
+        #     goal_dict = dict(ee_goal=self.ee_goal_buff)
+        #     reset_data['goal_dict'] = goal_dict
+
+        # print(goal_dict)
+
+        # return reset_data
 
     # def update_params(self, param_dict):
     #     #Explicitly set parameters like goal states 
