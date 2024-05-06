@@ -453,8 +453,8 @@ class IsaacGymRobotEnv():
         ee_pos_vec = gymapi.Vec3(x=ee_pos[0][0], y=ee_pos[0][1], z=ee_pos[0][2])
         ee_rot_quat = gymapi.Quat(x=ee_quat[0][1],y=ee_quat[0][2], z=ee_quat[0][3], w=ee_quat[0][0])
         ee_pose_robot = gymapi.Transform(p=ee_pos_vec, r=ee_rot_quat)
-        ee_pose_world = self.robot_pose_world * ee_pose_robot
-        print("ee pose world", ee_pose_world.p)
+        self.ee_pose_world = self.robot_pose_world * ee_pose_robot
+        print("ee pose world", self.ee_pose_world.p)
         #Note: this needs to change to support more than one object!!!
         if self.num_objects > 0:
             if self.num_objects == 1:
@@ -465,21 +465,22 @@ class IsaacGymRobotEnv():
             self.init_object_state_1 = torch.zeros(self.num_envs, 13, device=self.device)
             self.init_object_state_2 = torch.zeros(self.num_envs, 13, device=self.device)
             #for basic tray object reaching
-            self.init_object_state_1[:,0] =  ee_pose_world.p.x  
-            self.init_object_state_1[:,1] =  ee_pose_world.p.y  
-            self.init_object_state_1[:,2] =  ee_pose_world.p.z
-            self.init_object_state_1[:,3] = ee_pose_world.r.w #6.9506e-01 
-            self.init_object_state_1[:,4] = ee_pose_world.r.x #7.1866e-01
-            self.init_object_state_1[:,5] = ee_pose_world.r.y #2.0540e-02
-            self.init_object_state_1[:,6] = ee_pose_world.r.z #2.6329e-03
+            self.z_spawn_offset = 0.003
+            self.init_object_state_1[:,0] = self.ee_pose_world.p.x 
+            self.init_object_state_1[:,1] = self.ee_pose_world.p.y 
+            self.init_object_state_1[:,2] = self.ee_pose_world.p.z + self.z_spawn_offset
+            self.init_object_state_1[:,3] = self.ee_pose_world.r.w #6.9506e-01 
+            self.init_object_state_1[:,4] = self.ee_pose_world.r.x #7.1866e-01
+            self.init_object_state_1[:,5] = self.ee_pose_world.r.y #2.0540e-02
+            self.init_object_state_1[:,6] = self.ee_pose_world.r.z #2.6329e-03
 
-            self.init_object_state_2[:,0] =  ee_pose_world.p.x 
-            self.init_object_state_2[:,1] =  ee_pose_world.p.y 
-            self.init_object_state_2[:,2] =  ee_pose_world.p.z+0.03
-            self.init_object_state_2[:,3] = ee_pose_world.r.w 
-            self.init_object_state_2[:,4] = ee_pose_world.r.x
-            self.init_object_state_2[:,5] = ee_pose_world.r.y
-            self.init_object_state_2[:,6] = ee_pose_world.r.z 
+            self.init_object_state_2[:,0] = self.ee_pose_world.p.x 
+            self.init_object_state_2[:,1] = self.ee_pose_world.p.y 
+            self.init_object_state_2[:,2] = self.ee_pose_world.p.z+0.03
+            self.init_object_state_2[:,3] = self.ee_pose_world.r.w 
+            self.init_object_state_2[:,4] = self.ee_pose_world.r.x
+            self.init_object_state_2[:,5] = self.ee_pose_world.r.y
+            self.init_object_state_2[:,6] = self.ee_pose_world.r.z 
             self.cube1_reset_pose = self.init_object_state_1.detach().clone()
             self.cube2_reset_pose = self.init_object_state_2.detach().clone()
 
@@ -700,21 +701,29 @@ class IsaacGymRobotEnv():
         self.reset_buf[env_ids] = 0 
         self.prev_action_buff[env_ids] = torch.zeros_like(self.prev_action_buff[env_ids])
         
+        if self.num_objects>0:
+            self.object_reset(env_ids, reset_data)
+        #for one object
+        ee_position = torch.tensor([self.ee_pose_world.p.x, self.ee_pose_world.p.y, self.ee_pose_world.p.z], 
+                           dtype=torch.float32, 
+                           device=self.object_state_1.device)
+        self.ee_handle = self.gym.find_actor_rigid_body_handle(self.envs[0], self.robots[0], self.ee_link_name)
+        self.ee_state = self.rigid_body_states[:, self.ee_handle]
+        print('object state in reset: ',self.object_state_1[env_ids,:3])
+        # obj_relative_pos = self.object_state_1[env_ids, :3] - self.ee_state[env_ids, :3]
+        # print('object relative pose', obj_relative_pos)
         if reset_data is not None:
             if 'goal_dict' in reset_data:
                 self.update_goal(reset_data['goal_dict'])
 
         #for resetting object states
-        if self.num_objects>0:
-            self.object_reset(env_ids, reset_data)
-
         self.last_sim_time = torch.ones(self.num_envs, 1, device=self.device) * self.gym.get_sim_time(self.sim)
         state_dict = self.get_state_dict()
-        self.ee_handle = self.gym.find_actor_rigid_body_handle(self.envs[0], self.robots[0], self.ee_link_name)
-        self.ee_state = self.rigid_body_states[:, self.ee_handle]
-        print("reset function tray link pose", self.ee_state)
+        
+        # print("reset function tray link pose", self.ee_state)
         self.state_filter.reset()
         state_dict = copy.deepcopy(self.state_filter.filter_joint_state(copy.deepcopy(state_dict)))
+        # state_dict['object_relative_pos'] = obj_relative_pos
         return state_dict 
 
     #only for object reset
@@ -722,9 +731,17 @@ class IsaacGymRobotEnv():
         object_asset_file = self.cfg["asset"].get("assetFileNameObjects")
         len_obj_urdfs = len(object_asset_file)
         if reset_data is not None and 'cube_pos_noise' in reset_data:
-            print("reset data", reset_data['cube_pos_noise'])
-            print(self.cube1_reset_pose[env_ids,:3])
+            # num_items = self.cube1_reset_pose.shape[0]
+            # noise_x = torch.zeros(num_items, device=self.device).uniform_(-0.05, 0.05)
+            # noise_y = torch.zeros(num_items, device=self.device).uniform_(-0.05, 0.05)
+            # noise_z = torch.zeros(num_items, device=self.device).uniform_(0.00, 0.00)
+            # reset_data['cube_pos_noise'] = torch.stack([noise_x, noise_y, noise_z], dim=1)
+            # print("reset data", reset_data['cube_pos_noise'])
+            # print("object state", self.object_state_1[env_ids,:3])
+            # print("cube reset pose",self.cube1_reset_pose[env_ids,:3])
             self.object_state_1[env_ids,:3] = self.cube1_reset_pose[env_ids,:3] + reset_data['cube_pos_noise']
+            self.object_state_1[env_ids,3:7] = self.cube1_reset_pose[env_ids,3:7]
+            print("object state after reset", self.object_state_1[env_ids,:3])
         else:
             self.object_state_1[env_ids] = self.cube1_reset_pose
 
@@ -739,13 +756,14 @@ class IsaacGymRobotEnv():
                 self.sim,
                 gymtorch.unwrap_tensor(self.root_state),
                 gymtorch.unwrap_tensor(multi_env_ids_object1_int32), len(multi_env_ids_object1_int32))
+            return self.object_state_1
+
         else:
             multi_env_ids_objects_int32 = self.global_indices[env_ids, index:].flatten()
             self.gym.set_actor_root_state_tensor_indexed(
                 self.sim,
                 gymtorch.unwrap_tensor(self.root_state),
                 gymtorch.unwrap_tensor(multi_env_ids_objects_int32), len(multi_env_ids_objects_int32))
-
 
     def reset(self, reset_data=None):
         return self.reset_idx(torch.arange(self.num_envs, device=self.device), reset_data=reset_data)

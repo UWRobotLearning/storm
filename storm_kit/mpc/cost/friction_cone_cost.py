@@ -58,12 +58,12 @@ class FrictionConeCost(nn.Module):
         mat[..., 2, 1] = vec[..., 0]
         return mat
        
-    def wGI(self, v_dot: torch.Tensor, omega: torch.Tensor, omega_dot: torch.Tensor, R: torch.Tensor) -> torch.Tensor:
+    def wGI(self, v_dot: torch.Tensor, omega: torch.Tensor, omega_dot: torch.Tensor, R: torch.Tensor, d:torch.Tensor) -> torch.Tensor:
         g_vector = torch.tensor([0, 0, -self.g], dtype=torch.float32, device=self.device).repeat(v_dot.shape[0], 1)
         term1_linear = self.m * (v_dot - torch.matmul(R, g_vector.unsqueeze(-1)).squeeze(-1))
         skew_omega = self.skew_symmetric(omega)
         skew_omega_dot = self.skew_symmetric(omega_dot)
-        term2_angular = self.m * (torch.matmul(skew_omega_dot + torch.matmul(skew_omega, skew_omega), self.d.unsqueeze(-1)).squeeze(-1))
+        term2_angular = self.m * (torch.matmul(skew_omega_dot + torch.matmul(skew_omega, skew_omega), d.unsqueeze(-1)).squeeze(-1))
         term3_torque = torch.matmul(self.J, omega_dot.unsqueeze(-1)).squeeze(-1) + torch.matmul(torch.matmul(skew_omega, self.J), omega.unsqueeze(-1)).squeeze(-1)
         wGI = torch.cat((term1_linear + term2_angular, term3_torque), dim=-1)
         wGI = -wGI
@@ -89,10 +89,10 @@ class FrictionConeCost(nn.Module):
         return G_matrix
 
     # @torch.jit.script
-    def forward(self, v_dot: torch.Tensor, omega: torch.Tensor, omega_dot: torch.Tensor, R: torch.Tensor) -> torch.Tensor:
+    def forward(self, v_dot: torch.Tensor, omega: torch.Tensor, omega_dot: torch.Tensor, R: torch.Tensor, d: torch.Tensor) -> torch.Tensor:
         v_dot, omega, omega_dot, R = v_dot.to(self.device), omega.to(self.device), omega_dot.to(self.device), R.to(self.device)
         # total_cost = torch.zeros(1, batch_size, horizon, device=self.device)
-        w_gi = self.wGI(v_dot, omega, omega_dot, R)
+        w_gi = self.wGI(v_dot, omega, omega_dot, R, d)
         G = self.G
         if self.debug:
             print("G shape", G.shape)  # 6*12

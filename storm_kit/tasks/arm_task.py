@@ -115,17 +115,17 @@ class ArmTask(nn.Module):
                 horizon = self.horizon + 1,
                 device=self.device)
 
-        self.primitive_collision_cost = PrimitiveCollisionCost(
-            world_cfg=world_cfg, # robot_collision_params=cfg.robot_collision_params,
-            world_collision_params=cfg.world_collision_params, 
-            batch_size= self.batch_size * self.horizon, #self.num_instances * 
-            device=self.device, **self.cfg['cost']['primitive_collision'])
-        
-        # self.primitive_collision_cost = torch.compile(PrimitiveCollisionCost(
+        # self.primitive_collision_cost = PrimitiveCollisionCost(
         #     world_cfg=world_cfg, # robot_collision_params=cfg.robot_collision_params,
         #     world_collision_params=cfg.world_collision_params, 
         #     batch_size= self.batch_size * self.horizon, #self.num_instances * 
-        #     device=self.device, **self.cfg['cost']['primitive_collision']))
+        #     device=self.device, **self.cfg['cost']['primitive_collision'])
+        
+        self.primitive_collision_cost = torch.compile(PrimitiveCollisionCost(
+            world_cfg=world_cfg, # robot_collision_params=cfg.robot_collision_params,
+            world_collision_params=cfg.world_collision_params, 
+            batch_size= self.batch_size * self.horizon, #self.num_instances * 
+            device=self.device, **self.cfg['cost']['primitive_collision']))
 
         # if cfg['cost']['robot_self_collision']['weight'] > 0.0:
         # self.robot_self_collision_cost = RobotSelfCollisionCost(

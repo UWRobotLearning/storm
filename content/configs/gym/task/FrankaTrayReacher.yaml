@@ -38,7 +38,7 @@ env:
   enableCameraSensors: False
   physics_engine: ${...physics_engine}
   sim:
-    dt: 0.0166 # 1/60
+    dt: 0.016 #0.0166 # 1/60
     substeps: 1
     up_axis: "z"
     use_gpu_pipeline: ${....use_gpu_pipeline}
@@ -83,7 +83,9 @@ task:
     # target_position_range: [[0.3, 0.5], [-0.2, 0.1], [0.4, 0.6]]
     target_rotation_range: [[0.0, 0.0], [0.0, 0.0], [0.0, 0.0]] #radians
     randomize_cube_location: True
-    target_cube_pos_range: [[-0.08, 0.8], [-0.08, 0.08], [0.0, 0.0]] #xyz (meters)
+    target_cube_pos_range: [[-0.08, 0.08], [-0.08, 0.08], [0.0, 0.0]] #xyz (meters)
+    # target_cube_pos_range: [[0.0, 0.0], [0.0, 0.0], [0.0, 0.0]] #xyz (meters)
+
 
   # task_specs:
   #   # default_ee_target: [0.6, 0.0, 0.15, 0.0, 0.707, 0.707, 0.0]

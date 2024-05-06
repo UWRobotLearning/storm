@@ -13,7 +13,7 @@ model:
   init_state: [0.8, 0.3, 0.0, -1.57, 0.0, 1.86, 0.] #check
   control_space: ${task.task.control_space}
   link_names: ${task.task.robot_link_names}
-  robot_keys: ['q_pos', 'q_vel', 'q_acc']
+  robot_keys: ['q_pos', 'q_vel', 'q_acc', 'object_pos']
 
 
 task:
@@ -111,7 +111,7 @@ mppi:
   init_cov          : 0.1 #0.005 #.5 #.5
   gamma             : 0.99 
   td_lam            : 1.0
-  n_iters           : 2 #2
+  n_iters           : 1 #2
   step_size_mean    : 0.9 #0.9
   step_size_cov     : 0.1 #0.7
   beta              : 0.1

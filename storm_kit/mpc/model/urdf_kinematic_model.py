@@ -209,6 +209,8 @@ class URDFKinematicModel(nn.Module):
         start_q_pos = start_state_dict[self.robot_keys[0]]
         start_q_vel = start_state_dict[self.robot_keys[1]]
         start_q_acc = start_state_dict[self.robot_keys[2]]
+        # import pdb; pdb.set_trace()
+        start_object_pos = start_state_dict[self.robot_keys[3]]
         start_t = start_state_dict['tstep']
 
         curr_robot_state = torch.cat((start_q_pos, start_q_vel, start_q_acc, start_t), dim=-1)
@@ -240,13 +242,15 @@ class URDFKinematicModel(nn.Module):
             state_seq = self.tensor_step(curr_state, act_seq, state_seq, curr_batch_size, num_traj_points)
 
         # state_dict = self.compute_full_state(state_seq)
+
         state_dict:Dict[str, torch.Tensor] = {
             'q_pos': state_seq[..., :self.n_dofs],
             'q_vel': state_seq[..., self.n_dofs:2*self.n_dofs],
             'q_acc':  state_seq[..., 2*self.n_dofs:3*self.n_dofs],
+            'start_object_pos': start_object_pos,
+            'start_q_pos': start_q_pos,
             'tstep':  state_seq[..., -1]
         }
-
         return state_dict #self.compute_full_state(state_seq)
 
 

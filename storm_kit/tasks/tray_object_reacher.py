@@ -53,13 +53,16 @@ class TrayObjectReacher(ArmReacher):
         # self.object_config = self.load_config(config_path)
         # self.friction_cost = FrictionConeCost(**self.object_config['friction_cone_cost']['cube1'], device=self.device)
 
+        link_pose_dict, _, _ = self.robot_model.compute_forward_kinematics(self.robot_default_dof_pos, torch.zeros_like(self.robot_default_dof_pos), dist_calc=True)
+        self.ee_pos_world, self.ee_rot_world = link_pose_dict[self.ee_link_name][0], link_pose_dict[self.ee_link_name][1]
         self.task_specs = cfg.get('task_specs', None)
         if self.task_specs is not None:
             self.randomize_cube_location = self.task_specs['randomize_cube_location']
             self.cube_pos_buffer = torch.zeros(self.num_instances, 3, device=self.device)
-        object_params = self.cfg['object']
+        # object_params = self.cfg['object']
         self.friction_cost = FrictionConeCost(**self.cfg['cost']['friction_cone_cost'], object_params = self.cfg['object'], device=self.device)
-
+        self.cube_pos_state = None
+        self.cube_relative_tray_pos = torch.zeros(3, device='cuda:0')
         self.init_buffers()
 
     # def load_config(self, config_path):
@@ -122,15 +125,29 @@ class TrayObjectReacher(ArmReacher):
             state_dict = state_dict,
             action_batch = action_batch)
         # print("cost", cost.shape)
-
+        # reset_data = self.reset_idx(env_ids, rng=rng)
         q_pos_batch = state_dict['q_pos']
         orig_size = q_pos_batch.size()[0:-1]
         ee_pos, ee_rot = state_dict['ee_pos'], state_dict['ee_rot']
         ee_vel_twist_batch = state_dict['ee_vel_twist']
         ee_acc_twist_batch = state_dict['ee_acc_twist']
-
+        # import pdb; pdb.set_trace()
+        compute_relative_cube_pos = True
+        if 'start_object_pos' in state_dict and compute_relative_cube_pos:
+            if self.cube_pos_state is None:
+                self.cube_pos_state = state_dict['start_object_pos']
+                start_q_pos = state_dict['start_q_pos']
+                link_pose_dict, _, _ = self.robot_model.compute_forward_kinematics(start_q_pos, torch.zeros_like(start_q_pos), dist_calc=True)
+                start_ee_pos, start_ee_rot = link_pose_dict[self.ee_link_name][0], link_pose_dict[self.ee_link_name][1]
+                self.cube_relative_tray_pos =  self.cube_pos_state - start_ee_pos
+                self.cube_relative_tray_pos = self.cube_relative_tray_pos.squeeze(0)
+                # print("start cube state in compute_cost ", self.cube_pos_state)
+                # print("start ee state", start_ee_pos)
+                print("cube relative state initial", self.cube_relative_tray_pos)
+                # print("cube rel according to default dof state", self.ee_pos_world - self.cube_pos_state)
+            # print("cube relative state", self.cube_relative_tray_pos)
         with record_function("tray_object_reacher:friction_cone_cost"):
-            friction_cone_cost = self.friction_cost.forward(ee_acc_twist_batch[...,3:6], ee_vel_twist_batch[...,0:3], ee_acc_twist_batch[...,0:3], ee_rot)
+            friction_cone_cost = self.friction_cost.forward(ee_acc_twist_batch[...,3:6], ee_vel_twist_batch[...,0:3], ee_acc_twist_batch[...,0:3], ee_rot, self.cube_relative_tray_pos)
             # print("friction cone cost shape", friction_cone_cost.shape)
             summed_friction_cost = friction_cone_cost.sum(dim=-1)
             # friction_cone_cost = friction_cone_cost.view(orig_size)
@@ -349,6 +366,10 @@ class TrayObjectReacher(ArmReacher):
                 # exit()
 
         return reset_data
+    
+    def reset(self, rng:Optional[torch.Generator]=None):
+        env_ids = torch.arange(self.num_instances, device=self.device)
+        return self.reset_idx(env_ids, rng=rng)
             
         #     goal_position_noise = self.task_specs['target_position_noise']
         #     goal_rotation_noise = self.task_specs['target_rotation_noise']
