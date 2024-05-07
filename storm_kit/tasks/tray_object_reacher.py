@@ -116,6 +116,18 @@ class TrayObjectReacher(ArmReacher):
 
     #     return obs
 
+    def compute_observations(
+            self, state_dict: Dict[str, torch.Tensor], 
+            compute_full_state:bool = False, debug=False,
+            cost_terms: Optional[Dict[str, torch.Tensor]]=None):
+
+        if compute_full_state:
+            state_dict = self.compute_full_state(state_dict, debug)
+        
+        obs =  super().compute_observations(state_dict, cost_terms)
+
+        
+
     def compute_cost(
             self, 
             state_dict: Dict[str, torch.Tensor], 
@@ -132,9 +144,9 @@ class TrayObjectReacher(ArmReacher):
         ee_vel_twist_batch = state_dict['ee_vel_twist']
         ee_acc_twist_batch = state_dict['ee_acc_twist']
         # import pdb; pdb.set_trace()
-        compute_relative_cube_pos = True
+        compute_relative_cube_pos = True #TODO:put in config later
         if 'start_object_pos' in state_dict and compute_relative_cube_pos:
-            if self.cube_pos_state is None:
+            # if self.cube_pos_state is None:
                 self.cube_pos_state = state_dict['start_object_pos']
                 start_q_pos = state_dict['start_q_pos']
                 link_pose_dict, _, _ = self.robot_model.compute_forward_kinematics(start_q_pos, torch.zeros_like(start_q_pos), dist_calc=True)
