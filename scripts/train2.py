@@ -124,7 +124,7 @@ def get_task_and_dataset(task_name:str, cfg=None): #log max_episode_steps
 
         #Load bufffers from folder
         buffer_dict = buffer_dict_from_folder(data_dir)
-        replay_buffer = buffer_dict['mpc_buffer_50ep_no_goal_obs.pt']
+        replay_buffer = buffer_dict['mpc_buffer_50ep.pt']
         
     return env, task, replay_buffer
 
@@ -302,7 +302,7 @@ def main(cfg: DictConfig):
             agent_state = agent.state_dict()
             agent_state['normalization_stats'] = normalization_stats
             if save_train:    
-                torch.save(agent_state, os.path.join(model_dir, 'agent_checkpoint_50ep_only_rot_goal_0_discount.pt'))
+                torch.save(agent_state, os.path.join(model_dir, 'agent_checkpoint_50ep_ee_acc_twist_obs.pt'))
     
         pbar.set_postfix(train_metrics)
 

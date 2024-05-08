@@ -346,8 +346,8 @@ class MPPI(GaussianMPC):
         replace_last_value = False
         # print(value_preds)
         if value_preds is not None:
-            if value_preds.shape != costs.shape:
-                value_preds = torch.logsumexp(value_preds, dim=0, keepdim=True)
+            # if value_preds.shape != costs.shape:
+            #     value_preds = torch.logsumexp(value_preds, dim=0, keepdim=True)
             # value_preds = value_preds * (1. - terminals) + costs * terminals
             if replace_last_value:
                 costs[...,-1] = value_preds[...,-1]

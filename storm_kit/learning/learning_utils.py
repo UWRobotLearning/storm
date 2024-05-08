@@ -588,7 +588,7 @@ def relabel_dataset(dataset, task):
     return dataset
 
 def plot_episode(episode, block=False):
-
+    
     q_pos = episode['states/q_pos']
     q_vel = episode['states/q_vel']
     q_acc = episode['states/q_acc']

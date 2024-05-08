@@ -175,13 +175,7 @@ docs/setup.rst
 *swp
 *swo
 
-tmp_results/FrankaReacher/*
-tmp_results/FrankaReacherRealRobot/*
-tmp_results/FrankaTrayReacherRealRobot/*
-tmp_results/FrankaTrayReacher/MPC/*
-tmp_results/FrankaTrayReacher/policy_eval/models
-tmp_results/FrankaTrayReacher/BP/logs
-tmp_results/utils/*
+tmp_results/*
 runs/*
 robot_data/*
 wandb/*

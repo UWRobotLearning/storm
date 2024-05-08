@@ -35,7 +35,7 @@ vf:
     dropout_prob: 0.01
     layer_norm: true
   ensemble_size: 100
-  aggregation: 'None'
+  aggregation: 'log_sum_exp'
   prediction_temp: 50.0 
   prior_factor: 0.0
   w_init: 0.0 #3e-3
@@ -69,7 +69,7 @@ agent:
   fixed_alpha: 0.2
   relabel_data: true
   load_pretrained_policy: false
-  discount: 0.0 #0.999
+  discount: 0.99 #0.999
   beta: 3.0
   expectile_tau: 0.7
   clip_values: false

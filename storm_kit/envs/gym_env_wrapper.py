@@ -14,7 +14,7 @@ class GymEnvWrapper():
             #mujoco
             if torch.is_tensor(action): action = action.cpu().numpy()
             return self.env.step(action)
-        
+        import pdb; pdb.set_trace()
         # state_dict = self.env.get_state_dict()
         next_state_dict, done_env = self.env.step(action)
         done = done_env
