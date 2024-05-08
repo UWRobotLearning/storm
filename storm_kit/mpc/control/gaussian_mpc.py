@@ -320,7 +320,15 @@ class GaussianMPC(Controller):
                 # q_preds = self.qf({'obs': obs}, act_seq).clamp(min=self.V_min, max=self.V_max) #, max=self.V_max
                 # v_preds, _ = self.vf({'obs': obs.view(-1, obs.shape[-1])})#.clamp(min=self.V_min, max=self.V_max) #inference
                 v_preds, v_info = self.vf(obs.view(-1, obs.shape[-1]), denormalized=True)
-                v_preds = v_preds.view(self.state_batch_size, self.num_particles, self.horizon)
+
+                ##################TODO: Check if this is correct##################
+                if self.vf.aggregation == 'None':
+                    v_preds = v_preds.view(self.vf.ensemble_size, self.num_particles, self.horizon)
+                else:
+                    v_preds = v_preds.view(self.state_batch_size, self.num_particles, self.horizon)
+
+                # v_preds = v_preds.view(self.state_batch_size, self.num_particles, self.horizon)
+                
                 # v_preds = self.unnormalize_value_predictions(v_preds)
                 # v_preds = self.V_std * v_preds + self.V_mean #unnormalize
                 # v_preds += self.V_mean

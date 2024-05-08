@@ -111,7 +111,7 @@ def main(cfg: DictConfig):
         #load pretrained critic weights
         pretrained_vf = EnsembleValueFunction(
             obs_dim=obs_dim, config=cfg.train.vf, device=cfg.rl_device)
-        checkpoint_path = Path(f'./tmp_results/{cfg.task_name}/BP/models/agent_checkpoint_50ep_no_goal_obs.pt')
+        checkpoint_path = Path(f'./tmp_results/{cfg.task_name}/BP/models/agent_checkpoint_50ep_only_rot_goal_0_discount.pt')
         print('Loading agent checkpoint from {}'.format(checkpoint_path))
         try:
             checkpoint = torch.load(checkpoint_path)

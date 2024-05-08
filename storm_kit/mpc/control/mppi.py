@@ -335,8 +335,10 @@ class MPPI(GaussianMPC):
 
 
     def _compute_traj_returns(self, trajectories, normalize:bool=False)->torch.Tensor:
+        # import pdb; pdb.set_trace()
         costs = trajectories["costs"]
         value_preds = trajectories['value_preds']
+            
         terminals = trajectories['terminals'].float()
         term_cost = trajectories['term_cost']
         # import pdb; pdb.set_trace()
@@ -344,6 +346,8 @@ class MPPI(GaussianMPC):
         replace_last_value = False
         # print(value_preds)
         if value_preds is not None:
+            if value_preds.shape != costs.shape:
+                value_preds = torch.logsumexp(value_preds, dim=0, keepdim=True)
             # value_preds = value_preds * (1. - terminals) + costs * terminals
             if replace_last_value:
                 costs[...,-1] = value_preds[...,-1]

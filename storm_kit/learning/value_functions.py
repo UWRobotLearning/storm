@@ -266,6 +266,7 @@ class EnsembleValueFunction(nn.Module):
 
     # def all(self, obs_dict: Dict[str,torch.Tensor]):
     def all(self, obs:torch.Tensor, denormalized:bool=False):
+        # import pdb; pdb.set_trace()
         # if obs.dim() != 3:
         if obs.dim() == 2:
             # assert obs.dim() == 2
@@ -296,6 +297,7 @@ class EnsembleValueFunction(nn.Module):
 
     def forward(self, obs: torch.Tensor, denormalized:bool=False) -> Tuple[torch.Tensor, Dict[str, torch.Tensor]]:
         # [..., batch_size, state_dim + action_dim]
+        # import pdb; pdb.set_trace()
         values, info = self.all(obs, denormalized=denormalized)
         if self.aggregation == 'max':
             preds = torch.max(values, dim=0)[0]
@@ -310,6 +312,8 @@ class EnsembleValueFunction(nn.Module):
             preds = torch.median(values, dim=0)[0]
         elif self.aggregation == 'log_sum_exp':
             preds = torch.logsumexp((1.0/ self.prediction_temp) * values, dim=0)
+        elif self.aggregation == 'None':
+            preds = values
 
         return preds, info
  
