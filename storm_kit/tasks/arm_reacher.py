@@ -111,7 +111,7 @@ class ArmReacher(ArmTask):
         # # goal_rot_err = torch.matmul(
         # #     ee_goal_rot.transpose(-1,-2), ee_rot).flatten(-2,-1)
         # obs = torch.cat(
-        #     (obs, rotation_res), dim=-1) # ee_goal_pos, ee_goal_rot.flatten(-2,-1),  goal_pos_err, goal_rot_err ,
+        #     (obs, translation_res,rotation_res), dim=-1) # ee_goal_pos, ee_goal_rot.flatten(-2,-1),  goal_pos_err, goal_rot_err ,
 
         return obs
 
@@ -441,6 +441,7 @@ class ArmReacher(ArmTask):
     def obs_dim(self)->int:
         return super().obs_dim #for stability value function training 
         # return super().obs_dim + 3 #for only rot inclusion and no trans inclusion
+        # return super().obs_dim + 6
 
     @property
     def action_lims(self)->Tuple[torch.Tensor, torch.Tensor]:
