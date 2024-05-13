@@ -28,6 +28,7 @@ class MPCPolicy(Policy):
             task_cls, dynamics_model_cls,
             sampling_policy, vf ,qf)
         self.prev_command_time = time.time()
+        self.vf = vf
         # self.dt = self.cfg.rollout.control_dt
         
     def forward(self, obs_dict, calc_val:bool=False): #calc_val:bool=False

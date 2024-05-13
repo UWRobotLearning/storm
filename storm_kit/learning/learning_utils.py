@@ -343,7 +343,6 @@ def run_episode(
                 policy_input = {
                     'obs': torch.as_tensor(obs).float(),
                     'states': state}
-                
                 # with profile(activities=[ProfilerActivity.CPU, ProfilerActivity.CUDA]) as prof:
                 action, policy_info = policy.get_action(policy_input, deterministic=deterministic)
 
@@ -354,6 +353,12 @@ def run_episode(
                 #step tells me about next state
                 next_obs, next_reward, next_done, info = env.step(
                     action, compute_cost=compute_cost, compute_termination=compute_termination)
+                if policy.vf is not None:
+                    v_preds, v_info = policy.vf(obs.view(-1, obs.shape[-1]), denormalized=True)
+                    # v_preds = v_preds.transpose(0,1)
+                    v_preds = v_preds.view(1, -1)
+
+                # policy.vf = 
 
                 next_state = info['state'] if 'state' in info else None
                 total_return += next_reward
@@ -361,6 +366,7 @@ def run_episode(
 
             timeout = i == max_episode_steps - 1
             terminal = done and (not timeout)
+            # import pdb; pdb.set_trace()
 
             traj_data['observations'].append(obs)
             traj_data['actions'].append(action)
@@ -368,6 +374,7 @@ def run_episode(
             traj_data['rewards'].append(next_reward)
             traj_data['terminals'].append(bool(terminal))
             traj_data['timeouts'].append(bool(timeout))
+            traj_data['values'].append(v_preds)
             if reset_data is not None:
                 goal_dict = reset_data['goal_dict']
                 for k,v in goal_dict.items(): traj_data['goals/'+k].append(v)
@@ -588,13 +595,16 @@ def relabel_dataset(dataset, task):
     return dataset
 
 def plot_episode(episode, block=False):
-    
     q_pos = episode['states/q_pos']
     q_vel = episode['states/q_vel']
     q_acc = episode['states/q_acc']
     actions = episode['actions']
     costs = episode['costs']
     returns = episode['returns'] if 'returns' in episode else None
+    ensemble_value_preds = episode['values']
+    pred_temp = 50
+    ensemble_value_preds = torch.tensor(ensemble_value_preds)
+    aggregated_value_preds = torch.logsumexp((1/pred_temp)*ensemble_value_preds, dim=1, keepdim=False)
     disc_returns = episode['disc_returns'] if 'disc_returns' in episode else None
     if torch.is_tensor(q_pos): 
         q_pos = q_pos.cpu().numpy()
@@ -610,9 +620,10 @@ def plot_episode(episode, block=False):
         returns = returns.cpu().numpy()
     if disc_returns is not None and torch.is_tensor(disc_returns):
         disc_returns = disc_returns.cpu().numpy()
-    if ee_goal is not None and torch.is_tensor(ee_goal):
-        ee_goal = ee_goal.cpu().numpy()
-
+    # if ee_goal is not None and torch.is_tensor(ee_goal):
+    #     ee_goal = ee_goal.cpu().numpy()
+    if torch.is_tensor(aggregated_value_preds):
+        aggregated_value_preds = aggregated_value_preds.cpu().numpy()
 
     fig, ax = plt.subplots(3,1)
     num_points, n_dofs = q_pos.shape
@@ -637,12 +648,19 @@ def plot_episode(episode, block=False):
     ax2[2].set_ylabel('Discounted Returns')
     ax2[-1].set_xlabel('Episode Timestep')
 
+    fig3, ax3 = plt.subplots()
+    ax3.hist(aggregated_value_preds.flatten(), bins=20, alpha=0.75)
+    ax3.set_title('Histogram of Aggregated Value Predictions')
+    ax3.set_xlabel('Value Predictions')
+    ax3.set_ylabel('Frequency')
+
     plt.show(block=block)
     if not block:
         plt.waitforbuttonpress(-1)
         plt.close(fig)
         plt.close(fig2)
-
+        plt.close(fig3)
+    
 # Below are modified from 
 # https://github.com/gwthomas/IQL-PyTorch
 

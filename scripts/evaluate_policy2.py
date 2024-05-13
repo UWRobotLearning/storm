@@ -17,7 +17,6 @@ from storm_kit.learning.learning_utils import plot_episode, evaluate_policy
 from storm_kit.envs.gym_env_wrapper import GymEnvWrapper
 from task_map import task_map
 
-
 def get_env_and_task(task_name:str, cfg=None): #log max_episode_steps
     if task_name.startswith(('hopper', 'walker2d', 'halfcheetah', 'antmaze')):
         env = gym.make(task_name)
@@ -88,6 +87,9 @@ def main(cfg: DictConfig):
     if eval_pretrained or load_pretrained:
         #load pretrained policy weights
         pretrained_policy = GaussianPolicy(obs_dim=obs_dim, act_dim=act_dim, config=cfg.train.policy, act_lows=act_lows, act_highs=act_highs, device=cfg.rl_device) #task=None,
+
+        model_filename = cfg.eval.vf_trained_agent
+        checkpoint_path = Path(f'./tmp_results/{cfg.task_name}/BP/models/{model_filename}')
         checkpoint_path = Path(f'./tmp_results/{cfg.task_name}/BP/models/agent_checkpoint_50ep_ee_acc_twist_obs_discount_0.pt')
         print('Loading agent checkpoint from {}'.format(checkpoint_path))
         try:
@@ -111,7 +113,9 @@ def main(cfg: DictConfig):
         #load pretrained critic weights
         pretrained_vf = EnsembleValueFunction(
             obs_dim=obs_dim, config=cfg.train.vf, device=cfg.rl_device)
-        checkpoint_path = Path(f'./tmp_results/{cfg.task_name}/BP/models/agent_checkpoint_50ep_ee_state_obs_ensemble_logsumexp.pt')
+        model_filename = cfg.eval.vf_trained_agent
+        checkpoint_path = Path(f'./tmp_results/{cfg.task_name}/BP/models/{model_filename}')
+        # checkpoint_path = Path(f'./tmp_results/{cfg.task_name}/BP/models/agent_checkpoint_50ep_ee_state_obs_ensemble_logsumexp_discount_0.pt')
         print('Loading agent checkpoint from {}'.format(checkpoint_path))
         try:
             checkpoint = torch.load(checkpoint_path)
@@ -169,15 +173,7 @@ def main(cfg: DictConfig):
     # buffer_6 = ReplayBuffer(capacity=eval_info['Eval/num_steps'])
     # buffer_7 = ReplayBuffer(capacity=eval_info['Eval/num_steps'])
     # buffer_8 = ReplayBuffer(capacity=eval_info['Eval/num_steps'])
-    # for episode in eval_episodes:
-    #     episode_metrics = task.compute_metrics(episode)
-    #     buffer.add_batch(episode)
-    #     if episode <= eval_info['Eval/num_steps']-1:
-    #         buffer_1.add_batch(episode)
-    #     if cfg.debug:
-    #         plot_episode(episode, block=False)
-    #     print(episode_metrics)
-
+ 
     #more modular
     buffers = [buffer_1]#, buffer_2, buffer_3, buffer_4, buffer_5, buffer_6,buffer_7, buffer_8]
     len_buffer = [50]#,350,300,250,200,150,100,50] #define up to which episode index each buffer should store data
@@ -192,6 +188,7 @@ def main(cfg: DictConfig):
             plot_episode(episode, block=False)
         print(f"Episode {index}: {episode_metrics}")
     #sanity check for buffer contents
+    import pdb; pdb.set_trace()
     for buf_index, buffer in enumerate(buffers, start=1):
             print(f"Buffer {buf_index}: {buffer}")
 

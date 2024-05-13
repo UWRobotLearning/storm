@@ -123,7 +123,7 @@ class MPPI(GaussianMPC):
         self.visual_traj = visual_traj
         self.normalize_returns = normalize_returns
         self.log_B = torch.log(torch.tensor([self.num_particles], device=self.device)).item()
-        self.prediction_temp = 40
+        self.prediction_temp = 200.0
         self.traj_value_returns = torch.zeros(1, self.num_particles, self.horizon, device=self.device)
 
     def _update_distribution(self, trajectories):
@@ -339,7 +339,7 @@ class MPPI(GaussianMPC):
     def _compute_traj_returns(self, trajectories, normalize:bool=False)->torch.Tensor:
         # import pdb; pdb.set_trace()
         costs = trajectories["costs"]
-        traj_value_returns = self.traj_value_returns #torch.zeros_like(costs)
+        traj_value_returns = self.traj_value_returns
         value_preds = trajectories['value_preds']
         terminals = trajectories['terminals'].float()
         term_cost = trajectories['term_cost']
