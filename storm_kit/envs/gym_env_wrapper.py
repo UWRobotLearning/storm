@@ -36,6 +36,7 @@ class GymEnvWrapper():
         return obs, cost, done, {'state': next_state_dict}
 
     def reset(self, rng=None):
+        # import pdb; pdb.set_trace()
         if self.task is None:
             return self.env.reset()
         with torch.no_grad():

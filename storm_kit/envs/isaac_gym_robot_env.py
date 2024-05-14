@@ -136,7 +136,7 @@ class IsaacGymRobotEnv():
             dt=self.cfg.joint_control.control_dt)
         self.reset_idx(torch.arange(self.num_envs, device=self.device))
         self._refresh()
-
+        self.relative_object_pos = None
 
     def set_viewer(self):
         """Create the viewer."""
@@ -465,7 +465,7 @@ class IsaacGymRobotEnv():
             self.init_object_state_1 = torch.zeros(self.num_envs, 13, device=self.device)
             self.init_object_state_2 = torch.zeros(self.num_envs, 13, device=self.device)
             #for basic tray object reaching
-            self.z_spawn_offset = 0.003
+            self.z_spawn_offset = 0.0001
             self.init_object_state_1[:,0] = self.ee_pose_world.p.x 
             self.init_object_state_1[:,1] = self.ee_pose_world.p.y 
             self.init_object_state_1[:,2] = self.ee_pose_world.p.z + self.z_spawn_offset
@@ -483,9 +483,11 @@ class IsaacGymRobotEnv():
             self.init_object_state_2[:,6] = self.ee_pose_world.r.z 
             self.cube1_reset_pose = self.init_object_state_1.detach().clone()
             self.cube2_reset_pose = self.init_object_state_2.detach().clone()
+            # self.cube_start_pose = self.init_object_state_1.detach().clone()
 
         self.num_bodies = self.rigid_body_states.shape[1]
         self.target_poses = None
+        self.cube_start_pose = self.init_object_state_1.detach().clone()[:,:3]
 
         # self._num_dofs = self.gym.get_sim_dof_count(self.sim) // self.num_envs
         # self.robot_dof_targets = torch.zeros((self.num_envs, self.num_dofs), dtype=torch.float, device=self.device) 
@@ -620,12 +622,18 @@ class IsaacGymRobotEnv():
         #    - e.g. compute reward, compute observations
         self.progress_buf += 1                
         env_ids = self.reset_buf.nonzero(as_tuple=False).squeeze(-1)
+        import pdb; pdb.set_trace() 
         if len(env_ids) > 0:
             self.reset_idx(env_ids)
+        
         # self.compute_observations()
         # self.compute_reward()
         state_dict = self.get_state_dict()
         state_dict = self.state_filter.filter_joint_state(copy.deepcopy(state_dict))
+        # self.cube_start_pose = self.object_reset(env_ids, reset_data=None)
+        # tray_pos_world = torch.tensor([self.ee_pose_world.p.x, self.ee_pose_world.p.y, self.ee_pose_world.p.z], device=self.rl_device)
+        # relative_object_pos = self.cube_start_pose - tray_pos_world
+        # state_dict['relative_object_pos'] = relative_object_pos.to(self.rl_device)
         self.reset_buf[:] = torch.where(
             self.progress_buf >= self.max_episode_length, torch.ones_like(self.reset_buf), self.reset_buf) #- 1
         
@@ -646,15 +654,34 @@ class IsaacGymRobotEnv():
             # 'prev_action': self.prev_action_buff.to(self.rl_device),
             'tstep': self.episode_time
         }
-        
+        import pdb; pdb.set_trace()
         if self.floating_base_robot:
             state_dict['base_pos'] = self.robot_base_state[:, 0:3].to(self.rl_device)
             state_dict['base_rot'] = self.robot_base_state[:, 3:7].to(self.rl_device)
             state_dict['base_vel'] = self.robot_base_state[:, 7:10].to(self.rl_device)
         #depending on number of objects, populate state_dict with states
         if self.num_objects > 0:
+            # import pdb; pdb.set_trace()
             object_states = [self.object_state_1]
-            keys = ['object_pos', 'object_rot', 'object_vel', 'object_ang_vel']
+            # tray_pos_world = torch.tensor([self.ee_pose_world.p.x, self.ee_pose_world.p.y, self.ee_pose_world.p.z], device=self.rl_device)
+            
+            #######################Under dev###########################
+            link_pose_dict, link_spheres_dict, self_coll_dist, lin_jac, ang_jac = self.robot_model.compute_fk_and_jacobian(
+            self.robot_q_pos_buff, torch.zeros_like(self.robot_q_pos_buff),
+            link_name=self.ee_link_name)
+            ee_pos, ee_rot = link_pose_dict[self.ee_link_name]
+            ee_quat = matrix_to_quaternion(ee_rot)
+            ee_pos_vec = gymapi.Vec3(x=ee_pos[0][0], y=ee_pos[0][1], z=ee_pos[0][2])
+            ee_rot_quat = gymapi.Quat(x=ee_quat[0][1],y=ee_quat[0][2], z=ee_quat[0][3], w=ee_quat[0][0])
+            ee_pose_robot = gymapi.Transform(p=ee_pos_vec, r=ee_rot_quat)
+            ee_pose_world = self.robot_pose_world * ee_pose_robot
+            ee_pose_world = torch.tensor([ee_pose_world.p.x, ee_pose_world.p.y, ee_pose_world.p.z], device=self.rl_device)
+            # if self.relative_object_pos is None:
+            relative_object_pos = self.object_state_1[...,:3] - ee_pose_world
+            #######################Under dev###########################
+
+
+            keys = ['object_pos', 'object_rot', 'object_vel', 'object_ang_vel', 'relative_object_pos']
 
             if self.num_objects > 1:
                 object_states.append(self.object_state_2)
@@ -666,6 +693,7 @@ class IsaacGymRobotEnv():
                 state_dict[keys[i*4 + 1]] = object_state[:, 3:7].to(self.rl_device)
                 state_dict[keys[i*4 + 2]] = object_state[:, 7:10].to(self.rl_device)
                 state_dict[keys[i*4 + 3]] = object_state[:, 10:13].to(self.rl_device)
+            state_dict['relative_object_pos'] = relative_object_pos.to(self.rl_device)
         # print("state dict",state_dict)
         return state_dict
     
@@ -702,7 +730,10 @@ class IsaacGymRobotEnv():
         self.prev_action_buff[env_ids] = torch.zeros_like(self.prev_action_buff[env_ids])
         
         if self.num_objects>0:
-            self.object_reset(env_ids, reset_data)
+            self.cube_start_pose = self.object_reset(env_ids, reset_data)
+            # tray_pos_world = torch.tensor([self.ee_pose_world.p.x, self.ee_pose_world.p.y, self.ee_pose_world.p.z], device=self.rl_device)
+            # relative_object_pos = self.cube_start_pose - tray_pos_world
+
         #for one object
         ee_position = torch.tensor([self.ee_pose_world.p.x, self.ee_pose_world.p.y, self.ee_pose_world.p.z], 
                            dtype=torch.float32, 
@@ -723,6 +754,8 @@ class IsaacGymRobotEnv():
         # print("reset function tray link pose", self.ee_state)
         self.state_filter.reset()
         state_dict = copy.deepcopy(self.state_filter.filter_joint_state(copy.deepcopy(state_dict)))
+        
+        # state_dict['relative_object_pos'] = relative_object_pos.to(self.rl_device)
         # state_dict['object_relative_pos'] = obj_relative_pos
         return state_dict 
 
@@ -739,6 +772,7 @@ class IsaacGymRobotEnv():
             # print("reset data", reset_data['cube_pos_noise'])
             # print("object state", self.object_state_1[env_ids,:3])
             # print("cube reset pose",self.cube1_reset_pose[env_ids,:3])
+            self.cube_start_pose = self.cube1_reset_pose[env_ids,:3] + reset_data['cube_pos_noise']
             self.object_state_1[env_ids,:3] = self.cube1_reset_pose[env_ids,:3] + reset_data['cube_pos_noise']
             self.object_state_1[env_ids,3:7] = self.cube1_reset_pose[env_ids,3:7]
             print("object state after reset", self.object_state_1[env_ids,:3])
@@ -750,15 +784,15 @@ class IsaacGymRobotEnv():
         index = -self.num_objects
         print("index", index)
         #setting actor root state tensor based on num_objects and urdfs mentioned
-        if self.num_objects == 1:
+        if self.num_objects == 1 and reset_data is not None:
             multi_env_ids_object1_int32 = self.global_indices[env_ids, 2 if len_obj_urdfs == 1 else index].flatten()
             self.gym.set_actor_root_state_tensor_indexed(
                 self.sim,
                 gymtorch.unwrap_tensor(self.root_state),
                 gymtorch.unwrap_tensor(multi_env_ids_object1_int32), len(multi_env_ids_object1_int32))
-            return self.object_state_1
+            return self.cube_start_pose 
 
-        else:
+        elif self.num_objects > 1 and reset_data is not None:
             multi_env_ids_objects_int32 = self.global_indices[env_ids, index:].flatten()
             self.gym.set_actor_root_state_tensor_indexed(
                 self.sim,
