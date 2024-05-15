@@ -1,4 +1,4 @@
-from typing import Dict, Optional, Tuple
+from typing import Dict, Optional, Tuple, Union
 import torch
 from torch.profiler import record_function
 from functools import reduce
