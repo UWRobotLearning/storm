@@ -337,7 +337,7 @@ def run_episode(
 
         traj_data = defaultdict(list)
         total_return, discounted_total_return = 0.0, 0.0
-
+        # import pdb; pdb.set_trace()
         for i in range(max_episode_steps):
             with torch.no_grad():
                 policy_input = {
@@ -368,6 +368,7 @@ def run_episode(
             traj_data['rewards'].append(next_reward)
             traj_data['terminals'].append(bool(terminal))
             traj_data['timeouts'].append(bool(timeout))
+            
             if reset_data is not None:
                 goal_dict = reset_data['goal_dict']
                 for k,v in goal_dict.items(): traj_data['goals/'+k].append(v)
@@ -549,6 +550,7 @@ def add_returns_to_dataset(dataset, discount):
 
 
 def relabel_dataset(dataset, task):
+    # import pdb; pdb.set_trace()
     device = task.device
     q_pos = torch.as_tensor(dataset['states/q_pos']).to(device)
     q_vel = torch.as_tensor(dataset['states/q_vel']).to(device)
@@ -557,9 +559,19 @@ def relabel_dataset(dataset, task):
     next_q_vel = torch.as_tensor(dataset['next_states/q_vel']).to(device)
     next_q_acc = torch.as_tensor(dataset['next_states/q_acc']).to(device)
     actions = torch.as_tensor(dataset['actions']).to(device)
+    if dataset['states/relative_object_pos'] is not None:
+        rel_obj_pos = torch.as_tensor(dataset['states/relative_object_pos']).to(device)
+    if dataset['next_states/relative_object_pos'] is not None:
+        next_rel_obj_pos = torch.as_tensor(dataset['next_states/relative_object_pos']).to(device)
     
     state_dict = {'q_pos': q_pos, 'q_vel': q_vel, 'q_acc': q_acc}
+    if dataset['states/relative_object_pos'] is not None:
+        state_dict['relative_object_pos'] = rel_obj_pos
+    
     next_state_dict = {'q_pos': next_q_pos, 'q_vel': next_q_vel, 'q_acc': next_q_acc}
+    if dataset['next_states/relative_object_pos'] is not None:
+        next_state_dict['relative_object_pos'] = next_rel_obj_pos
+
     goal_dict = {}
     for k,v in dataset.items():
         split = k.split("/")

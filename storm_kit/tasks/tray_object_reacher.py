@@ -84,57 +84,26 @@ class TrayObjectReacher(ArmReacher):
     def forward(self, state_dict: Dict[str, torch.Tensor], act_batch:Optional[torch.Tensor]=None):
         return super().forward(state_dict, act_batch)
 
-    # def compute_observations(
-    #         self, state_dict: Dict[str, torch.Tensor], 
-    #         compute_full_state:bool = False, debug=False,
-    #         cost_terms: Optional[Dict[str, torch.Tensor]]=None):
-
-    #     if compute_full_state:
-    #         state_dict = self.compute_full_state(state_dict, debug)
+ 
+    def compute_observations(
+            self, state_dict: Dict[str, torch.Tensor], 
+            compute_full_state:bool = False, debug=False,
+            cost_terms: Optional[Dict[str, torch.Tensor]]=None):
+        import pdb; pdb.set_trace()
+        if compute_full_state:
+            state_dict = self.compute_full_state(state_dict, debug)
+        obs =  super().compute_observations(state_dict, cost_terms)
+        # import pdb; pdb.set_trace()
+        relative_object_pos = state_dict['relative_object_pos']
+        obs = torch.cat((obs, relative_object_pos), dim=-1)
         
-    #     obs =  super().compute_observations(state_dict, cost_terms)
-    #     ee_pos = state_dict['ee_pos']
-    #     ee_quat = state_dict['ee_quat']
-    #     ee_rot = state_dict['ee_rot']
-    #     orig_size = ee_pos.size()[0:-1]
+        return obs
 
-    #     if ee_pos.ndim == 2:
-    #         ee_goal_pos = self.goal_ee_pos.expand_as(ee_pos)
-    #         ee_goal_quat = self.goal_ee_quat.expand_as(ee_quat)
-    #         ee_goal_rot = self.goal_ee_rot.expand_as(ee_rot)
-    #     elif ee_pos.ndim == 3:
-    #         ee_goal_pos = self.goal_ee_pos.unsqueeze(1).expand_as(ee_pos)
-    #         ee_goal_quat = self.goal_ee_quat.unsqueeze(1).expand_as(ee_quat)
-    #         ee_goal_rot = self.goal_ee_rot.unsqueeze(1).expand_as(ee_rot)
-    #     elif ee_pos.ndim == 4:
-    #         ee_goal_pos = self.goal_ee_pos.unsqueeze(1).unsqueeze(1).expand_as(ee_pos)
-    #         ee_goal_quat = self.goal_ee_quat.unsqueeze(1).unsqueeze(1).expand_as(ee_quat)
-    #         ee_goal_rot = self.goal_ee_rot.unsqueeze(1).unsqueeze(1).expand_as(ee_rot)
-
-    #     _, pose_cost_info = self.goal_cost.forward(
-    #         ee_pos.view(-1, 3), ee_rot.view(-1,3,3), 
-    #         ee_goal_pos.view(-1,3), ee_goal_rot.view(-1,3,3)
-    #     )
-
-    #     translation_res = pose_cost_info['translation_residual'].view(*orig_size,-1)
-    #     rotation_res = pose_cost_info['rotation_residual'].view(*orig_size,-1)
-    #     goal_pos_err = ee_goal_pos-ee_pos
-    #     obs = torch.cat(
-    #         (obs, 100*ee_goal_pos, ee_goal_rot.flatten(-2,-1), translation_res, rotation_res), dim=-1) #  goal_pos_err, goal_rot_err ,
-
-    #     return obs
-
-    # def compute_observations(
-    #         self, state_dict: Dict[str, torch.Tensor], 
-    #         compute_full_state:bool = False, debug=False,
-    #         cost_terms: Optional[Dict[str, torch.Tensor]]=None):
-
-    #     if compute_full_state:
-    #         state_dict = self.compute_full_state(state_dict, debug)
-        
-    #     obs =  super().compute_observations(state_dict, cost_terms)
-    #     return obs
-
+    def compute_full_state(self, state_dict: Dict[str,torch.Tensor], debug:bool=False)->Dict[str, Union[torch.Tensor, Dict[str, torch.Tensor], Dict[str, Tuple[torch.Tensor, torch.Tensor]]]]:
+        new_state_dict = super(TrayObjectReacher, self).compute_full_state(state_dict)
+        relative_object_pos = state_dict['relative_object_pos']
+        new_state_dict['relative_object_pos'] = relative_object_pos
+        return new_state_dict
         
     def compute_cost(
             self, 
@@ -470,9 +439,9 @@ class TrayObjectReacher(ArmReacher):
 
     #     return True
     
-    # @property
-    # def obs_dim(self)->int:
-    #     return super().obs_dim + 18
+    @property
+    def obs_dim(self)->int:
+        return super().obs_dim + 3
 
     # @property
     # def action_lims(self)->Tuple[torch.Tensor, torch.Tensor]:

@@ -123,6 +123,8 @@ class MPPI(GaussianMPC):
         self.visual_traj = visual_traj
         self.normalize_returns = normalize_returns
         self.log_B = torch.log(torch.tensor([self.num_particles], device=self.device)).item()
+        self.prediction_temp = 200.0
+        self.traj_value_returns = torch.zeros(1, self.num_particles, self.horizon, device=self.device)
 
     def _update_distribution(self, trajectories):
         """
@@ -333,32 +335,63 @@ class MPPI(GaussianMPC):
         self.total_costs = traj_returns
         return w #, val
 
-
+    #with logsumexp for ensemble
     def _compute_traj_returns(self, trajectories, normalize:bool=False)->torch.Tensor:
+        # import pdb; pdb.set_trace()
         costs = trajectories["costs"]
+        traj_value_returns = self.traj_value_returns
         value_preds = trajectories['value_preds']
         terminals = trajectories['terminals'].float()
         term_cost = trajectories['term_cost']
-        # import pdb; pdb.set_trace()
         costs = costs + term_cost
-        replace_last_value = False
-        # print(value_preds)
         if value_preds is not None:
+            # if value_preds.shape != costs.shape:
+            #     value_preds = torch.logsumexp(value_preds, dim=0, keepdim=True)
             # value_preds = value_preds * (1. - terminals) + costs * terminals
-            if replace_last_value:
-                costs[...,-1] = value_preds[...,-1]
             # costs[..., -1] += value_preds[..., -1]
-            costs += value_preds #* (1-terminals) #TODO: Check weighting
+            value_return = cost_to_go(value_preds, self.gammalam_seq)
+            traj_value_returns = torch.logsumexp((1.0/ self.prediction_temp) * value_return, dim=0, keepdim=True)
+            # costs += traj_value_returns
+            # costs += value_preds #* (1-terminals) #TODO: Check weighting
         traj_returns = cost_to_go(costs, self.gammalam_seq)
-
+        traj_returns = traj_returns[...,0] + traj_value_returns[...,0]
+        # traj_returns = traj_returns + traj_value_returns
+        # traj_returns = traj_returns[...,0]
         # if not self.time_based_weights: traj_returns = traj_returns[:,0]
-        traj_returns = traj_returns[...,0] #- value_preds[...,0]
+        # traj_returns = traj_returns[...,0] #- value_preds[...,0]
         if normalize:
             max_return = torch.max(traj_returns, dim=-1)[0][:,None]
             min_return = torch.min(traj_returns, dim=-1)[0][:,None]
             traj_returns = (traj_returns - min_return) / (max_return - min_return + 1e-12)
 
         return traj_returns
+
+#original function
+    # def _compute_traj_returns(self, trajectories, normalize:bool=False)->torch.Tensor:
+    #     costs = trajectories["costs"]
+    #     value_preds = trajectories['value_preds']
+    #     terminals = trajectories['terminals'].float()
+    #     term_cost = trajectories['term_cost']
+    #     # import pdb; pdb.set_trace()
+    #     costs = costs + term_cost
+    #     replace_last_value = False
+    #     # print(value_preds)
+    #     if value_preds is not None:
+    #         # value_preds = value_preds * (1. - terminals) + costs * terminals
+    #         if replace_last_value:
+    #             costs[...,-1] = value_preds[...,-1]
+    #         # costs[..., -1] += value_preds[..., -1]
+    #         costs += value_preds #* (1-terminals) #TODO: Check weighting
+    #     traj_returns = cost_to_go(costs, self.gammalam_seq)
+
+    #     # if not self.time_based_weights: traj_returns = traj_returns[:,0]
+    #     traj_returns = traj_returns[...,0] #- value_preds[...,0]
+    #     if normalize:
+    #         max_return = torch.max(traj_returns, dim=-1)[0][:,None]
+    #         min_return = torch.min(traj_returns, dim=-1)[0][:,None]
+    #         traj_returns = (traj_returns - min_return) / (max_return - min_return + 1e-12)
+
+    #     return traj_returns
        
     def _calc_val(self, trajectories):
         traj_returns = self._compute_traj_returns(trajectories, normalize=False)

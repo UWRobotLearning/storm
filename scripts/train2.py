@@ -124,7 +124,7 @@ def get_task_and_dataset(task_name:str, cfg=None): #log max_episode_steps
 
         #Load bufffers from folder
         buffer_dict = buffer_dict_from_folder(data_dir)
-        replay_buffer = buffer_dict['mpc_buffer_50ep_no_goal_obs.pt']
+        replay_buffer = buffer_dict['mpc_buffer_50_temp_rand_cube.pt']
         
     return env, task, replay_buffer
 
@@ -150,7 +150,7 @@ def main(cfg: DictConfig):
     env, task, dataset = get_task_and_dataset(cfg.task_name, cfg)
     print('Dataset obs shape:', dataset['observations'].shape)
     # exit()
-    import pdb; pdb.set_trace()
+    # import pdb; pdb.set_trace()
     train_dataset, val_dataset, terminal_dataset, dataset_info = preprocess_dataset(
         dataset, env, task, cfg.train.agent, 
         normalize_score_fn=lambda returns: normalize_score(cfg.task_name, returns))
@@ -296,13 +296,13 @@ def main(cfg: DictConfig):
 
         # if cfg.wandb_activate: wandb.log(log_metrics, step=step_num)
         # logger.row(row)
-        save_train = False
+        save_train = True
         if (epoch_num % cfg.train.agent.checkpoint_freq == 0) or (epoch_num == num_train_epochs -1):
             print(f'Epoch {epoch_num}: Saving current agent to {model_dir}')
             agent_state = agent.state_dict()
             agent_state['normalization_stats'] = normalization_stats
             if save_train:    
-                torch.save(agent_state, os.path.join(model_dir, 'agent_checkpoint_50ep_no_goal_obs.pt'))
+                torch.save(agent_state, os.path.join(model_dir, 'agent_checkpoint_50ep_cube_randomize_cube_rel_state.pt'))
     
         pbar.set_postfix(train_metrics)
 

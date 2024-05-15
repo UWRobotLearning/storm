@@ -292,7 +292,7 @@ class ArmTask(nn.Module):
         ee_rot = state_dict['ee_rot']
         ee_quat = state_dict['ee_quat']
         ee_vel_twist = state_dict['ee_vel_twist']
-
+        ee_acc_twist = state_dict['ee_acc_twist']
         # ee_rot_obs = ee_rot_batch[..., 0:2].flatten(-2,-1)
 
         # if 'ee_quat_seq' not in state_dict:
@@ -310,7 +310,7 @@ class ArmTask(nn.Module):
         #     bound_dist = cost_terms['bound_dist']
         
         obs = torch.cat(
-            (ee_pos, ee_rot.flatten(-2,-1), ee_vel_twist), dim=-1) # ,  q_pos, q_vel, 
+            (ee_pos, ee_rot.flatten(-2,-1), ee_vel_twist, ee_acc_twist), dim=-1) # ,  q_pos, q_vel, 
 
         return obs
 
@@ -541,7 +541,8 @@ class ArmTask(nn.Module):
 
     @property
     def obs_dim(self)->int:
-        return 18 #+ 2*self.n_dofs 
+        # return 18 #+ 2*self.n_dofs 
+        return 24
 
     @property
     def action_dim(self)->int:

@@ -111,7 +111,7 @@ def main(cfg: DictConfig):
         #load pretrained critic weights
         pretrained_vf = EnsembleValueFunction(
             obs_dim=obs_dim, config=cfg.train.vf, device=cfg.rl_device)
-        checkpoint_path = Path(f'./tmp_results/{cfg.task_name}/BP/models/agent_checkpoint_50ep_no_goal_obs.pt')
+        checkpoint_path = Path(f'./tmp_results/{cfg.task_name}/BP/models/agent_checkpoint_50ep_cube_randomize_cube_rel_state.pt')
         print('Loading agent checkpoint from {}'.format(checkpoint_path))
         try:
             checkpoint = torch.load(checkpoint_path)
@@ -181,15 +181,17 @@ def main(cfg: DictConfig):
     #more modular
     buffers = [buffer_1]#, buffer_2, buffer_3, buffer_4, buffer_5, buffer_6,buffer_7, buffer_8]
     len_buffer = [50]#,350,300,250,200,150,100,50] #define up to which episode index each buffer should store data
+    compute_metrics = False
     for index, episode in enumerate(eval_episodes, start=1):
-        episode_metrics = task.compute_metrics(episode)
+        if compute_metrics:
+            episode_metrics = task.compute_metrics(episode)
+            print(f"Episode {index}: {episode_metrics}")
         #add episodes to each buffer based on its permissible length
         for buffer, len in zip(buffers, len_buffer):
             if index <= len:
                 buffer.add_batch(episode)
         if cfg.debug:
             plot_episode(episode, block=False)
-        print(f"Episode {index}: {episode_metrics}")
     #sanity check for buffer contents
     for buf_index, buffer in enumerate(buffers, start=1):
             print(f"Buffer {buf_index}: {buffer}")
@@ -206,7 +208,7 @@ def main(cfg: DictConfig):
         # buffer_2.save(os.path.join(data_dir, '{}_buffer_3ep.pt'.format(agent_tag)))
         # buffer_3.save(os.path.join(data_dir, '{}_buffer_1ep.pt'.format(agent_tag)))
         for buffer, length in zip(buffers, len_buffer):
-            buffer_filename = os.path.join(data_dir, f'{agent_tag}_buffer_{length}ep_no_goal_obs.pt')
+            buffer_filename = os.path.join(data_dir, f'{agent_tag}_buffer_{length}_temp_rand_cube.pt')
             buffer.save(buffer_filename)
             print(f'Saving buffer to {buffer_filename}')
 

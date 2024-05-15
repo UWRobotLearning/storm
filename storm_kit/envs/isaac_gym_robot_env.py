@@ -465,7 +465,7 @@ class IsaacGymRobotEnv():
             self.init_object_state_1 = torch.zeros(self.num_envs, 13, device=self.device)
             self.init_object_state_2 = torch.zeros(self.num_envs, 13, device=self.device)
             #for basic tray object reaching
-            self.z_spawn_offset = 0.0001
+            self.z_spawn_offset = 0.02 #0.0001
             self.init_object_state_1[:,0] = self.ee_pose_world.p.x 
             self.init_object_state_1[:,1] = self.ee_pose_world.p.y 
             self.init_object_state_1[:,2] = self.ee_pose_world.p.z + self.z_spawn_offset
@@ -622,7 +622,7 @@ class IsaacGymRobotEnv():
         #    - e.g. compute reward, compute observations
         self.progress_buf += 1                
         env_ids = self.reset_buf.nonzero(as_tuple=False).squeeze(-1)
-        import pdb; pdb.set_trace() 
+        # import pdb; pdb.set_trace() 
         if len(env_ids) > 0:
             self.reset_idx(env_ids)
         
@@ -654,7 +654,7 @@ class IsaacGymRobotEnv():
             # 'prev_action': self.prev_action_buff.to(self.rl_device),
             'tstep': self.episode_time
         }
-        import pdb; pdb.set_trace()
+        # import pdb; pdb.set_trace()
         if self.floating_base_robot:
             state_dict['base_pos'] = self.robot_base_state[:, 0:3].to(self.rl_device)
             state_dict['base_rot'] = self.robot_base_state[:, 3:7].to(self.rl_device)
@@ -666,7 +666,7 @@ class IsaacGymRobotEnv():
             # tray_pos_world = torch.tensor([self.ee_pose_world.p.x, self.ee_pose_world.p.y, self.ee_pose_world.p.z], device=self.rl_device)
             
             #######################Under dev###########################
-            link_pose_dict, link_spheres_dict, self_coll_dist, lin_jac, ang_jac = self.robot_model.compute_fk_and_jacobian(
+            link_pose_dict, _, _, _, _ = self.robot_model.compute_fk_and_jacobian(
             self.robot_q_pos_buff, torch.zeros_like(self.robot_q_pos_buff),
             link_name=self.ee_link_name)
             ee_pos, ee_rot = link_pose_dict[self.ee_link_name]
@@ -678,6 +678,7 @@ class IsaacGymRobotEnv():
             ee_pose_world = torch.tensor([ee_pose_world.p.x, ee_pose_world.p.y, ee_pose_world.p.z], device=self.rl_device)
             # if self.relative_object_pos is None:
             relative_object_pos = self.object_state_1[...,:3] - ee_pose_world
+            # print("object_state in get_state_dict: ", self.object_state_1[...,:3])
             #######################Under dev###########################
 
 
@@ -694,6 +695,7 @@ class IsaacGymRobotEnv():
                 state_dict[keys[i*4 + 2]] = object_state[:, 7:10].to(self.rl_device)
                 state_dict[keys[i*4 + 3]] = object_state[:, 10:13].to(self.rl_device)
             state_dict['relative_object_pos'] = relative_object_pos.to(self.rl_device)
+            state_dict['start_cube_pos'] =  self.cube1_reset_pose.to(self.rl_device)
         # print("state dict",state_dict)
         return state_dict
     

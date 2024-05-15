@@ -310,6 +310,8 @@ class EnsembleValueFunction(nn.Module):
             preds = torch.median(values, dim=0)[0]
         elif self.aggregation == 'log_sum_exp':
             preds = torch.logsumexp((1.0/ self.prediction_temp) * values, dim=0)
+        elif self.aggregation == 'None':
+            preds = values
 
         return preds, info
  
