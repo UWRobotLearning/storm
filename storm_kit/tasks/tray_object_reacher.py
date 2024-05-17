@@ -89,20 +89,25 @@ class TrayObjectReacher(ArmReacher):
             self, state_dict: Dict[str, torch.Tensor], 
             compute_full_state:bool = False, debug=False,
             cost_terms: Optional[Dict[str, torch.Tensor]]=None):
-        import pdb; pdb.set_trace()
+        # import pdb; pdb.set_trace()
         if compute_full_state:
             state_dict = self.compute_full_state(state_dict, debug)
         obs =  super().compute_observations(state_dict, cost_terms)
         # import pdb; pdb.set_trace()
+        expected_shape = list(obs.shape[:-1])
         relative_object_pos = state_dict['relative_object_pos']
+        if list(relative_object_pos.shape[:-1]) != expected_shape:
+        #handle mismatch:reshaping, could also raise an error or warning
+            relative_object_pos = relative_object_pos.repeat(1, 400, 20, 1) #is this correct?
         obs = torch.cat((obs, relative_object_pos), dim=-1)
         
         return obs
 
     def compute_full_state(self, state_dict: Dict[str,torch.Tensor], debug:bool=False)->Dict[str, Union[torch.Tensor, Dict[str, torch.Tensor], Dict[str, Tuple[torch.Tensor, torch.Tensor]]]]:
         new_state_dict = super(TrayObjectReacher, self).compute_full_state(state_dict)
-        relative_object_pos = state_dict['relative_object_pos']
-        new_state_dict['relative_object_pos'] = relative_object_pos
+        if 'relative_object_pos' in state_dict:
+            relative_object_pos = state_dict['relative_object_pos']
+            new_state_dict['relative_object_pos'] = relative_object_pos
         return new_state_dict
         
     def compute_cost(
@@ -164,19 +169,22 @@ class TrayObjectReacher(ArmReacher):
         return success
     
     def compute_metrics(self, episode_data: Dict[str, torch.Tensor]):
+        # import pdb; pdb.set_trace()
         episode_metrics = super(TrayObjectReacher, self).compute_metrics(episode_data)
         q_pos = torch.as_tensor(episode_data['states/q_pos']).to(self.device)
         q_vel = torch.as_tensor(episode_data['states/q_vel']).to(self.device)
         q_acc = torch.as_tensor(episode_data['states/q_acc']).to(self.device)
+        relative_object_pos = torch.as_tensor(episode_data['states/relative_object_pos']).to(self.device)
         orig_size = q_pos.size()[0:-1]
 
-        state_dict = {'q_pos': q_pos, 'q_vel': q_vel, 'q_acc': q_acc}
+        state_dict = {'q_pos': q_pos, 'q_vel': q_vel, 'q_acc': q_acc, 'relative_object_pos': relative_object_pos}
         state_dict = self.compute_full_state(state_dict)
         ee_vel_twist_batch = state_dict['ee_vel_twist']
         ee_acc_twist_batch = state_dict['ee_acc_twist']
         ee_pos, ee_rot = state_dict['ee_pos'], state_dict['ee_rot']
+        d = state_dict['relative_object_pos']
         with record_function("tray_object_reacher:friction_cone_cost"):
-            friction_cone_cost = self.friction_cost.forward(ee_acc_twist_batch[...,3:6], ee_vel_twist_batch[...,0:3], ee_acc_twist_batch[...,0:3], ee_rot)
+            friction_cone_cost = self.friction_cost.forward(ee_acc_twist_batch[...,3:6], ee_vel_twist_batch[...,0:3], ee_acc_twist_batch[...,0:3], ee_rot, d)
             # friction_cone_cost = friction_cone_cost.view(orig_size)
             friction_cone_cost = friction_cone_cost.sum(dim=-1)
             # print("friction cone cost", friction_cone_cost)

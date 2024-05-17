@@ -181,7 +181,7 @@ def main(cfg: DictConfig):
     #more modular
     buffers = [buffer_1]#, buffer_2, buffer_3, buffer_4, buffer_5, buffer_6,buffer_7, buffer_8]
     len_buffer = [50]#,350,300,250,200,150,100,50] #define up to which episode index each buffer should store data
-    compute_metrics = False
+    compute_metrics = True
     for index, episode in enumerate(eval_episodes, start=1):
         if compute_metrics:
             episode_metrics = task.compute_metrics(episode)
