@@ -16,6 +16,7 @@ from storm_kit.learning.replay_buffer import ReplayBuffer
 from storm_kit.learning.learning_utils import plot_episode, evaluate_policy
 from storm_kit.envs.gym_env_wrapper import GymEnvWrapper
 from task_map import task_map
+import json
 
 def get_env_and_task(task_name:str, cfg=None): #log max_episode_steps
     if task_name.startswith(('hopper', 'walker2d', 'halfcheetah', 'antmaze')):
@@ -46,6 +47,16 @@ def get_env_and_task(task_name:str, cfg=None): #log max_episode_steps
         env = GymEnvWrapper(env, task)
 
     return env, task, task_cls, dynamics_model_cls
+
+def convert_tensors(obj):
+        if isinstance(obj, torch.Tensor):
+            return obj.tolist()
+        elif isinstance(obj, list):
+            return [convert_tensors(item) for item in obj]
+        elif isinstance(obj, dict):
+            return {key: convert_tensors(value) for key, value in obj.items()}
+        else:
+            return obj
 
 @hydra.main(config_name="config", config_path="../content/configs/gym")
 def main(cfg: DictConfig):
@@ -177,9 +188,11 @@ def main(cfg: DictConfig):
     #more modular
     buffers = [buffer_1]#, buffer_2, buffer_3, buffer_4, buffer_5, buffer_6,buffer_7, buffer_8]
     len_buffer = [50]#,350,300,250,200,150,100,50] #define up to which episode index each buffer should store data
+    metrics = []
     # import pdb; pdb.set_trace()
     for index, episode in enumerate(eval_episodes, start=1):
         episode_metrics = task.compute_metrics(episode)
+        metrics.append(episode_metrics)
         #add episodes to each buffer based on its permissible length
         for buffer, len in zip(buffers, len_buffer):
             if index <= len:
@@ -188,7 +201,7 @@ def main(cfg: DictConfig):
             plot_episode(episode, block=False)
         print(f"Episode {index}: {episode_metrics}")
     #sanity check for buffer contents
-    import pdb; pdb.set_trace()
+    # import pdb; pdb.set_trace()
     for buf_index, buffer in enumerate(buffers, start=1):
             print(f"Buffer {buf_index}: {buffer}")
 
@@ -207,6 +220,9 @@ def main(cfg: DictConfig):
             buffer_filename = os.path.join(data_dir, f'{agent_tag}_buffer_{length}_ee_all_obs_real_robot.pt')
             buffer.save(buffer_filename)
             print(f'Saving buffer to {buffer_filename}')
+    # return metrics
+    metrics = convert_tensors(metrics)
+    print(json.dumps(metrics))
 
 if __name__ == "__main__":
     main()

@@ -155,6 +155,7 @@ class TrayObjectReacher(ArmReacher):
         return success
     
     def compute_metrics(self, episode_data: Dict[str, torch.Tensor]):
+        # import pdb; pdb.set_trace()
         episode_metrics = super(TrayObjectReacher, self).compute_metrics(episode_data)
         q_pos = torch.as_tensor(episode_data['states/q_pos']).to(self.device)
         q_vel = torch.as_tensor(episode_data['states/q_vel']).to(self.device)

@@ -123,7 +123,8 @@ class MPPI(GaussianMPC):
         self.visual_traj = visual_traj
         self.normalize_returns = normalize_returns
         self.log_B = torch.log(torch.tensor([self.num_particles], device=self.device)).item()
-        self.prediction_temp = 200.0
+        if self.vf is not None:
+            self.prediction_temp = self.vf.prediction_temp
         self.traj_value_returns = torch.zeros(1, self.num_particles, self.horizon, device=self.device)
 
     def _update_distribution(self, trajectories):
