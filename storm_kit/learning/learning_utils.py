@@ -563,7 +563,7 @@ def add_returns_to_dataset(dataset, discount):
 
 def relabel_dataset(dataset, task):
     device = task.device
-    import pdb; pdb.set_trace()
+    # import pdb; pdb.set_trace()
     q_pos = torch.as_tensor(dataset['states/q_pos']).to(device)
     q_vel = torch.as_tensor(dataset['states/q_vel']).to(device)
     q_acc = torch.as_tensor(dataset['states/q_acc']).to(device)

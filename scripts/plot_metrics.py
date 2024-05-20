@@ -4,15 +4,23 @@ import json
 import pandas as pd
 import seaborn as sns
 import matplotlib.pyplot as plt
+import re
+
+def get_ensemble_size(filename):
+    match = re.search(r'ensemble_(\d+)', filename)
+    return int(match.group(1)) if match else None
 
 current_dir = os.path.dirname(os.path.realpath(__file__))
 eval_script = os.path.join(current_dir, 'evaluate_policy2.py')
-vf_agents = ['agent_checkpoint_50ep_ee_state_obs_ensemble_logsumexp.pt']
-prediction_temps = [10,20,30,40,50]
+vf_agents = ['agent_checkpoint_50ep_ee_all_obs_may19_ensemble_1.pt', 'agent_checkpoint_50ep_ee_all_obs_may19_ensemble_20.pt',
+             'agent_checkpoint_50ep_ee_all_obs_may19_ensemble_40.pt', 'agent_checkpoint_50ep_ee_all_obs_may19_ensemble_60.pt',
+             'agent_checkpoint_50ep_ee_all_obs_may19_ensemble_80.pt', 'agent_checkpoint_50ep_ee_all_obs_may19_ensemble_100.pt',]
+prediction_temps = [1,10,20,30,40,50]
 success = {agent: {} for agent in vf_agents}
 number_of_steps = {agent: {} for agent in vf_agents}
 
 for model_filename in vf_agents:
+    ensemble_size = get_ensemble_size(model_filename)
     for pred_temp in prediction_temps:
         command = [
             'python', eval_script,
@@ -22,6 +30,7 @@ for model_filename in vf_agents:
             f'eval.vf_trained_agent={model_filename}',
             'seed=42',
             f'train.vf.prediction_temp={pred_temp}',
+            f'train.vf.ensemble_size={ensemble_size}',
         ]
 
         result = subprocess.run(command, capture_output=True, text=True)

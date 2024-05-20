@@ -55,6 +55,8 @@ def convert_tensors(obj):
             return [convert_tensors(item) for item in obj]
         elif isinstance(obj, dict):
             return {key: convert_tensors(value) for key, value in obj.items()}
+        elif isinstance(obj, np.int64):
+            return int(obj)
         else:
             return obj
 
@@ -224,7 +226,7 @@ def main(cfg: DictConfig):
     # print metrics for processing later
     # import pdb; pdb.set_trace()
     metrics = convert_tensors(metrics)
-    # print(json.dumps(metrics))
+    print(json.dumps(metrics))
 
 if __name__ == "__main__":
     main()

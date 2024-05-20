@@ -40,6 +40,8 @@ class ReplayBuffer():
                         dim = v.shape[1]
                     self.allocate_new_buffer(k, dim)
                 v = torch.as_tensor(v).to(self.device)
+                # if v.ndim == 1:
+                #     v = v.unsqueeze(1)
                 num_points = v.shape[0]
                 remaining = min(self.capacity - self.curr_idx, num_points)
                 if num_points > remaining:
@@ -47,6 +49,13 @@ class ReplayBuffer():
                     extra = num_points - remaining
                     self.buffers[k][0:extra] = v[-extra:]
                 #add to end
+                # self.buffers[k][self.curr_idx: self.curr_idx + remaining] = v[0:remaining]
+                buffer_slice_shape = self.buffers[k][self.curr_idx: self.curr_idx + remaining].shape
+                if buffer_slice_shape != v[0:remaining].shape:
+                    v = v.squeeze(-1)
+                    # print(f"Reshaped v to: {v.shape}")
+                #add to the end
+                # print(f"Adding to the end: self.curr_idx={self.curr_idx}, remaining={remaining}, v[0:remaining].shape={v[0:remaining].shape}")
                 self.buffers[k][self.curr_idx: self.curr_idx + remaining] = v[0:remaining]
             
         self.curr_idx = (self.curr_idx + num_points) % self.capacity
