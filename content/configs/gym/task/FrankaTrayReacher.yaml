@@ -94,7 +94,7 @@ task:
 
   cost:
     friction_cone_cost:
-      weight: 5.0 #2
+      weight: 8.0 #2
       tangential_cost_weight: 0.0
 
     goal_pose:

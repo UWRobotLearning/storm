@@ -176,6 +176,9 @@ class TrayObjectReacher(ArmReacher):
             mask = friction_cone_cost > 0.0
             num_violations = mask.sum().item()
             episode_metrics['number_of_friction_cone_violations'] = num_violations
+        # episode_metrics['number_of_steps'] = torch.as_tensor(episode_data['number_of_steps']).to(self.device)
+        if 'number_of_steps' in episode_data:
+            episode_metrics['number_of_steps'] = episode_data['number_of_steps'][-1]
         return episode_metrics
     #     q_pos_batch = state_dict['q_pos']
     #     orig_size = q_pos_batch.size()[0:-1]

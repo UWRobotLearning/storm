@@ -209,6 +209,7 @@ def main(cfg: DictConfig):
     data_dir = data_dir if cfg.eval.save_buffer else None
     # if model_dir is not None:
     #     print('Saving agent to {}'.format(model_dir))
+    # import pdb; pdb.set_trace()
     if data_dir is not None:
         if eval_pretrained: agent_tag = 'pretrained_policy'
         else: agent_tag = 'mpc'
@@ -217,12 +218,13 @@ def main(cfg: DictConfig):
         # buffer_2.save(os.path.join(data_dir, '{}_buffer_3ep.pt'.format(agent_tag)))
         # buffer_3.save(os.path.join(data_dir, '{}_buffer_1ep.pt'.format(agent_tag)))
         for buffer, length in zip(buffers, len_buffer):
-            buffer_filename = os.path.join(data_dir, f'{agent_tag}_buffer_{length}_ee_all_obs_real_robot.pt')
+            buffer_filename = os.path.join(data_dir, f'{agent_tag}_buffer_{length}_ee_all_obs_may19.pt')
             buffer.save(buffer_filename)
             print(f'Saving buffer to {buffer_filename}')
-    # return metrics
+    # print metrics for processing later
+    # import pdb; pdb.set_trace()
     metrics = convert_tensors(metrics)
-    print(json.dumps(metrics))
+    # print(json.dumps(metrics))
 
 if __name__ == "__main__":
     main()

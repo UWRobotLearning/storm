@@ -16,6 +16,7 @@ import seaborn as sns
 import matplotlib.pyplot as plt
 import numpy as np
 import math
+import time
 from torch.profiler import profile, record_function, ProfilerActivity
 
 
@@ -363,17 +364,20 @@ def run_episode(
                 next_state = info['state'] if 'state' in info else None
                 total_return += next_reward
                 discounted_total_return += next_reward * discount**i
-
+            
             timeout = i == max_episode_steps - 1
             terminal = done and (not timeout)
             # import pdb; pdb.set_trace()
-
+            
             traj_data['observations'].append(obs)
             traj_data['actions'].append(action)
             traj_data['next_observations'].append(next_obs)
             traj_data['rewards'].append(next_reward)
             traj_data['terminals'].append(bool(terminal))
             traj_data['timeouts'].append(bool(timeout))
+            traj_data['number_of_steps'].append(i)
+
+            # traj_data['number of steps'] = [i] #current number of steps
             if policy.vf is not None:
                 traj_data['values'].append(v_preds)
             if reset_data is not None:
@@ -391,6 +395,7 @@ def run_episode(
             obs = copy.deepcopy(next_obs)
             state = copy.deepcopy(next_state)
             done = next_done
+
 
         for k in traj_data:
             if torch.is_tensor(traj_data[k][0]):
@@ -558,6 +563,7 @@ def add_returns_to_dataset(dataset, discount):
 
 def relabel_dataset(dataset, task):
     device = task.device
+    import pdb; pdb.set_trace()
     q_pos = torch.as_tensor(dataset['states/q_pos']).to(device)
     q_vel = torch.as_tensor(dataset['states/q_vel']).to(device)
     q_acc = torch.as_tensor(dataset['states/q_acc']).to(device)

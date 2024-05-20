@@ -83,6 +83,7 @@ task:
       cost_type: 'se3_twist'
       norm_type: 'l2'
       hinge_val: -1
+      is_hinge: False
       convergence_val: [0.0, 0.0] # orientation, position
       logcosh_alpha: [1.0, 1.0] #orientation, position (shaping used only for logcosh)
 
