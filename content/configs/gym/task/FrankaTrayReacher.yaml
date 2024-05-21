@@ -83,7 +83,7 @@ task:
     # target_position_range: [[0.3, 0.5], [-0.2, 0.1], [0.4, 0.6]]
     target_rotation_range: [[0.0, 0.0], [0.0, 0.0], [0.0, 0.0]] #radians
     randomize_cube_location: True
-    target_cube_pos_range: [[-0.08, 0.08], [-0.08, 0.08], [0.0, 0.0]] #xyz (meters)
+    target_cube_pos_range: [[-0.1, 0.1], [-0.1, 0.1], [0.0, 0.0]] #xyz (meters)
     # target_cube_pos_range: [[0.0, 0.0], [0.0, 0.0], [0.0, 0.0]] #xyz (meters)
 
 
@@ -98,12 +98,12 @@ task:
 
   cost:
     friction_cone_cost:
-      weight: 5.0 #2
+      weight: 8.0 #2
       tangential_cost_weight: 0.0
 
     goal_pose:
       vec_weight: [1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
-      weight: [2.5, 0.0] #[10.0, 50.0] #[50.0, 100.0]
+      weight: [3.0, 0.0] #[10.0, 50.0] #[50.0, 100.0]
       cost_type: 'se3_twist'
       norm_type: 'l2'
       hinge_val: 0.01

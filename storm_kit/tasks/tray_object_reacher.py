@@ -94,12 +94,12 @@ class TrayObjectReacher(ArmReacher):
             state_dict = self.compute_full_state(state_dict, debug)
         obs =  super().compute_observations(state_dict, cost_terms)
         # import pdb; pdb.set_trace()
-        expected_shape = list(obs.shape[:-1])
-        relative_object_pos = state_dict['relative_object_pos']
-        if list(relative_object_pos.shape[:-1]) != expected_shape:
-        #handle mismatch:reshaping, could also raise an error or warning
-            relative_object_pos = relative_object_pos.repeat(1, 400, 20, 1) #is this correct?
-        obs = torch.cat((obs, relative_object_pos), dim=-1)
+        # expected_shape = list(obs.shape[:-1])
+        # relative_object_pos = state_dict['relative_object_pos']
+        # if list(relative_object_pos.shape[:-1]) != expected_shape:
+        # #handle mismatch:reshaping, could also raise an error or warning
+        #     relative_object_pos = relative_object_pos.repeat(1, 400, 20, 1) #is this correct?
+        # obs = torch.cat((obs, relative_object_pos), dim=-1)
         
         return obs
 
@@ -449,7 +449,8 @@ class TrayObjectReacher(ArmReacher):
     
     @property
     def obs_dim(self)->int:
-        return super().obs_dim + 3
+        # return super().obs_dim + 3
+        return super().obs_dim #only for state obs
 
     # @property
     # def action_lims(self)->Tuple[torch.Tensor, torch.Tensor]:
