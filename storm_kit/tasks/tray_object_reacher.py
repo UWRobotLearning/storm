@@ -152,6 +152,7 @@ class TrayObjectReacher(ArmReacher):
 
 
     def compute_success(self, state_dict:Dict[str,torch.Tensor]):
+        # import pdb; pdb.set_trace()
         ee_pos = state_dict['ee_pos']
         ee_vel = state_dict['ee_vel_twist']
         q_vel = state_dict['q_vel']
@@ -169,7 +170,7 @@ class TrayObjectReacher(ArmReacher):
         return success
     
     def compute_metrics(self, episode_data: Dict[str, torch.Tensor]):
-        # import pdb; pdb.set_trace()
+        import pdb; pdb.set_trace()
         episode_metrics = super(TrayObjectReacher, self).compute_metrics(episode_data)
         q_pos = torch.as_tensor(episode_data['states/q_pos']).to(self.device)
         q_vel = torch.as_tensor(episode_data['states/q_vel']).to(self.device)
@@ -183,6 +184,9 @@ class TrayObjectReacher(ArmReacher):
         ee_acc_twist_batch = state_dict['ee_acc_twist']
         ee_pos, ee_rot = state_dict['ee_pos'], state_dict['ee_rot']
         d = state_dict['relative_object_pos']
+        cube_pos_change = relative_object_pos[-1,:]-relative_object_pos[0,:]
+        abs_cube_pos_change = torch.sqrt(cube_pos_change[0]**2+cube_pos_change[1]**2)
+        episode_metrics['abs_cube_pos_change'] = abs_cube_pos_change
         with record_function("tray_object_reacher:friction_cone_cost"):
             friction_cone_cost = self.friction_cost.forward(ee_acc_twist_batch[...,3:6], ee_vel_twist_batch[...,0:3], ee_acc_twist_batch[...,0:3], ee_rot, d)
             # friction_cone_cost = friction_cone_cost.view(orig_size)
