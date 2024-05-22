@@ -179,3 +179,4 @@ tmp_results/*
 runs/*
 robot_data/*
 wandb/*
+plots/*
