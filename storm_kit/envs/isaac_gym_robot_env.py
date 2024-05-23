@@ -792,7 +792,7 @@ class IsaacGymRobotEnv():
                 self.sim,
                 gymtorch.unwrap_tensor(self.root_state),
                 gymtorch.unwrap_tensor(multi_env_ids_object1_int32), len(multi_env_ids_object1_int32))
-            return self.cube_start_pose 
+            # return self.cube_start_pose 
 
         elif self.num_objects > 1 and reset_data is not None:
             multi_env_ids_objects_int32 = self.global_indices[env_ids, index:].flatten()

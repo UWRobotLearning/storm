@@ -36,14 +36,14 @@ vf:
     layer_norm: true
   ensemble_size: 100
   aggregation: 'None'
-  prediction_temp: 30.0 
+  prediction_temp: 40.0 
   prior_factor: 0.0
   w_init: 0.0 #3e-3
 
 agent:
   name: 'BP'
   max_buffer_size: 1e6
-  num_train_epochs: 350
+  num_train_epochs: 400
   train_batch_size: 256 #256
   terminal_batch_size: 64 #64
   train_val_split_ratio: 0.95
@@ -69,7 +69,7 @@ agent:
   fixed_alpha: 0.2
   relabel_data: true
   load_pretrained_policy: false
-  discount: 0.999
+  discount: 0.99
   beta: 3.0
   expectile_tau: 0.7
   clip_values: false

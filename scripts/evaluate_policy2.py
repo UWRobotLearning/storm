@@ -16,6 +16,7 @@ from storm_kit.learning.replay_buffer import ReplayBuffer
 from storm_kit.learning.learning_utils import plot_episode, evaluate_policy
 from storm_kit.envs.gym_env_wrapper import GymEnvWrapper
 from task_map import task_map
+import json
 
 
 def get_env_and_task(task_name:str, cfg=None): #log max_episode_steps
@@ -47,6 +48,18 @@ def get_env_and_task(task_name:str, cfg=None): #log max_episode_steps
         env = GymEnvWrapper(env, task)
 
     return env, task, task_cls, dynamics_model_cls
+
+def convert_tensors(obj):
+        if isinstance(obj, torch.Tensor):
+            return obj.tolist()
+        elif isinstance(obj, list):
+            return [convert_tensors(item) for item in obj]
+        elif isinstance(obj, dict):
+            return {key: convert_tensors(value) for key, value in obj.items()}
+        elif isinstance(obj, np.int64):
+            return int(obj)
+        else:
+            return obj
 
 @hydra.main(config_name="config", config_path="../content/configs/gym")
 def main(cfg: DictConfig):
@@ -111,6 +124,8 @@ def main(cfg: DictConfig):
         #load pretrained critic weights
         pretrained_vf = EnsembleValueFunction(
             obs_dim=obs_dim, config=cfg.train.vf, device=cfg.rl_device)
+        model_filename = cfg.eval.vf_trained_agent
+        checkpoint_path = Path(f'./tmp_results/{cfg.task_name}/BP/models/{model_filename}')
         checkpoint_path = Path(f'./tmp_results/{cfg.task_name}/BP/models/agent_checkpoint_50ep_ee_all_obs_may19_ensemble_100.pt')
         print('Loading agent checkpoint from {}'.format(checkpoint_path))
         try:
@@ -179,12 +194,14 @@ def main(cfg: DictConfig):
     #     print(episode_metrics)
 
     #more modular
+    metrics = []
     buffers = [buffer_1]#, buffer_2, buffer_3, buffer_4, buffer_5, buffer_6,buffer_7, buffer_8]
     len_buffer = [50]#,350,300,250,200,150,100,50] #define up to which episode index each buffer should store data
     compute_metrics = True
     for index, episode in enumerate(eval_episodes, start=1):
         if compute_metrics:
             episode_metrics = task.compute_metrics(episode)
+            metrics.append(episode_metrics)
             print(f"Episode {index}: {episode_metrics}")
         #add episodes to each buffer based on its permissible length
         for buffer, len in zip(buffers, len_buffer):
@@ -208,9 +225,12 @@ def main(cfg: DictConfig):
         # buffer_2.save(os.path.join(data_dir, '{}_buffer_3ep.pt'.format(agent_tag)))
         # buffer_3.save(os.path.join(data_dir, '{}_buffer_1ep.pt'.format(agent_tag)))
         for buffer, length in zip(buffers, len_buffer):
-            buffer_filename = os.path.join(data_dir, f'{agent_tag}_buffer_{length}_temp_rand_cube.pt')
+            buffer_filename = os.path.join(data_dir, f'{agent_tag}_buffer_{length}_not_rand_cube_may21.pt')
             buffer.save(buffer_filename)
             print(f'Saving buffer to {buffer_filename}')
+
+    metrics = convert_tensors(metrics)
+    print(json.dumps(metrics))
 
 if __name__ == "__main__":
     main()
