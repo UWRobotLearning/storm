@@ -32,9 +32,9 @@ def custom_formatter(x):
 
 current_dir = os.path.dirname(os.path.realpath(__file__))
 eval_script = os.path.join(current_dir, 'evaluate_policy2.py')
-metrics_file = os.path.join(current_dir, 'metrics_train_rand_test_rand__no_cube_pos_network_diff_seed.json')
+metrics_file = os.path.join(current_dir, 'metrics_train_rand_test_rand_no_cube_pos_network_diff_seed.json')
 
-vf_agents = ['agent_checkpoint_50ep_cube_randomize_no_cuberelstate.pt',]
+vf_agents = ['agent_checkpoint_50ep_cube_randomize_no_cuberelstate_ensemble_100.pt',]
 prediction_temps = [30]
 # success = {agent:; {} for agent in vf_agents}
 # number_of_steps = {agent: {} for agent in vf_agents}
@@ -59,7 +59,7 @@ if not load_metrics:
             command = [
                 'python', eval_script,
                 'task=FrankaTrayReacher',
-                'eval.num_episodes=20',
+                'eval.num_episodes=1',
                 'eval.load_critic=True',
                 f'eval.vf_trained_agent={model_filename}',
                 'seed=1', #42 is the default seed, for strict eval --> change seed
@@ -108,57 +108,59 @@ else:
             rotation_error[ensemble_size][int(pred_temp)] = sum(episode['rot_err_final'] for episode in metrics) / len(metrics)
             
 #heatmap
-df_success = pd.DataFrame(success).T
-plt.figure(figsize=(10, 6))
-ax = sns.heatmap(df_success, annot=True, cmap="YlGnBu", cbar=True, annot_kws={"size": 10})
-for text in ax.texts:
-        text.set_text(custom_formatter(float(text.get_text())))
-plt.title('Number of successful episodes')
-plt.xlabel('Prediction Temperature')
-plt.ylabel('Ensemble Size')
-plt.savefig('plots/success_rates_heatmap_seed_1.png')
-plt.show() 
+plot = False
+if plot:
+    df_success = pd.DataFrame(success).T
+    plt.figure(figsize=(10, 6))
+    ax = sns.heatmap(df_success, annot=True, cmap="YlGnBu", cbar=True, annot_kws={"size": 10})
+    for text in ax.texts:
+            text.set_text(custom_formatter(float(text.get_text())))
+    plt.title('Number of successful episodes')
+    plt.xlabel('Prediction Temperature')
+    plt.ylabel('Ensemble Size')
+    plt.savefig('plots/success_rates_heatmap_seed_1.png')
+    plt.show() 
 
-df_number_of_steps = pd.DataFrame(number_of_steps).T
-plt.figure(figsize=(10, 6))
-ax = sns.heatmap(df_number_of_steps, annot=True, fmt='g', cmap="YlGnBu", cbar=True, annot_kws={"size": 10})
-for text in ax.texts:
-        text.set_text(custom_formatter(float(text.get_text())))
-plt.title('Number of Steps')
-plt.xlabel('Prediction Temperature')
-plt.ylabel('Ensemble Size')
-plt.savefig('plots/number_of_steps_heatmap_seed_1.png')
-plt.show()
+    df_number_of_steps = pd.DataFrame(number_of_steps).T
+    plt.figure(figsize=(10, 6))
+    ax = sns.heatmap(df_number_of_steps, annot=True, fmt='g', cmap="YlGnBu", cbar=True, annot_kws={"size": 10})
+    for text in ax.texts:
+            text.set_text(custom_formatter(float(text.get_text())))
+    plt.title('Number of Steps')
+    plt.xlabel('Prediction Temperature')
+    plt.ylabel('Ensemble Size')
+    plt.savefig('plots/number_of_steps_heatmap_seed_1.png')
+    plt.show()
 
-df_number_of_friciton_cone_violations = pd.DataFrame(number_of_friction_cone_violations).T
-plt.figure(figsize=(10, 6))
-ax = sns.heatmap(df_number_of_friciton_cone_violations, fmt='g', annot=True, cmap="YlGnBu", cbar=True, annot_kws={"size": 10})
-for text in ax.texts:
-        text.set_text(custom_formatter(float(text.get_text())))
-plt.title('Number of Friction Cone Violations')
-plt.xlabel('Prediction Temperature')
-plt.ylabel('Ensemble Size')
-plt.savefig('plots/number_of_friction_cone_violations_heatmap_seed_1.png')
-plt.show()
+    df_number_of_friciton_cone_violations = pd.DataFrame(number_of_friction_cone_violations).T
+    plt.figure(figsize=(10, 6))
+    ax = sns.heatmap(df_number_of_friciton_cone_violations, fmt='g', annot=True, cmap="YlGnBu", cbar=True, annot_kws={"size": 10})
+    for text in ax.texts:
+            text.set_text(custom_formatter(float(text.get_text())))
+    plt.title('Number of Friction Cone Violations')
+    plt.xlabel('Prediction Temperature')
+    plt.ylabel('Ensemble Size')
+    plt.savefig('plots/number_of_friction_cone_violations_heatmap_seed_1.png')
+    plt.show()
 
-df_ee_dist_error = pd.DataFrame(ee_dist_error).T
-plt.figure(figsize=(10, 6))
-ax = sns.heatmap(df_ee_dist_error, annot=True, cmap="YlGnBu", fmt='g', cbar=True, annot_kws={"size": 10})
-for text in ax.texts:
-        text.set_text(custom_formatter(float(text.get_text())))
-plt.title('Error between final and target end-effector position (cm)')
-plt.xlabel('Prediction Temperature')
-plt.ylabel('Ensemble Size')
-plt.savefig('plots/ee_dist_error_heatmap_seed_1.png')
-plt.show()
+    df_ee_dist_error = pd.DataFrame(ee_dist_error).T
+    plt.figure(figsize=(10, 6))
+    ax = sns.heatmap(df_ee_dist_error, annot=True, cmap="YlGnBu", fmt='g', cbar=True, annot_kws={"size": 10})
+    for text in ax.texts:
+            text.set_text(custom_formatter(float(text.get_text())))
+    plt.title('Error between final and target end-effector position (cm)')
+    plt.xlabel('Prediction Temperature')
+    plt.ylabel('Ensemble Size')
+    plt.savefig('plots/ee_dist_error_heatmap_seed_1.png')
+    plt.show()
 
-df_rotation_error = pd.DataFrame(rotation_error).T
-plt.figure(figsize=(10, 6))
-ax = sns.heatmap(df_rotation_error, annot=True, cmap="YlGnBu", fmt='g', cbar=True, annot_kws={"size": 10})
-for text in ax.texts:
-        text.set_text(custom_formatter(float(text.get_text())))
-plt.title('Error between final and target end-effector orientation (degrees)')
-plt.xlabel('Prediction Temperature')
-plt.ylabel('Ensemble Size')
-plt.savefig('plots/rotation_error_heatmap_seed_1.png')
-plt.show()
+    df_rotation_error = pd.DataFrame(rotation_error).T
+    plt.figure(figsize=(10, 6))
+    ax = sns.heatmap(df_rotation_error, annot=True, cmap="YlGnBu", fmt='g', cbar=True, annot_kws={"size": 10})
+    for text in ax.texts:
+            text.set_text(custom_formatter(float(text.get_text())))
+    plt.title('Error between final and target end-effector orientation (degrees)')
+    plt.xlabel('Prediction Temperature')
+    plt.ylabel('Ensemble Size')
+    plt.savefig('plots/rotation_error_heatmap_seed_1.png')
+    plt.show()
