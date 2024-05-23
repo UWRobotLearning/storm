@@ -655,6 +655,19 @@ class IsaacGymRobotEnv():
             object_states = [self.object_state_1]
             keys = ['object_pos', 'object_rot', 'object_vel', 'object_ang_vel']
 
+            link_pose_dict, _, _, _, _ = self.robot_model.compute_fk_and_jacobian(
+            self.robot_q_pos_buff, torch.zeros_like(self.robot_q_pos_buff),
+            link_name=self.ee_link_name)
+            ee_pos, ee_rot = link_pose_dict[self.ee_link_name]
+            ee_quat = matrix_to_quaternion(ee_rot)
+            ee_pos_vec = gymapi.Vec3(x=ee_pos[0][0], y=ee_pos[0][1], z=ee_pos[0][2])
+            ee_rot_quat = gymapi.Quat(x=ee_quat[0][1],y=ee_quat[0][2], z=ee_quat[0][3], w=ee_quat[0][0])
+            ee_pose_robot = gymapi.Transform(p=ee_pos_vec, r=ee_rot_quat)
+            ee_pose_world = self.robot_pose_world * ee_pose_robot
+            ee_pose_world = torch.tensor([ee_pose_world.p.x, ee_pose_world.p.y, ee_pose_world.p.z], device=self.rl_device)
+            # if self.relative_object_pos is None:
+            relative_object_pos = self.object_state_1[...,:3] - ee_pose_world
+
             if self.num_objects > 1:
                 object_states.append(self.object_state_2)
                 keys = ['object1_pos', 'object1_rot', 'object1_vel', 'object1_ang_vel',
@@ -666,6 +679,7 @@ class IsaacGymRobotEnv():
                 state_dict[keys[i*4 + 2]] = object_state[:, 7:10].to(self.rl_device)
                 state_dict[keys[i*4 + 3]] = object_state[:, 10:13].to(self.rl_device)
         # print("state dict",state_dict)
+        state_dict['relative_object_pos'] = relative_object_pos
         return state_dict
     
     def reset_idx(self, env_ids, reset_data=None):

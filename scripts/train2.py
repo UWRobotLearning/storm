@@ -303,7 +303,7 @@ def main(cfg: DictConfig):
             agent_state = agent.state_dict()
             agent_state['normalization_stats'] = normalization_stats
             if save_train:    
-                torch.save(agent_state, os.path.join(model_dir, 'agent_checkpoint_50ep_ee_all_obs_may19_ensemble_1.pt'))
+                torch.save(agent_state, os.path.join(model_dir, 'agent_checkpoint_50ep_ee_all_obs_may22_only_friction_cost_train_ensemble_100.pt'))
     
         pbar.set_postfix(train_metrics)
 

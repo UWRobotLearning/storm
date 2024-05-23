@@ -228,6 +228,10 @@ class ArmReacher(ArmTask):
 
         state_dict = {'q_pos': q_pos, 'q_vel': q_vel, 'q_acc': q_acc}
         state_dict = self.compute_full_state(state_dict)
+        if 'states/relative_object_pos' in episode_data:
+            rel_obj_pos = torch.as_tensor(episode_data['states/relative_object_pos']).to(self.device)
+            state_dict['relative_object_pos'] = rel_obj_pos
+
 
         ee_pos, ee_rot = state_dict['ee_pos'], state_dict['ee_rot']
         # ee_quat = matrix_to_quaternion(ee_rot)

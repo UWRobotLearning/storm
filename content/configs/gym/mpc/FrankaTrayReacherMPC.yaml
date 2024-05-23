@@ -13,7 +13,7 @@ model:
   init_state: [0.8, 0.3, 0.0, -1.57, 0.0, 1.86, 0.] #check
   control_space: ${task.task.control_space}
   link_names: ${task.task.robot_link_names}
-  robot_keys: ['q_pos', 'q_vel', 'q_acc']
+  robot_keys: ['q_pos', 'q_vel', 'q_acc', 'relative_object_pos']
 
 
 task:
