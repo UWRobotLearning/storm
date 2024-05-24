@@ -52,7 +52,7 @@ def init_logging(task_name, agent_name, cfg):
 
 def normalize_score(task_name, returns):
     if task_name.startswith(('hopper', 'walker2d', 'halfcheetah', 'antmaze')):
-        normalized_score= d4rl.get_normalized_score(task_name, returns)*100.0
+        normalized_score = d4rl.get_normalized_score(task_name, returns)*100.0
     else:
         normalized_score = returns
     return normalized_score
@@ -124,7 +124,7 @@ def get_task_and_dataset(task_name:str, cfg=None): #log max_episode_steps
 
         #Load bufffers from folder
         buffer_dict = buffer_dict_from_folder(data_dir)
-        replay_buffer = buffer_dict['mpc_buffer_50_not_rand_cube_may21.pt']
+        replay_buffer = buffer_dict['mpc_buffer_100_no_rand_cube_may23.pt']
         
     return env, task, replay_buffer
 
@@ -302,7 +302,7 @@ def main(cfg: DictConfig):
             agent_state = agent.state_dict()
             agent_state['normalization_stats'] = normalization_stats
             if save_train:    
-                torch.save(agent_state, os.path.join(model_dir, 'agent_checkpoint_50ep_no_randomization_may21.pt'))
+                torch.save(agent_state, os.path.join(model_dir, 'agent_checkpoint_100ep__no_rand_only_orientation_only_ee_obs_23may_ensemble_100.pt'))
     
         pbar.set_postfix(train_metrics)
 

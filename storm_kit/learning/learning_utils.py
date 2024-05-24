@@ -368,7 +368,8 @@ def run_episode(
             traj_data['rewards'].append(next_reward)
             traj_data['terminals'].append(bool(terminal))
             traj_data['timeouts'].append(bool(timeout))
-            
+            traj_data['number_of_steps'].append(i)
+
             if reset_data is not None:
                 goal_dict = reset_data['goal_dict']
                 for k,v in goal_dict.items(): traj_data['goals/'+k].append(v)

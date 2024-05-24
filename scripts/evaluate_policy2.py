@@ -126,7 +126,7 @@ def main(cfg: DictConfig):
             obs_dim=obs_dim, config=cfg.train.vf, device=cfg.rl_device)
         model_filename = cfg.eval.vf_trained_agent
         checkpoint_path = Path(f'./tmp_results/{cfg.task_name}/BP/models/{model_filename}')
-        checkpoint_path = Path(f'./tmp_results/{cfg.task_name}/BP/models/agent_checkpoint_50ep_ee_all_obs_may19_ensemble_100.pt')
+        # checkpoint_path = Path(f'./tmp_results/{cfg.task_name}/BP/models/agent_checkpoint_50ep_ee_all_obs_may19_ensemble_100.pt')
         print('Loading agent checkpoint from {}'.format(checkpoint_path))
         try:
             checkpoint = torch.load(checkpoint_path)
@@ -177,11 +177,11 @@ def main(cfg: DictConfig):
     # print(eval_episodes[0])
     # exit()
     buffer_1 = ReplayBuffer(capacity=eval_info['Eval/num_steps'])
-    # buffer_2 = ReplayBuffer(capacity=eval_info['Eval/num_steps'])
-    # buffer_3 = ReplayBuffer(capacity=eval_info['Eval/num_steps'])
-    # buffer_4 = ReplayBuffer(capacity=eval_info['Eval/num_steps'])
-    # buffer_5 = ReplayBuffer(capacity=eval_info['Eval/num_steps'])
-    # buffer_6 = ReplayBuffer(capacity=eval_info['Eval/num_steps'])
+    buffer_2 = ReplayBuffer(capacity=eval_info['Eval/num_steps'])
+    buffer_3 = ReplayBuffer(capacity=eval_info['Eval/num_steps'])
+    buffer_4 = ReplayBuffer(capacity=eval_info['Eval/num_steps'])
+    buffer_5 = ReplayBuffer(capacity=eval_info['Eval/num_steps'])
+    buffer_6 = ReplayBuffer(capacity=eval_info['Eval/num_steps'])
     # buffer_7 = ReplayBuffer(capacity=eval_info['Eval/num_steps'])
     # buffer_8 = ReplayBuffer(capacity=eval_info['Eval/num_steps'])
     # for episode in eval_episodes:
@@ -195,8 +195,8 @@ def main(cfg: DictConfig):
 
     #more modular
     metrics = []
-    buffers = [buffer_1]#, buffer_2, buffer_3, buffer_4, buffer_5, buffer_6,buffer_7, buffer_8]
-    len_buffer = [50]#,350,300,250,200,150,100,50] #define up to which episode index each buffer should store data
+    buffers = [buffer_1, buffer_2, buffer_3, buffer_4, buffer_5, buffer_6]#,buffer_7, buffer_8]
+    len_buffer = [50,60,70,80,90,100]#,350,300,250,200,150,100,50] #define up to which episode index each buffer should store data
     compute_metrics = True
     for index, episode in enumerate(eval_episodes, start=1):
         if compute_metrics:
@@ -225,7 +225,7 @@ def main(cfg: DictConfig):
         # buffer_2.save(os.path.join(data_dir, '{}_buffer_3ep.pt'.format(agent_tag)))
         # buffer_3.save(os.path.join(data_dir, '{}_buffer_1ep.pt'.format(agent_tag)))
         for buffer, length in zip(buffers, len_buffer):
-            buffer_filename = os.path.join(data_dir, f'{agent_tag}_buffer_{length}_not_rand_cube_may21.pt')
+            buffer_filename = os.path.join(data_dir, f'{agent_tag}_buffer_{length}_no_rand_cube_may23.pt')
             buffer.save(buffer_filename)
             print(f'Saving buffer to {buffer_filename}')
 

@@ -164,7 +164,7 @@ class TrayObjectReacher(ArmReacher):
 
         dist_err = 100*torch.norm(ee_pos - goal_ee_pos, p=2, dim=-1) #l2 err in cm
         twist_norm = torch.norm(ee_vel, p=2, dim=-1)
-        success = (dist_err < 1.0) & (twist_norm < 0.01)
+        success = (dist_err < 0.5) & (twist_norm < 0.01) 
         # print("Success: ",success)
         return success
     
@@ -194,6 +194,8 @@ class TrayObjectReacher(ArmReacher):
             mask = friction_cone_cost > 0.0
             num_violations = mask.sum().item()
             episode_metrics['number_of_friction_cone_violations'] = num_violations
+        if 'number_of_steps' in episode_data:
+            episode_metrics['number_of_steps'] = episode_data['number_of_steps'][-1]
         return episode_metrics
     #     q_pos_batch = state_dict['q_pos']
     #     orig_size = q_pos_batch.size()[0:-1]
@@ -452,8 +454,8 @@ class TrayObjectReacher(ArmReacher):
     
     @property
     def obs_dim(self)->int:
-        # return super().obs_dim + 3
-        return super().obs_dim #only for state obs
+        return super().obs_dim
+        # return super().obs_dim #only for state obs
 
     # @property
     # def action_lims(self)->Tuple[torch.Tensor, torch.Tensor]:

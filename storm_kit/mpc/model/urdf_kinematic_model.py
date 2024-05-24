@@ -194,6 +194,28 @@ class URDFKinematicModel(nn.Module):
         #state_seq = self.enforce_bounds(state_seq)
         state_seq[..., -1] = self.traj_tstep # timestep array
         return state_seq.to(inp_device)
+    
+    @torch.jit.export
+    def tensor_object_step(self, state: torch.Tensor, act: torch.Tensor, state_seq: torch.Tensor, batch_size:int, horizon:int) -> torch.Tensor:
+        """
+        Args:
+        state: [1,N]
+        act: [H,N]
+        todo:
+        Integration with variable dt along trajectory
+        """
+        inp_device = act.device
+        state = state.to(self.device)
+        act = act.to(self.device)
+        # nth_act_seq = self.integrate_action(act)
+        # state_seq = self.step_fn(state, nth_act_seq, state_seq, self.traj_dt, self._integrate_matrix, self._fd_matrix, self.n_dofs, self.num_instances, batch_size, horizon) #, self._fd_matrix)
+        state_seq = self.step_fn(
+            state, act, state_seq, self.traj_dt, self._integrate_matrix, 
+            self._fd_matrix, 3, self.state_batch_size,
+            batch_size, horizon)
+        #state_seq = self.enforce_bounds(state_seq)
+        state_seq[..., -1] = self.traj_tstep # timestep array
+        return state_seq.to(inp_device)
         
     @torch.jit.export
     def rollout_open_loop(self, start_state_dict: Dict[str, torch.Tensor], act_seq: torch.Tensor) -> Dict[str, torch.Tensor]:

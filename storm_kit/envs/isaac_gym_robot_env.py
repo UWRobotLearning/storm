@@ -731,8 +731,7 @@ class IsaacGymRobotEnv():
         self.reset_buf[env_ids] = 0 
         self.prev_action_buff[env_ids] = torch.zeros_like(self.prev_action_buff[env_ids])
         
-        if self.num_objects>0:
-            self.cube_start_pose = self.object_reset(env_ids, reset_data)
+        
             # tray_pos_world = torch.tensor([self.ee_pose_world.p.x, self.ee_pose_world.p.y, self.ee_pose_world.p.z], device=self.rl_device)
             # relative_object_pos = self.cube_start_pose - tray_pos_world
 
@@ -748,6 +747,9 @@ class IsaacGymRobotEnv():
         if reset_data is not None:
             if 'goal_dict' in reset_data:
                 self.update_goal(reset_data['goal_dict'])
+        
+        if self.num_objects>0:
+            self.object_reset(env_ids, reset_data)
 
         #for resetting object states
         self.last_sim_time = torch.ones(self.num_envs, 1, device=self.device) * self.gym.get_sim_time(self.sim)
