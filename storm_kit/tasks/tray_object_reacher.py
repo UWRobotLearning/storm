@@ -67,6 +67,10 @@ class TrayObjectReacher(ArmReacher):
         if self.task_specs is not None:
             self.randomize_cube_location = self.task_specs['randomize_cube_location']
             self.cube_pos_buffer = torch.zeros(self.num_instances, 3, device=self.device)
+            #initialize cube position wrt tray
+            self.cube_pos_ee = torch.zeros(self.num_instances, 3, device=self.device)
+            self.cube_pos_ee_buffer:torch.Tensor= torch.zeros(self.num_instances, 7, device=self.device)
+
         # object_params = self.cfg['object']
         self.friction_cost = FrictionConeCost(**self.cfg['cost']['friction_cone_cost'], object_params = self.cfg['object'], device=self.device)
         self.cube_pos_state = None
@@ -100,7 +104,15 @@ class TrayObjectReacher(ArmReacher):
         # #handle mismatch:reshaping, could also raise an error or warning
         #     relative_object_pos = relative_object_pos.repeat(1, 400, 20, 1) #is this correct?
         # obs = torch.cat((obs, relative_object_pos), dim=-1)
-        
+
+        # cube_start_pos = self.cube_pos_ee
+        expected_shape = list(obs.shape[:-1])
+        relative_object_pos =  self.cube_pos_ee
+        if list(relative_object_pos.shape[:-1]) != expected_shape:
+        #handle mismatch:reshaping, could also raise an error or warning
+            relative_object_pos = relative_object_pos.repeat(1, 400, 20, 1) #is this correct?
+        obs = torch.cat((obs, relative_object_pos), dim=-1)
+
         return obs
 
     def compute_full_state(self, state_dict: Dict[str,torch.Tensor], debug:bool=False)->Dict[str, Union[torch.Tensor, Dict[str, torch.Tensor], Dict[str, Tuple[torch.Tensor, torch.Tensor]]]]:
@@ -125,28 +137,18 @@ class TrayObjectReacher(ArmReacher):
         ee_pos, ee_rot = state_dict['ee_pos'], state_dict['ee_rot']
         ee_vel_twist_batch = state_dict['ee_vel_twist']
         ee_acc_twist_batch = state_dict['ee_acc_twist']
-        # import pdb; pdb.set_trace()
         compute_relative_cube_pos = True #TODO:put in config later
         # if 'relative_object_pos' in state_dict and compute_relative_cube_pos:
         if compute_relative_cube_pos:
                 relative_object_pos = state_dict['relative_object_pos']
-                print("cube relative state", relative_object_pos)
-                # self.cube_pos_state = state_dict['start_object_pos']
-                # start_q_pos = state_dict['start_q_pos']
-                # link_pose_dict, _, _ = self.robot_model.compute_forward_kinematics(start_q_pos, torch.zeros_like(start_q_pos), dist_calc=True)
-                # start_ee_pos, start_ee_rot = link_pose_dict[self.ee_link_name][0], link_pose_dict[self.ee_link_name][1]
-                # self.cube_relative_tray_pos =  self.cube_pos_state - start_ee_pos
-                # self.cube_relative_tray_pos = self.cube_relative_tray_pos.squeeze(0)
-                # print("cube rel according to default dof state", self.ee_pos_world - self.cube_pos_state)
-            # print("cube relative state", self.cube_relative_tray_pos)
+                object_com_tray = self.cube_pos_ee
+                print("object_com_tray", object_com_tray)
         with record_function("tray_object_reacher:friction_cone_cost"):
-            friction_cone_cost = self.friction_cost.forward(ee_acc_twist_batch[...,3:6], ee_vel_twist_batch[...,0:3], ee_acc_twist_batch[...,0:3], ee_rot, relative_object_pos)
-            # print("friction cone cost shape", friction_cone_cost.shape)
+            friction_cone_cost = self.friction_cost.forward(ee_acc_twist_batch[...,3:6], ee_vel_twist_batch[...,0:3], ee_acc_twist_batch[...,0:3], ee_rot, object_com_tray)
             summed_friction_cost = friction_cone_cost.sum(dim=-1)
-            # friction_cone_cost = friction_cone_cost.view(orig_size)
             cost +=summed_friction_cost
 
-        # cost_terms['friction_cone_cost'] = summed_friction_cost
+        cost_terms['friction_cone_cost'] = summed_friction_cost
         
         return cost, cost_terms
 
@@ -342,119 +344,49 @@ class TrayObjectReacher(ArmReacher):
     #         # 'avg_ee_vel': avg_ee_vel,
     #         # 'avg_ee_ang_vel': avg_ee_ang_vel}
 
-    # def reset(self, rng:Optional[torch.Generator]=None):
-    #     env_ids = torch.arange(self.num_instances, device=self.device)
-    #     return self.reset_idx(env_ids, rng=rng)
-
-#TODO: Cube random position noise
     def reset_idx(self, env_ids, rng:Optional[torch.Generator]=None):
         reset_data = super(TrayObjectReacher, self).reset_idx(env_ids, rng=rng)
-        
         if self.task_specs is not None:
-            # self.cube_pos_buffer[env_ids] = self.default_ee_goal
             if self.randomize_cube_location:
-                # print("resetting cube position")
+                print("Resetting cube position")
                 # exit()
+                # link_pose_dict, _, _ = self.robot_model.compute_forward_kinematics(self.robot_default_dof_pos, torch.zeros_like(self.robot_default_dof_pos), dist_calc=True)
+                # ee_pos_world, ee_rot_world = link_pose_dict[self.ee_link_name][0], link_pose_dict[self.ee_link_name][1]
+                # ee_quat = matrix_to_quaternion(ee_rot_world)
+                # ee_pos_vec = gymapi.Vec3(x=ee_pos_world[0][0], y=ee_pos_world[0][1], z=ee_pos_world[0][2])
+                # ee_rot_quat = gymapi.Quat(x=ee_quat[0][1],y=ee_quat[0][2], z=ee_quat[0][3], w=ee_quat[0][0])
+                # ee_pose_robot = gymapi.Transform(p=ee_pos_vec, r=ee_rot_quat)
+                # ee_pose_world = self.robot_pose_world * ee_pose_robot
+                # ee_pose_world = torch.tensor([ee_pose_world.p.x, ee_pose_world.p.y, ee_pose_world.p.z], device=self.rl_device)
+
                 target_cube_pos_range = self.task_specs['target_cube_pos_range']
                 xl, xh = target_cube_pos_range[0]
                 yl, yh = target_cube_pos_range[1]
                 zl, zh = target_cube_pos_range[2]
-                self.cube_pos_buffer[env_ids,0] =  torch.zeros(len(env_ids), 1, device=self.device).uniform_(xl, xh, generator=rng)
-                self.cube_pos_buffer[env_ids,1] =  torch.zeros(len(env_ids), 1, device=self.device).uniform_(yl, yh, generator=rng)
-                self.cube_pos_buffer[env_ids,2] =  torch.zeros(len(env_ids), 1, device=self.device).uniform_(zl, zh, generator=rng)
-                reset_data['cube_pos_noise'] = self.cube_pos_buffer #dict(cube_pos_noise=self.cube_pos_buffer)
-                # print(reset_data["cube_pos_noise"])
-                # exit()
-
+                self.cube_pos_ee_buffer[env_ids,0] =  torch.zeros(len(env_ids), 1, device=self.device).uniform_(xl, xh, generator=rng)
+                self.cube_pos_ee_buffer[env_ids,1] =  torch.zeros(len(env_ids), 1, device=self.device).uniform_(yl, yh, generator=rng)
+                self.cube_pos_ee_buffer[env_ids,2] = torch.tensor(self.cfg['object']['com'][2], device=self.device).expand(len(env_ids), 1)
+                reset_data['cube_pos_ee_buffer'] = self.cube_pos_ee_buffer
+            self.cube_pos_ee = self.cube_pos_ee_buffer[...,:3]
         return reset_data
     
     def reset(self, rng:Optional[torch.Generator]=None):
         env_ids = torch.arange(self.num_instances, device=self.device)
         return self.reset_idx(env_ids, rng=rng)
             
-        #     goal_position_noise = self.task_specs['target_position_noise']
-        #     goal_rotation_noise = self.task_specs['target_rotation_noise']
+       
+    def update_params(self, param_dict):
+        super(TrayObjectReacher, self).update_params(param_dict)
 
-        #     self.ee_goal_buff[env_ids] = self.default_ee_goal
-
-        #     # if goal_position_noise > 0.:
-        #     #randomize goal position around the default
-        #     self.ee_goal_buff[env_ids, 0] = self.ee_goal_buff[env_ids, 0] +  goal_position_noise[0] * (2.0*torch.rand(self.ee_goal_buff[env_ids, 0].size(), device=self.device, generator=rng) - 1.0)
-        #     self.ee_goal_buff[env_ids, 1] = self.ee_goal_buff[env_ids, 1] +  goal_position_noise[1] * (2.0*torch.rand(self.ee_goal_buff[env_ids, 1].size(), device=self.device, generator=rng) - 1.0)
-        #     self.ee_goal_buff[env_ids, 2] = self.ee_goal_buff[env_ids, 2] +  goal_position_noise[2] * (2.0*torch.rand(self.ee_goal_buff[env_ids, 2].size(), device=self.device, generator=rng) - 1.0)
-        
-        #     # if goal_rotation_noise > 0.:
-        #     #randomize goal orientation around defualt
-        #     # TODO: fix
-        #     # default_quat = self.ee_goal_buff[env_ids, 3:7]
-        #     # default_euler = matrix_to_euler_angles(quaternion_to_matrix(default_quat), convention='XYZ')
-        #     # roll = default_euler[:,0] + goal_rotation_noise[0] * (2.0*torch.rand(env_ids.shape[0], 1, device=self.device, generator=rng) - 1.0)
-        #     # pitch = default_euler[:,1] + goal_rotation_noise[1] * (2.0*torch.rand(env_ids.shape[0], 1, device=self.device, generator=rng) - 1.0)
-        #     # yaw = default_euler[:,2] + goal_rotation_noise[2] * (2.0*torch.rand(env_ids.shape[0], 1, device=self.device, generator=rng) - 1.0)
-        #     # print(default_euler)
-        #     # quat = matrix_to_quaternion(euler_angles_to_matrix(torch.cat([roll, pitch, yaw], dim=-1), convention='XYZ'))
-        #     # self.ee_goal_buff[env_ids, 3:7] = quat 
-        #     # print(self.ee_goal_buff)          
-
-        #     #     roll = -torch.pi + 2*torch.pi * torch.rand(
-        #     #         size=(env_ids.shape[0],1), device=self.device) #roll from [-pi, pi)
-        #     #     pitch = -torch.pi + 2*torch.pi * torch.rand(
-        #     #         size=(env_ids.shape[0],1), device=self.device) #pitch from [-pi, pi)
-        #     #     yaw = -torch.pi + 2*torch.pi * torch.rand(
-        #     #         size=(env_ids.shape[0],1), device=self.device) #yaw from [-pi, pi)
-        #     #     quat = matrix_to_quaternion(rpy_angles_to_matrix(torch.cat([roll, pitch, yaw], dim=-1)))
-        #     #     curr_target_buff[env_ids, 3:7] = quat
-        #     self.goal_ee_pos = self.ee_goal_buff[..., 0:3]
-        #     self.goal_ee_quat = self.ee_goal_buff[..., 3:7]
-        #     self.goal_ee_rot = quaternion_to_matrix(self.goal_ee_quat)
-
-        #     # self.prev_state_buff[env_ids] = torch.zeros_like(self.prev_state_buff[env_ids])
-        #     goal_dict = dict(ee_goal=self.ee_goal_buff)
-        #     reset_data['goal_dict'] = goal_dict
-
-        # print(goal_dict)
-
-        # return reset_data
-
-    # def update_params(self, param_dict):
-    #     #Explicitly set parameters like goal states 
-    #     goal_dict = param_dict['goal_dict']
-    #     retract_state = goal_dict['retract_state'] if 'retract_state' in goal_dict else None
-    #     ee_goal = goal_dict['ee_goal'] if 'ee_goal' in goal_dict else None
-    #     joint_goal = goal_dict['joint_goal'] if 'joint_goal' in goal_dict else None
-
-    #     goal_ee_pos, goal_ee_quat, goal_ee_rot = None, None, None
-    #     if ee_goal is not None:
-    #         goal_ee_pos = ee_goal[:, 0:3]
-    #         goal_ee_quat = ee_goal[:, 3:7]
-    #         goal_ee_rot = None        
-        
-    #     super(TrayObjectReacher, self).update_params(retract_state=retract_state)
-        
-    #     if goal_ee_pos is not None:
-    #         self.goal_ee_pos = torch.as_tensor(goal_ee_pos, device=self.device)
-    #         self.goal_state = None
-    #     if goal_ee_rot is not None:
-    #         self.goal_ee_rot = torch.as_tensor(goal_ee_rot, device=self.device) 
-    #         self.goal_ee_quat = matrix_to_quaternion(self.goal_ee_rot)
-    #         self.goal_state = None
-    #     if goal_ee_quat is not None:
-    #         self.goal_ee_quat = torch.as_tensor(goal_ee_quat, device=self.device)
-    #         self.goal_ee_rot = quaternion_to_matrix(self.goal_ee_quat)
-    #         self.goal_state = None
-    #     if joint_goal is not None:
-    #         self.goal_state = torch.as_tensor(joint_goal, device=self.device)
-    #         link_pose_dict = self.robot_model.compute_forward_kinematics(
-    #             self.goal_state[:,0:self.n_dofs], torch.zeros_like(self.goal_state[:,0:self.n_dofs])) #=self.cfg.model.ee_link_name)
-
-    #         self.goal_ee_pos, self.goal_ee_rot = link_pose_dict[self.ee_link_name]
-    #         self.goal_ee_quat = matrix_to_quaternion(self.goal_ee_rot)
-
-    #     return True
+        cube_pos_ee = param_dict.get('cube_pos_ee_buffer', None)
+        if cube_pos_ee is not None:
+            self.cube_pos_ee = torch.as_tensor(cube_pos_ee[...,:3], device=self.device)
+       
+        return True
     
     @property
     def obs_dim(self)->int:
-        return super().obs_dim
+        return super().obs_dim + 3
         # return super().obs_dim #only for state obs
 
     # @property

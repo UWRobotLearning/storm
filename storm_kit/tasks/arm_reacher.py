@@ -119,7 +119,6 @@ class ArmReacher(ArmTask):
             self, 
             state_dict: Dict[str, torch.Tensor], 
             action_batch: Optional[torch.Tensor]=None):
-
         cost, cost_terms = super(ArmReacher, self).compute_cost(
             state_dict = state_dict,
             action_batch = action_batch)
@@ -131,6 +130,7 @@ class ArmReacher(ArmTask):
         ee_pos, ee_rot = state_dict['ee_pos'], state_dict['ee_rot']
 
         goal_ee_pos = self.goal_ee_pos
+        print("goal_ee_pos", goal_ee_pos)
         goal_ee_rot = self.goal_ee_rot
         goal_state = self.goal_state
         
@@ -325,6 +325,7 @@ class ArmReacher(ArmTask):
             # 'avg_ee_ang_vel': avg_ee_ang_vel}
 
     def reset(self, rng:Optional[torch.Generator]=None):
+        # pass
         env_ids = torch.arange(self.num_instances, device=self.device)
         return self.reset_idx(env_ids, rng=rng)
 
@@ -398,8 +399,9 @@ class ArmReacher(ArmTask):
             # self.prev_state_buff[env_ids] = torch.zeros_like(self.prev_state_buff[env_ids])
             goal_dict = dict(ee_goal=self.ee_goal_buff)
             reset_data['goal_dict'] = goal_dict
+            print("goal: ", self.ee_goal_buff)
 
-        print(goal_dict)
+        # print(goal_dict)
 
         return reset_data
 

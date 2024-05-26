@@ -337,19 +337,12 @@ def run_episode(
 
         traj_data = defaultdict(list)
         total_return, discounted_total_return = 0.0, 0.0
-        # import pdb; pdb.set_trace()
         for i in range(max_episode_steps):
             with torch.no_grad():
                 policy_input = {
                     'obs': torch.as_tensor(obs).float(),
                     'states': state}
-                
-                # with profile(activities=[ProfilerActivity.CPU, ProfilerActivity.CUDA]) as prof:
                 action, policy_info = policy.get_action(policy_input, deterministic=deterministic)
-
-                # if i == 4:
-                #     print(prof.key_averages().table(sort_by="cuda_time_total", row_limit=40))
-                #     exit()
 
                 #step tells me about next state
                 next_obs, next_reward, next_done, info = env.step(
@@ -373,6 +366,12 @@ def run_episode(
             if reset_data is not None:
                 goal_dict = reset_data['goal_dict']
                 for k,v in goal_dict.items(): traj_data['goals/'+k].append(v)
+                # import pdb; pdb.set_trace()
+                cube_pos_ee_buffer_tensor = reset_data['cube_pos_ee_buffer']
+                cube_pos_ee_buffer_dict = {
+                    'cube_pos_ee_buffer': cube_pos_ee_buffer_tensor
+                }
+                for k,v in cube_pos_ee_buffer_dict.items(): traj_data['cube_init_pos/'+k].append(v)
             if state is not None:
                 for k,v in state.items():traj_data['states/'+k].append(v.squeeze(-1))
             if next_state is not None:
@@ -572,7 +571,7 @@ def relabel_dataset(dataset, task):
     next_state_dict = {'q_pos': next_q_pos, 'q_vel': next_q_vel, 'q_acc': next_q_acc}
     if dataset['next_states/relative_object_pos'] is not None:
         next_state_dict['relative_object_pos'] = next_rel_obj_pos
-
+    # import pdb; pdb.set_trace()
     goal_dict = {}
     for k,v in dataset.items():
         split = k.split("/")

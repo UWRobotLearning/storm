@@ -84,7 +84,7 @@ task:
     target_rotation_range: [[0.0, 0.0], [0.0, 0.0], [0.0, 0.0]] #radians
     randomize_cube_location: True
     target_cube_pos_range: [[-0.09, 0.09], [-0.09, 0.09], [0.0, 0.0]] #xyz (meters)
-    # target_cube_pos_range: [[0.0, 0.0], [0.0, 0.0], [0.0, 0.0]] #xyz (meters)
+    # target_cube_rot_range: [[0.0, 0.0], [0.0, 0.0], [0.0, 0.0]] #xyz (meters)
 
 
   # task_specs:

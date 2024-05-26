@@ -767,7 +767,7 @@ class IsaacGymRobotEnv():
     def object_reset(self, env_ids, reset_data):
         object_asset_file = self.cfg["asset"].get("assetFileNameObjects")
         len_obj_urdfs = len(object_asset_file)
-        if reset_data is not None and 'cube_pos_noise' in reset_data:
+        if reset_data is not None and 'cube_pos_ee_buffer' in reset_data:
             # num_items = self.cube1_reset_pose.shape[0]
             # noise_x = torch.zeros(num_items, device=self.device).uniform_(-0.05, 0.05)
             # noise_y = torch.zeros(num_items, device=self.device).uniform_(-0.05, 0.05)
@@ -776,10 +776,33 @@ class IsaacGymRobotEnv():
             # print("reset data", reset_data['cube_pos_noise'])
             # print("object state", self.object_state_1[env_ids,:3])
             # print("cube reset pose",self.cube1_reset_pose[env_ids,:3])
-            self.cube_start_pose = self.cube1_reset_pose[env_ids,:3] + reset_data['cube_pos_noise']
-            self.object_state_1[env_ids,:3] = self.cube1_reset_pose[env_ids,:3] + reset_data['cube_pos_noise']
-            self.object_state_1[env_ids,3:7] = self.cube1_reset_pose[env_ids,3:7]
+            # self.cube_start_pose = self.cube1_reset_pose[env_ids,:3] + reset_data['cube_pos_noise']
+            # self.object_state_1[env_ids,:3] = self.cube1_reset_pose[env_ids,:3] + reset_data['cube_pos_noise']
+            # self.object_state_1[env_ids,3:7] = self.cube1_reset_pose[env_ids,3:7]
+            # import pdb; pdb.set_trace()
+            # cube_start_pose_ee = reset_data['cube_pos_ee_buffer']
+            # link_pose_dict, link_spheres_dict, self_coll_dist, lin_jac, ang_jac = self.robot_model.compute_fk_and_jacobian(
+            #     self.robot_default_dof_pos.unsqueeze(0), torch.zeros_like(self.robot_default_dof_pos).unsqueeze(0),
+            #     link_name=self.ee_link_name)
+            # ee_pos, ee_rot = link_pose_dict[self.ee_link_name]
+            # ee_quat = matrix_to_quaternion(ee_rot)
+            # ee_pos_vec = gymapi.Vec3(x=ee_pos[0][0], y=ee_pos[0][1], z=ee_pos[0][2])
+            # ee_rot_quat = gymapi.Quat(x=ee_quat[0][1],y=ee_quat[0][2], z=ee_quat[0][3], w=ee_quat[0][0])
+            # ee_pose_robot = gymapi.Transform(p=ee_pos_vec, r=ee_rot_quat)
+            # ee_pose_world = self.robot_pose_world * ee_pose_robot
+        
+
+
+            # cube_start_pose_ee = gymapi.Transform(p=gymapi.Vec3(x=cube_start_pose_ee[0][0], y=cube_start_pose_ee[0][1], z=cube_start_pose_ee[0][2]),
+            #                                       r=gymapi.Quat(x=cube_start_pose_ee[0][3], y=cube_start_pose_ee[0][4], z=cube_start_pose_ee[0][5], w=cube_start_pose_ee[0][6]))
+            # self.cube_start_pose_world = cube_start_pose_ee * ee_pose_world
+            # cube_start_pose_world_tensor = torch.tensor([self.cube_start_pose_world.p.x, self.cube_start_pose_world.p.y, self.cube_start_pose_world.p.z+0.03,
+            #                                              self.cube_start_pose_world.r.w, self.cube_start_pose_world.r.x, self.cube_start_pose_world.r.y,
+            #                                              self.cube_start_pose_world.r.z], device=self.rl_device)
+            self.object_state_1[env_ids,0:7] = self.cube1_reset_pose[env_ids,0:7] + reset_data['cube_pos_ee_buffer']
             print("object state after reset", self.object_state_1[env_ids,:3])
+
+
         else:
             self.object_state_1[env_ids] = self.cube1_reset_pose
 
