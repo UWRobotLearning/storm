@@ -54,7 +54,7 @@ task:
       # vec_weight: [1.0, 1.0, 1.0] 
 
     zero_q_vel:
-      weight: 9e-2
+      weight: 1e-1
       norm_type: 'l2'
       # hinge_val: 0.2 #0.2
 

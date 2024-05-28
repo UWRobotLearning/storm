@@ -37,7 +37,7 @@ if not os.path.exists(metrics_folder):
 metrics_file = os.path.join(metrics_folder, 'may23_center_train_random_test_2.json')
 
 vf_agents = ['agent_checkpoint_50ep_rand_only_ee_obs_may26_ensemble_100.pt',]
-prediction_temps = [30]
+prediction_temps = [20]#,10,20,30,40,50]
 # success = {agent:; {} for agent in vf_agents}
 # number_of_steps = {agent: {} for agent in vf_agents}
 
@@ -64,7 +64,7 @@ if not load_metrics:
                 'eval.num_episodes=20',
                 'eval.load_critic=True',
                 f'eval.vf_trained_agent={model_filename}',
-                'seed=1', #42 is the default seed, for strict eval --> change seed
+                'seed=42', #42 is the default seed, for strict eval --> change seed
                 f'train.vf.prediction_temp={pred_temp}',
                 f'train.vf.ensemble_size={ensemble_size}',
             ]
@@ -98,8 +98,8 @@ if not load_metrics:
                 # mean_number_of_steps = sum(episode['number_of_steps'] for episode in metrics) / len(metrics)
                 number_of_steps[str(ensemble_size)][int(pred_temp)] = mean_number_of_steps_successful
                 number_of_friction_cone_violations[str(ensemble_size)][int(pred_temp)] = sum(episode['number_of_friction_cone_violations'] for episode in metrics) / len(metrics)  
-                ee_dist_error[str(ensemble_size)][int(pred_temp)] = sum(episode['dist_err_final'] for episode in metrics) / len(metrics)
-                rotation_error[str(ensemble_size)][int(pred_temp)] = sum(episode['rot_err_final'] for episode in metrics) / len(metrics)
+                ee_dist_error[str(ensemble_size)][int(pred_temp)] = sum(episode['dist_err_final'] for episode in filtered_episodes) / len(filtered_episodes)
+                rotation_error[str(ensemble_size)][int(pred_temp)] = sum(episode['rot_err_final'] for episode in filtered_episodes) / len(filtered_episodes)
                 # number_of_steps[str(ensemble_size)][pred_temp] = mean_number_of_steps
                 print("success", num_successes)
                 print("mean_number_of_steps_successful", mean_number_of_steps_successful)
