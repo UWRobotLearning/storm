@@ -3,13 +3,13 @@
     <arg name="namespace_prefix" default="panda_eob_calib"/>
 
     <!-- (start your robot's MoveIt! stack, e.g. include its moveit_planning_execution.launch) -->
-    <!-- <include file="$(find panda_moveit_config)/launch/franka_control.launch"> -->
-        <!-- <arg name="robot_ip" value="172.16.0.2"/> set your robot ip -->
-        <!-- <arg name="load_gripper" value="true"/> -->
-    <!-- </include>         -->
+    <!-- <include file="$(find panda_moveit_config)/launch/franka_control.launch">
+        <arg name="robot_ip" value="172.16.0.2"/> 
+        <arg name="load_gripper" value="false"/>
+    </include>         -->
     
     <!-- (start your tracking system's ROS driver) -->
-    <!-- <include file="$(find realsense2_camera)/launch/rs_camera.launch"> </include>      -->
+    <include file="$(find realsense2_camera)/launch/rs_camera.launch"> </include>     
 
     <!-- fill in the following parameters according to your tracking system -->
     <arg name="markerId"        default="23"/>      <!-- set your marker id -->
@@ -54,3 +54,13 @@
     <!-- roslaunch easy_handeye publish.launch eye_on_hand:=false namespace_prefix:=$(arg namespace_prefix) -->
 
 </launch>
+
+<!-- translation: 
+  x: 0.9830213929111877
+  y: -0.012718213930554917
+  z: 0.9634871525263239
+rotation: 
+  x: -0.6741867304453285
+  y: -0.6812170892723831
+  z: 0.2004538230286437
+  w: 0.20306106127936216 -->

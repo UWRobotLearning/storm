@@ -99,19 +99,11 @@ class TrayObjectReacher(ArmReacher):
         obs =  super().compute_observations(state_dict, cost_terms)
         # import pdb; pdb.set_trace()
         # expected_shape = list(obs.shape[:-1])
-        # relative_object_pos = state_dict['relative_object_pos']
+        # relative_object_pos =  self.cube_pos_ee
         # if list(relative_object_pos.shape[:-1]) != expected_shape:
         # #handle mismatch:reshaping, could also raise an error or warning
         #     relative_object_pos = relative_object_pos.repeat(1, 400, 20, 1) #is this correct?
         # obs = torch.cat((obs, relative_object_pos), dim=-1)
-
-        # cube_start_pos = self.cube_pos_ee
-        expected_shape = list(obs.shape[:-1])
-        relative_object_pos =  self.cube_pos_ee
-        if list(relative_object_pos.shape[:-1]) != expected_shape:
-        #handle mismatch:reshaping, could also raise an error or warning
-            relative_object_pos = relative_object_pos.repeat(1, 400, 20, 1) #is this correct?
-        obs = torch.cat((obs, relative_object_pos), dim=-1)
 
         return obs
 
@@ -166,7 +158,7 @@ class TrayObjectReacher(ArmReacher):
 
         dist_err = 100*torch.norm(ee_pos - goal_ee_pos, p=2, dim=-1) #l2 err in cm
         twist_norm = torch.norm(ee_vel, p=2, dim=-1)
-        success = (dist_err < 0.5) & (twist_norm < 0.01) 
+        success = (dist_err < 2.0) & (twist_norm < 0.02) 
         # print("Success: ",success)
         return success
     
@@ -177,14 +169,15 @@ class TrayObjectReacher(ArmReacher):
         q_vel = torch.as_tensor(episode_data['states/q_vel']).to(self.device)
         q_acc = torch.as_tensor(episode_data['states/q_acc']).to(self.device)
         relative_object_pos = torch.as_tensor(episode_data['states/relative_object_pos']).to(self.device)
+        cube_init_state = torch.as_tensor(episode_data['cube_init_pos/cube_pos_ee_buffer']).to(self.device)
         orig_size = q_pos.size()[0:-1]
-
-        state_dict = {'q_pos': q_pos, 'q_vel': q_vel, 'q_acc': q_acc, 'relative_object_pos': relative_object_pos}
+        # import pdb; pdb.set_trace()
+        state_dict = {'q_pos': q_pos, 'q_vel': q_vel, 'q_acc': q_acc, 'relative_object_pos': relative_object_pos, 'cube_init_state': cube_init_state}
         state_dict = self.compute_full_state(state_dict)
         ee_vel_twist_batch = state_dict['ee_vel_twist']
         ee_acc_twist_batch = state_dict['ee_acc_twist']
         ee_pos, ee_rot = state_dict['ee_pos'], state_dict['ee_rot']
-        d = state_dict['relative_object_pos']
+        d = state_dict['cube_init_state'][...,:3]
         cube_pos_change = relative_object_pos[-1,:]-relative_object_pos[0,:]
         abs_cube_pos_change = torch.sqrt(cube_pos_change[0]**2+cube_pos_change[1]**2)
         episode_metrics['abs_cube_pos_change'] = abs_cube_pos_change
@@ -349,16 +342,6 @@ class TrayObjectReacher(ArmReacher):
         if self.task_specs is not None:
             if self.randomize_cube_location:
                 print("Resetting cube position")
-                # exit()
-                # link_pose_dict, _, _ = self.robot_model.compute_forward_kinematics(self.robot_default_dof_pos, torch.zeros_like(self.robot_default_dof_pos), dist_calc=True)
-                # ee_pos_world, ee_rot_world = link_pose_dict[self.ee_link_name][0], link_pose_dict[self.ee_link_name][1]
-                # ee_quat = matrix_to_quaternion(ee_rot_world)
-                # ee_pos_vec = gymapi.Vec3(x=ee_pos_world[0][0], y=ee_pos_world[0][1], z=ee_pos_world[0][2])
-                # ee_rot_quat = gymapi.Quat(x=ee_quat[0][1],y=ee_quat[0][2], z=ee_quat[0][3], w=ee_quat[0][0])
-                # ee_pose_robot = gymapi.Transform(p=ee_pos_vec, r=ee_rot_quat)
-                # ee_pose_world = self.robot_pose_world * ee_pose_robot
-                # ee_pose_world = torch.tensor([ee_pose_world.p.x, ee_pose_world.p.y, ee_pose_world.p.z], device=self.rl_device)
-
                 target_cube_pos_range = self.task_specs['target_cube_pos_range']
                 xl, xh = target_cube_pos_range[0]
                 yl, yh = target_cube_pos_range[1]
@@ -386,8 +369,8 @@ class TrayObjectReacher(ArmReacher):
     
     @property
     def obs_dim(self)->int:
-        return super().obs_dim + 3
-        # return super().obs_dim #only for state obs
+        # return super().obs_dim + 3
+        return super().obs_dim #only for state obs
 
     # @property
     # def action_lims(self)->Tuple[torch.Tensor, torch.Tensor]:

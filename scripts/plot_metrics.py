@@ -36,7 +36,7 @@ if not os.path.exists(metrics_folder):
     os.makedirs(metrics_folder)
 metrics_file = os.path.join(metrics_folder, 'may23_center_train_random_test_2.json')
 
-vf_agents = ['agent_checkpoint_50ep_ee_all_obs_may22_only_friction_cost_train_ensemble_100.pt',]
+vf_agents = ['agent_checkpoint_50ep_rand_only_ee_obs_may26_ensemble_100.pt',]
 prediction_temps = [30]
 # success = {agent:; {} for agent in vf_agents}
 # number_of_steps = {agent: {} for agent in vf_agents}
@@ -64,7 +64,7 @@ if not load_metrics:
                 'eval.num_episodes=20',
                 'eval.load_critic=True',
                 f'eval.vf_trained_agent={model_filename}',
-                'seed=42', #42 is the default seed, for strict eval --> change seed
+                'seed=1', #42 is the default seed, for strict eval --> change seed
                 f'train.vf.prediction_temp={pred_temp}',
                 f'train.vf.ensemble_size={ensemble_size}',
             ]

@@ -130,7 +130,7 @@ class ArmReacher(ArmTask):
         ee_pos, ee_rot = state_dict['ee_pos'], state_dict['ee_rot']
 
         goal_ee_pos = self.goal_ee_pos
-        print("goal_ee_pos", goal_ee_pos)
+        # print("goal_ee_pos", goal_ee_pos)
         goal_ee_rot = self.goal_ee_rot
         goal_state = self.goal_state
         

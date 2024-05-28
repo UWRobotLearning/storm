@@ -122,6 +122,7 @@ def main(cfg: DictConfig):
     vf_loaded = False
     if cfg.eval.load_critic:
         #load pretrained critic weights
+        import pdb; pdb.set_trace()
         pretrained_vf = EnsembleValueFunction(
             obs_dim=obs_dim, config=cfg.train.vf, device=cfg.rl_device)
         model_filename = cfg.eval.vf_trained_agent
@@ -212,23 +213,16 @@ def main(cfg: DictConfig):
     #sanity check for buffer contents
     for buf_index, buffer in enumerate(buffers, start=1):
             print(f"Buffer {buf_index}: {buffer}")
-
     print('Time taken = {}'.format(time.time() - st))
     data_dir = data_dir if cfg.eval.save_buffer else None
-    # if model_dir is not None:
-    #     print('Saving agent to {}'.format(model_dir))
     if data_dir is not None:
         if eval_pretrained: agent_tag = 'pretrained_policy'
         else: agent_tag = 'mpc'
-        # print('Saving buffer to {}'.format(data_dir))
-        # buffer_1.save(os.path.join(data_dir, '{}_buffer_5ep.pt'.format(agent_tag)))
-        # buffer_2.save(os.path.join(data_dir, '{}_buffer_3ep.pt'.format(agent_tag)))
-        # buffer_3.save(os.path.join(data_dir, '{}_buffer_1ep.pt'.format(agent_tag)))
         for buffer, length in zip(buffers, len_buffer):
-            buffer_filename = os.path.join(data_dir, f'{agent_tag}_buffer_{length}_no_rand_cube_may23.pt')
+            buffer_filename = os.path.join(data_dir, f'{agent_tag}_buffer_{length}_rand_may26.pt')
             buffer.save(buffer_filename)
             print(f'Saving buffer to {buffer_filename}')
-
+    # import pdb; pdb.set_trace()
     metrics = convert_tensors(metrics)
     print(json.dumps(metrics))
 

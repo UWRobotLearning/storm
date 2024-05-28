@@ -351,7 +351,6 @@ def run_episode(
                 next_state = info['state'] if 'state' in info else None
                 total_return += next_reward
                 discounted_total_return += next_reward * discount**i
-
             timeout = i == max_episode_steps - 1
             terminal = done and (not timeout)
 
@@ -550,7 +549,6 @@ def add_returns_to_dataset(dataset, discount):
 
 
 def relabel_dataset(dataset, task):
-    # import pdb; pdb.set_trace()
     device = task.device
     q_pos = torch.as_tensor(dataset['states/q_pos']).to(device)
     q_vel = torch.as_tensor(dataset['states/q_vel']).to(device)
@@ -563,7 +561,6 @@ def relabel_dataset(dataset, task):
         rel_obj_pos = torch.as_tensor(dataset['states/relative_object_pos']).to(device)
     if dataset['next_states/relative_object_pos'] is not None:
         next_rel_obj_pos = torch.as_tensor(dataset['next_states/relative_object_pos']).to(device)
-    
     state_dict = {'q_pos': q_pos, 'q_vel': q_vel, 'q_acc': q_acc}
     if dataset['states/relative_object_pos'] is not None:
         state_dict['relative_object_pos'] = rel_obj_pos
@@ -571,15 +568,18 @@ def relabel_dataset(dataset, task):
     next_state_dict = {'q_pos': next_q_pos, 'q_vel': next_q_vel, 'q_acc': next_q_acc}
     if dataset['next_states/relative_object_pos'] is not None:
         next_state_dict['relative_object_pos'] = next_rel_obj_pos
-    # import pdb; pdb.set_trace()
+
+    if dataset['cube_init_pos/cube_pos_ee_buffer'] is not None:
+        cube_pos_ee_buffer = torch.as_tensor(dataset['cube_init_pos/cube_pos_ee_buffer']).to(device)
+
     goal_dict = {}
     for k,v in dataset.items():
         split = k.split("/")
         if split[0] == 'goals':
             goal_dict[split[-1]] = torch.as_tensor(v).to(device)
-    
+    import pdb; pdb.set_trace()
     with torch.no_grad():
-        task.update_params({'goal_dict': goal_dict})
+        task.update_params({'goal_dict': goal_dict, 'cube_pos_ee_buffer': cube_pos_ee_buffer})
         full_state_dict = task.compute_full_state(state_dict)
         full_state_dict_next = task.compute_full_state(next_state_dict)
         new_cost, cost_terms = task.compute_cost(full_state_dict, actions)
@@ -596,6 +596,7 @@ def relabel_dataset(dataset, task):
     dataset["next_observations"] = new_observations_next.to(dataset.device)
     dataset["costs"] = new_cost.to(dataset.device)
     dataset["terminals"] = new_terminals.to(dataset.device)
+    dataset["terminals"][-5:] = 1
     dataset["success"] = new_success.to(dataset.device)    
     return dataset
 

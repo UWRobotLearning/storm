@@ -43,7 +43,7 @@ task:
       logcosh_alpha: [1.0, 1.0] #orientation, position (shaping used only for logcosh)
 
     ee_vel_twist:
-      weight: 8e-2 #1.0
+      weight: 9e-2 #1.0
       norm_type: 'l2'
       # hinge_val: 0.01
       # vec_weight: [1.0, 1.0, 1.0] 
@@ -54,7 +54,7 @@ task:
       # vec_weight: [1.0, 1.0, 1.0] 
 
     zero_q_vel:
-      weight: 8e-2
+      weight: 9e-2
       norm_type: 'l2'
       # hinge_val: 0.2 #0.2
 
