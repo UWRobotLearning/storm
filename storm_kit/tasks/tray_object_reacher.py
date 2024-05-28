@@ -144,6 +144,8 @@ class TrayObjectReacher(ArmReacher):
         q_vel = state_dict['q_vel']
         if 'relative_object_pos' in state_dict:
             relative_object_pos = state_dict['relative_object_pos']
+            cube_pos_norm = torch.sqrt(relative_object_pos[...,0]**2 + relative_object_pos[...,1]**2)
+
         if ee_pos.ndim == 2:
             goal_ee_pos = self.goal_ee_pos.reshape_as(ee_pos)
         elif ee_pos.ndim == 3:
@@ -153,7 +155,6 @@ class TrayObjectReacher(ArmReacher):
 
         dist_err = 100*torch.norm(ee_pos - goal_ee_pos, p=2, dim=-1) #l2 err in cm
         twist_norm = torch.norm(ee_vel, p=2, dim=-1)
-        cube_pos_norm = torch.sqrt(relative_object_pos[...,0]**2 + relative_object_pos[...,1]**2)
 
         success = (dist_err < 2.0) & (twist_norm < 0.01) #& (cube_pos_norm < 0.01)
         # print("Success: ",success)
