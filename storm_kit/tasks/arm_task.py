@@ -21,8 +21,6 @@
 # FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 # DEALINGS IN THE SOFTWARE.#
 from typing import Optional, Dict, Tuple, Union, List
-import torch
-import torch.nn as nn
 from torch.profiler import record_function
 import time
 from operator import mul
@@ -38,6 +36,8 @@ from storm_kit.mpc.cost.manipulability_cost import ManipulabilityCost
 from storm_kit.mpc.cost import CollisionCost, PrimitiveCollisionCost #VoxelCollisionCost
 from storm_kit.mpc.cost.robot_self_collision_cost import RobotSelfCollisionCost
 from storm_kit.mpc.model.integration_utils import build_fd_matrix
+import torch
+import torch.nn as nn
 
 class ArmTask(nn.Module):
     """

@@ -7,5 +7,6 @@
 
   <node type="rviz" name="rviz" pkg="rviz" args="-d $(find storm_ros)/rviz/robot_world_visualizer.rviz" />
 
-
+  <node pkg="tf2_ros" type="static_transform_publisher" name="camera_broadcaster"
+    args="0.9830213929111877 -0.012718213930554917 0.9634871525263239 -0.6741867304453285 -0.6812170892723831 0.2004538230286437 0.20306106127936216 base_link camera_color_optical_frame" />
 </launch>

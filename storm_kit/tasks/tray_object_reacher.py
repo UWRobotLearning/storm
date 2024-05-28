@@ -1,14 +1,13 @@
+from isaacgym import gymapi
 from typing import Dict, Optional, Tuple, Union
-import torch
 from torch.profiler import record_function
 from functools import reduce
 from operator import mul
-
 from storm_kit.differentiable_robot_model.spatial_vector_algebra import matrix_to_quaternion, quaternion_to_matrix, euler_angles_to_matrix, matrix_to_euler_angles, quat_multiply
 from storm_kit.mpc.cost import NormCost, PoseCost, FrictionConeCost
 from storm_kit.tasks.arm_task import ArmTask
 from storm_kit.tasks.arm_reacher import ArmReacher
-from isaacgym import gymapi
+import torch
 import numpy as np
 import time
 import yaml
@@ -65,7 +64,7 @@ class TrayObjectReacher(ArmReacher):
 
         self.task_specs = cfg.get('task_specs', None)
         if self.task_specs is not None:
-            self.randomize_cube_location = self.task_specs['randomize_cube_location']
+            self.randomize_cube_location = self.task_specs['randomize_cube_location'] if 'randomize_cube_location' in self.task_specs else False
             self.cube_pos_buffer = torch.zeros(self.num_instances, 3, device=self.device)
             #initialize cube position wrt tray
             self.cube_pos_ee = torch.zeros(self.num_instances, 3, device=self.device)

@@ -8,7 +8,6 @@ import rospkg
 from sensor_msgs.msg import JointState
 from visualization_msgs.msg import Marker, MarkerArray
 
-import torch
 from hydra import initialize, compose
 
 from storm_kit.util_file import get_configs_path, get_gym_configs_path, join_path, load_yaml, get_assets_path
@@ -16,6 +15,7 @@ from storm_kit.differentiable_robot_model import DifferentiableRobotModel
 from storm_kit.differentiable_robot_model.spatial_vector_algebra import quaternion_to_matrix, CoordinateTransform
 from storm_kit.geom.sdf.robot import RobotSphereCollision
 from storm_kit.tasks.arm_reacher import ArmTask
+import torch
 
 class RobotWorldPublisher():
     def __init__(self) -> None:
