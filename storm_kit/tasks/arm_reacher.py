@@ -273,11 +273,17 @@ class ArmReacher(ArmTask):
         deltas = ee_pos[1:] - ee_pos[0:-1]
         deltas = torch.norm(deltas, p=2, dim=-1)
         ee_path_length = 100 * torch.sum(deltas).item() #ee path length in cm
-    
+        import pdb; pdb.set_trace()
         #max ee vel
         ee_vel_twist = torch.norm(state_dict['ee_vel_twist'], p=2, dim=-1)
         ee_vel_twist_final = ee_vel_twist[-1].item()
         ee_vel_twist_max = ee_vel_twist.max().item()
+
+        #ee linear vel twist max, ee angular vel twist max
+        ee_lin_vel_twist = torch.norm(state_dict['ee_vel_twist'][:, 3:6], p=2, dim=-1)
+        ee_ang_vel_twist = torch.norm(state_dict['ee_vel_twist'][:, 0:3], p=2, dim=-1)
+        ee_lin_vel_twist_max = ee_lin_vel_twist.max().item()
+        ee_ang_vel_twist_max = ee_ang_vel_twist.max().item()
 
         #termination
         term, term_cost, term_info = self.compute_termination(state_dict)
@@ -315,7 +321,9 @@ class ArmReacher(ArmTask):
             'self_collision': self_collision_violation,
             'bounds_violation': bounds_violation,
             'success': success,
-            'ee vel twist max': ee_vel_twist_max}
+            'ee vel twist max': ee_vel_twist_max,
+            'ee_lin_vel_twist_max': ee_lin_vel_twist_max,
+            'ee_ang_vel_twist_max': ee_ang_vel_twist_max}
             # 'last_10_dist_err': last_n_dist_err,
             # 'last_10_dist_err_rel': last_n_dist_err_rel,
             # 'max_q_vel': max_q_vel,
