@@ -19,7 +19,7 @@ env:
   episodeLength: 500
   enableDebugVis: False
   controlFrequencyInv: 1
-  num_objects: 1
+  num_objects: 2
   aggregateMode: 3
   joint_control: ${..joint_control}
   joint_control_mode: 'inverse_dynamics'
@@ -32,7 +32,7 @@ env:
   robot_z_offset: 0.0
 
   asset:
-    assetFileNameObjects: ["urdf/cube.urdf"] #, "urdf/cube2.urdf"]
+    assetFileNameObjects: ["urdf/cube.urdf", "urdf/cube2.urdf"]
 
   # set to True if you use camera sensors in the environment
   enableCameraSensors: False
