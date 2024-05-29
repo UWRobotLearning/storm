@@ -36,10 +36,9 @@ if not os.path.exists(metrics_folder):
     os.makedirs(metrics_folder)
 metrics_file = os.path.join(metrics_folder, 'metrics_temp.json')
 
-vf_agents = ['agent_checkpoint_50ep_no_rand_ee_obs_may28_ensemble_100.pt']
-            #  ,'agent_checkpoint_50ep_no_rand_ee_obs_may28_ensemble_20',
-            #  'agent_checkpoint_50ep_no_rand_ee_obs_may28_ensemble_40.pt','agent_checkpoint_50ep_no_rand_ee_obs_may28_ensemble_60',
-            #  'agent_checkpoint_50ep_no_rand_ee_obs_may28_ensemble_80.pt','agent_checkpoint_50ep_no_rand_ee_obs_may28_ensemble_100']
+vf_agents = ['agent_checkpoint_50ep_no_rand_ee_obs_may28_ensemble_5.pt','agent_checkpoint_50ep_no_rand_ee_obs_may28_ensemble_20.pt',
+             'agent_checkpoint_50ep_no_rand_ee_obs_may28_ensemble_40.pt','agent_checkpoint_50ep_no_rand_ee_obs_may28_ensemble_60.pt',
+             'agent_checkpoint_50ep_no_rand_ee_obs_may28_ensemble_80.pt','agent_checkpoint_50ep_no_rand_ee_obs_may28_ensemble_100.pt']
 prediction_temps = [20] #[1,10,20,30,40,50]
 
 metrics_dict = {str(get_ensemble_size(agent)): {} for agent in vf_agents}
