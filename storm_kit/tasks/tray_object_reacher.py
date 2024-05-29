@@ -176,6 +176,18 @@ class TrayObjectReacher(ArmReacher):
         ee_vel_twist_batch = state_dict['ee_vel_twist']
         ee_acc_twist_batch = state_dict['ee_acc_twist']
         ee_pos, ee_rot = state_dict['ee_pos'], state_dict['ee_rot']
+
+        gravity_vector = torch.tensor([0, 0, 1], device=self.device).float().expand(ee_rot.size(0), -1)        
+        normal_vector = ee_rot[..., 2]  #z axis of the ee should be the normal
+        dot_product = torch.sum(normal_vector * gravity_vector, dim=-1)
+        normal_magnitude = torch.norm(normal_vector, dim=-1)
+        gravity_magnitude = torch.norm(gravity_vector, dim=-1)
+        tilt_angle = torch.acos(dot_product / (normal_magnitude * gravity_magnitude))
+        tilt_angle_deg = torch.rad2deg(tilt_angle)
+        tilt_angle_deg = torch.where(tilt_angle_deg > 90, 180 - tilt_angle_deg, tilt_angle_deg)
+        tilt_angle_max = torch.max(tilt_angle_deg).item()
+        episode_metrics['tilt_angle_max'] = tilt_angle_max
+
         d = state_dict['cube_init_state'][...,:3]
         cube_pos_change = relative_object_pos[-1,:]-relative_object_pos[0,:]
         abs_cube_pos_change = torch.sqrt(cube_pos_change[0]**2+cube_pos_change[1]**2)

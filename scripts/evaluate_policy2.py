@@ -122,7 +122,7 @@ def main(cfg: DictConfig):
     vf_loaded = False
     if cfg.eval.load_critic:
         #load pretrained critic weights
-        import pdb; pdb.set_trace()
+        # import pdb; pdb.set_trace()
         pretrained_vf = EnsembleValueFunction(
             obs_dim=obs_dim, config=cfg.train.vf, device=cfg.rl_device)
         model_filename = cfg.eval.vf_trained_agent

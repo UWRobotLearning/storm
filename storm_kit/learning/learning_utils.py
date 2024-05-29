@@ -577,7 +577,7 @@ def relabel_dataset(dataset, task):
         split = k.split("/")
         if split[0] == 'goals':
             goal_dict[split[-1]] = torch.as_tensor(v).to(device)
-    import pdb; pdb.set_trace()
+    # import pdb; pdb.set_trace()
     with torch.no_grad():
         task.update_params({'goal_dict': goal_dict, 'cube_pos_ee_buffer': cube_pos_ee_buffer})
         full_state_dict = task.compute_full_state(state_dict)

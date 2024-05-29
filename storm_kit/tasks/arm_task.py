@@ -284,7 +284,7 @@ class ArmTask(nn.Module):
             self, 
             state_dict: Dict[str,torch.Tensor],
             cost_terms: Optional[Dict[str, torch.Tensor]]=None):
-                
+        # import pdb; pdb.set_trace()
         q_pos = state_dict['q_pos']
         q_vel = state_dict['q_vel']
         q_acc = state_dict['q_acc']
