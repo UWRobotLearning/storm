@@ -156,7 +156,7 @@ class TrayObjectReacher(ArmReacher):
         dist_err = 100*torch.norm(ee_pos - goal_ee_pos, p=2, dim=-1) #l2 err in cm
         twist_norm = torch.norm(ee_vel, p=2, dim=-1)
 
-        success = (dist_err < 2.0) & (twist_norm < 0.01) #& (cube_pos_norm < 0.01)
+        success = (dist_err < 2.0) & (twist_norm < 0.02) #& (cube_pos_norm < 0.01)
         # print("Success: ",success)
         return success
     
@@ -172,7 +172,12 @@ class TrayObjectReacher(ArmReacher):
         q_pos = torch.as_tensor(episode_data['states/q_pos']).to(self.device)
         q_vel = torch.as_tensor(episode_data['states/q_vel']).to(self.device)
         q_acc = torch.as_tensor(episode_data['states/q_acc']).to(self.device)
-        relative_object_pos = torch.as_tensor(episode_data['states/relative_object_pos']).to(self.device)
+        if 'relative_object_pos' in episode_data:
+            # import pdb; pdb.set_trace()
+            relative_object_pos = torch.as_tensor(episode_data['states/relative_object_pos']).to(self.device)
+            cube_pos_change = relative_object_pos[-1,:]-relative_object_pos[0,:]
+            abs_cube_pos_change = torch.sqrt(cube_pos_change[0]**2+cube_pos_change[1]**2)
+            episode_metrics['abs_cube_pos_change'] = abs_cube_pos_change
 
         orig_size = q_pos.size()[0:-1]
 
@@ -195,9 +200,6 @@ class TrayObjectReacher(ArmReacher):
         episode_metrics['tilt_angle_max'] = tilt_angle_max
 
         # d = state_dict['relative_object_pos']
-        cube_pos_change = relative_object_pos[-1,:]-relative_object_pos[0,:]
-        abs_cube_pos_change = torch.sqrt(cube_pos_change[0]**2+cube_pos_change[1]**2)
-        episode_metrics['abs_cube_pos_change'] = abs_cube_pos_change
         with record_function("tray_object_reacher:friction_cone_cost"):
             friction_cone_cost = self.friction_cost.forward(ee_acc_twist_batch[...,3:6], ee_vel_twist_batch[...,0:3], ee_acc_twist_batch[...,0:3], ee_rot)
             # friction_cone_cost = friction_cone_cost.view(orig_size)

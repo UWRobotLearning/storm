@@ -571,17 +571,21 @@ def relabel_dataset(dataset, task):
     next_q_vel = torch.as_tensor(dataset['next_states/q_vel']).to(device)
     next_q_acc = torch.as_tensor(dataset['next_states/q_acc']).to(device)
     actions = torch.as_tensor(dataset['actions']).to(device)
-    if dataset['states/relative_object_pos'] is not None:
-        rel_obj_pos = torch.as_tensor(dataset['states/relative_object_pos']).to(device)
-    if dataset['next_states/relative_object_pos'] is not None:
-        next_rel_obj_pos = torch.as_tensor(dataset['next_states/relative_object_pos']).to(device)
-    
     state_dict = {'q_pos': q_pos, 'q_vel': q_vel, 'q_acc': q_acc}
-    if dataset['states/relative_object_pos'] is not None:
-        state_dict['relative_object_pos'] = rel_obj_pos
     next_state_dict = {'q_pos': next_q_pos, 'q_vel': next_q_vel, 'q_acc': next_q_acc}
-    if dataset['next_states/relative_object_pos'] is not None:
-        next_state_dict['relative_object_pos'] = next_rel_obj_pos
+
+    if 'states/relative_object_pos' in dataset.keys():
+        if dataset['states/relative_object_pos'] is not None:
+            rel_obj_pos = torch.as_tensor(dataset['states/relative_object_pos']).to(device)
+            state_dict['relative_object_pos'] = rel_obj_pos
+
+    if 'next_states/relative_object_pos' in dataset.keys():
+        if dataset['next_states/relative_object_pos'] is not None:
+            next_rel_obj_pos = torch.as_tensor(dataset['next_states/relative_object_pos']).to(device)
+            next_state_dict['relative_object_pos'] = next_rel_obj_pos
+    
+    # if dataset['states/relative_object_pos'] is not None and 'states/relative_object_pos' in dataset.keys():
+    # if dataset['next_states/relative_object_pos'] is not None and 'next_states/relative_object_pos' in dataset.keys():
 
     goal_dict = {}
     for k,v in dataset.items():
@@ -607,6 +611,7 @@ def relabel_dataset(dataset, task):
     dataset["next_observations"] = new_observations_next.to(dataset.device)
     dataset["costs"] = new_cost.to(dataset.device)
     dataset["terminals"] = new_terminals.to(dataset.device)
+    dataset["terminals"][-5:] = 1
     dataset["success"] = new_success.to(dataset.device)    
     return dataset
 

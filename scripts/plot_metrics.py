@@ -41,7 +41,7 @@ vf_agents = ['agent_checkpoint_50ep_ee_all_obs_may22_only_friction_cost_train_en
             #  'agent_checkpoint_50ep_ee_all_obs_may19_ensemble_20.pt',
             #  'agent_checkpoint_50ep_ee_all_obs_may19_ensemble_40.pt', 'agent_checkpoint_50ep_ee_all_obs_may19_ensemble_60.pt',
             #  'agent_checkpoint_50ep_ee_all_obs_may19_ensemble_80.pt', 'agent_checkpoint_50ep_ee_all_obs_may19_ensemble_100.pt',]
-prediction_temps = [30,]#10,20,30,40,50]
+prediction_temps = [20,]#10,20,30,40,50]
 # success = {agent: {} for agent in vf_agents}
 # number_of_steps = {agent: {} for agent in vf_agents}
 

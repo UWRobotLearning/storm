@@ -220,11 +220,12 @@ def main(cfg: DictConfig):
         # buffer_2.save(os.path.join(data_dir, '{}_buffer_3ep.pt'.format(agent_tag)))
         # buffer_3.save(os.path.join(data_dir, '{}_buffer_1ep.pt'.format(agent_tag)))
         for buffer, length in zip(buffers, len_buffer):
-            buffer_filename = os.path.join(data_dir, f'{agent_tag}_buffer_{length}_ee_all_obs_may19.pt')
+            buffer_filename = os.path.join(data_dir, f'{agent_tag}_buffer_{length}_ee_all_obs_real_robot_may29.pt')
             buffer.save(buffer_filename)
             print(f'Saving buffer to {buffer_filename}')
     # print metrics for processing later
     # import pdb; pdb.set_trace()
+    print('Buffer saved keys: {}'.format(buffer_1.keys))
     metrics = convert_tensors(metrics)
     print(json.dumps(metrics))
 

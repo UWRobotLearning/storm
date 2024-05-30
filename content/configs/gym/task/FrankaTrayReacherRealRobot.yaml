@@ -102,18 +102,19 @@ task:
     randomize_target_position: True
     randomize_target_rotation: True
     target_position_range: [[0.4, 0.6], [-0.3, 0.3], [0.45, 0.6]] #xyz (meters)
+    # target_position_range: [[0.4, 0.6], [-0.3, -0.2, 0.2, 0.3], [0.45, 0.6]] #xyz (meters)
     target_rotation_range: [[0.0, 0.0], [0.0, 0.0], [0.0, 0.0]] #radians
 
   object: ${..object} 
 
   cost:
     friction_cone_cost:
-      weight: 2.5
+      weight: 3.0
       tangential_cost_weight: 0.0
 
     goal_pose:
       vec_weight: [1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
-      weight: [0.5, 0.0] #[10.0, 50.0] #[50.0, 100.0]
+      weight: [0.0, 0.0] #[10.0, 50.0] #[50.0, 100.0]
       cost_type: 'se3_twist'
       norm_type: 'l2'
       hinge_val: -1

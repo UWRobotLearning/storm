@@ -282,7 +282,7 @@ class PandaRealRobotEnv():
         # mpc_config.rollout.cost.zero_q_vel.weight = 0.1
         # mpc_config.rollout.cost.stop_cost.weight = 2.0
         mpc_config.task.cost.goal_pose.weight = [0.0, 0.0]
-        mpc_config.task.cost.joint_l2.weight = 5.0
+        mpc_config.task.cost.joint_l2.weight = 3.0
         mpc_config.task.cost.ee_vel_twist.weight = 0.0
         mpc_config.task.cost.zero_q_vel.weight = 0.1
         mpc_config.task.cost.stop_cost.weight = 2.0

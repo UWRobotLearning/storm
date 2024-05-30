@@ -273,7 +273,7 @@ class ArmReacher(ArmTask):
         deltas = ee_pos[1:] - ee_pos[0:-1]
         deltas = torch.norm(deltas, p=2, dim=-1)
         ee_path_length = 100 * torch.sum(deltas).item() #ee path length in cm
-        import pdb; pdb.set_trace()
+        # import pdb; pdb.set_trace()
         #max ee vel
         ee_vel_twist = torch.norm(state_dict['ee_vel_twist'], p=2, dim=-1)
         ee_vel_twist_final = ee_vel_twist[-1].item()
