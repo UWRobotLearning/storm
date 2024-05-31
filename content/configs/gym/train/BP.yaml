@@ -34,7 +34,7 @@ vf:
     output_activation: null #torch.nn.Tanh
     dropout_prob: 0.01
     layer_norm: true
-  ensemble_size: 100
+  ensemble_size: 1
   aggregation: 'None'
   prediction_temp: 30.0 
   prior_factor: 0.0
@@ -69,7 +69,7 @@ agent:
   fixed_alpha: 0.2
   relabel_data: true
   load_pretrained_policy: false
-  discount: 0.99
+  discount: 0.0 #0.99
   beta: 3.0
   expectile_tau: 0.7
   clip_values: false
