@@ -34,7 +34,7 @@ eval_script = os.path.join(current_dir, 'evaluate_policy2.py')
 metrics_folder = os.path.join(current_dir, 'metrics')
 if not os.path.exists(metrics_folder):
     os.makedirs(metrics_folder)
-metrics_file = os.path.join(metrics_folder, 'metrics_no_rand_cube_ablation_disc_0_may31.json')
+metrics_file = os.path.join(metrics_folder, 'metrics_temp.json')
 
 # vf_agents = ['agent_checkpoint_50ep_no_rand_ee_obs_may28_ensemble_5.pt','agent_checkpoint_50ep_no_rand_ee_obs_may28_ensemble_20.pt',
 #              'agent_checkpoint_50ep_no_rand_ee_obs_may28_ensemble_40.pt','agent_checkpoint_50ep_no_rand_ee_obs_may28_ensemble_60.pt',
@@ -65,19 +65,19 @@ if not load_metrics:
         ensemble_size = get_ensemble_size(model_filename)
         # if ensemble_size is None:
         #      ensemble_size = 100
-        # if ensemble_size != 100:
-        #     continue
+        if ensemble_size != 100:
+            continue
         print(ensemble_size)
         for pred_temp in prediction_temps:
-            # if pred_temp != 1:
-            #     continue
+            if pred_temp != 1:
+                continue
             command = [
                 'python', eval_script,
                 'task=FrankaTrayReacher',
                 'eval.num_episodes=20',
                 'eval.load_critic=True',
                 f'eval.vf_trained_agent={model_filename}',
-                'seed=42',
+                'seed=1',
                 f'train.vf.prediction_temp={pred_temp}',
                 f'train.vf.ensemble_size={ensemble_size}',
             ]
@@ -137,11 +137,11 @@ if not load_metrics:
 else:
     
     for ensemble_size, temps in loaded_metrics.items():
-        # if ensemble_size != '80':
-        #     continue
+        if ensemble_size != '100':
+            continue
         for pred_temp, metrics in temps.items():
-            # if pred_temp != '20':
-            #     continue
+            if pred_temp != '1':
+                continue
             # num_successes = sum(episode['success'] for episode in metrics)
             # filtered_episodes = [ep for ep in metrics if ep['abs_cube_pos_change'] < 0.01]
             # num_successes = sum(episode['success'] for episode in filtered_episodes)
@@ -193,7 +193,7 @@ else:
             print("angular_tilt", max_angular_tilt[str(ensemble_size)][pred_temp])
             
 #heatmap
-plot = True
+plot = False
 if plot:
     df_success = pd.DataFrame(success_1).T
     plt.figure(figsize=(10, 6))
