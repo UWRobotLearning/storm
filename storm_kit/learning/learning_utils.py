@@ -465,7 +465,12 @@ def preprocess_dataset(train_dataset, env, task=None, cfg=None, normalize_score_
     # Set range of value functions
     # TODO: Check if this is right since we should take episode length into account too
     # if cfg.clip_values:
-    Vmax = max(0.0, rew_or_cost.max()/(1.-discount)).item()
+    result = rew_or_cost.max()/(1.-discount)
+    if isinstance(result, torch.Tensor):
+        Vmax = max(0.0, result.item())
+    else:
+        Vmax = max(0.0, result)
+    # Vmax = max(0.0, rew_or_cost.max()/(1.-discount)).item()
     Vmin = min(0.0, rew_or_cost.min()/(1.-discount), Vmax-1.0/(1-discount))
     info['V_max'] = Vmax
     info['V_min'] = Vmin

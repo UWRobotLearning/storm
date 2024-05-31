@@ -32,7 +32,7 @@ env:
   robot_z_offset: 0.0
 
   asset:
-    assetFileNameObjects: ["urdf/cube6.urdf"] #, "urdf/cube2.urdf"]
+    assetFileNameObjects: ["urdf/cube.urdf"] #, "urdf/cube2.urdf"]
 
   # set to True if you use camera sensors in the environment
   enableCameraSensors: False
