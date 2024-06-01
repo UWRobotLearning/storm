@@ -5,17 +5,18 @@ ee_link_name: "tray_link"
 default_dof_pos: [0.0, -0.7853, 0.0, -2.3561, 0.0, 1.5707, 0.7853]
 
 robot_collision_params:
-  collision_link_names: ["panda_link1", "panda_link2", "panda_link3", "panda_link4", "panda_link5", "panda_link6", "panda_link7", "panda_hand"] #only these links will be checked for any collisions
+  collision_link_names: ["panda_link1", "panda_link2", "panda_link3", "panda_link4", "panda_link5", "panda_link6", "panda_link7", "panda_hand", "tray_link"] #only these links will be checked for any collisions
   self_collision_ignore:
       panda_link0: ["panda_link1", "panda_link2"]
       panda_link1: ["panda_link2", "panda_link3", "panda_link4"]
       panda_link2: ["panda_link3", "panda_link4"]
       panda_link3: ["panda_link4", "panda_link6"]
       panda_link4: ["panda_link5", "panda_link6", "panda_link7"] #"panda_link8"
-      panda_link5: ["panda_link6", "panda_link7", "panda_hand"] # "panda_leftfinger", "panda_rightfinger"],
-      panda_link6: ["panda_link7", "panda_hand"]  #, "attached_object", "panda_leftfinger", "panda_rightfinger"],
-      panda_link7: ["panda_hand"]  # "attached_object", "panda_leftfinger", "panda_rightfinger"],
-      panda_hand: []       
+      panda_link5: ["panda_link6", "panda_link7", "panda_hand", "tray_link"] # "panda_leftfinger", "panda_rightfinger"],
+      panda_link6: ["panda_link7", "panda_hand", "tray_link"]  #, "attached_object", "panda_leftfinger", "panda_rightfinger"],
+      panda_link7: ["panda_hand","tray_link"]  # "attached_object", "panda_leftfinger", "panda_rightfinger"],
+      panda_hand: ["tray_link"]
+      tray_link: []       
   
   collision_spheres:
     panda_link0:
@@ -139,9 +140,27 @@ robot_collision_params:
           "radius": 0.05
         - "center": [0.0, 0.0, 0.08]
           "radius": 0.05
+    tray_link:
+        - "center": [0.0, -0.2, 0.02]
+          "radius": 0.01
+        - "center": [0.0, 0.2, 0.02]
+          "radius": 0.01
+        - "center": [0.2, 0.0, 0.02]
+          "radius": 0.01
+        - "center": [-0.2, 0.0, 0.02]
+          "radius": 0.01
+        - "center": [0.2, -0.2, 0.02]
+          "radius": 0.01
+        - "center": [-0.2, 0.2, 0.02]
+          "radius": 0.01
+        - "center": [-0.2, -0.2, 0.02]
+          "radius": 0.01
+        - "center": [0.2, 0.2, 0.02]
+          "radius": 0.01
     panda_leftfinger:
         - "center": [0.0, 0.01, 0.034]
           "radius": 0.02
     panda_rightfinger:
         - "center": [0.0, -0.01, 0.034]
           "radius": 0.02
+    

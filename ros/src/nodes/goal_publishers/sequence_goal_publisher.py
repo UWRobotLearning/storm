@@ -278,7 +278,7 @@ class SequenceGoalPublisher():
         self.state_sub.unregister()
 
 if __name__ == "__main__":
-    rospy.init_node("interactive_marker_goal_node", anonymous=True, disable_signals=True)    
+    rospy.init_node("interactive_marker_goal_node", anonymous=True, disable_signals=False)    
 
     goal_node = SequenceGoalPublisher()
 

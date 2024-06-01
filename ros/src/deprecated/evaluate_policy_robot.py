@@ -31,7 +31,7 @@ def main(cfg: DictConfig):
     torch.set_default_dtype(torch.float32)
     from franka_real_robot_env import FrankaRealRobotEnv
 
-    rospy.init_node("eval_policy_robot", anonymous=True, disable_signals=True)    
+    rospy.init_node("eval_policy_robot", anonymous=True, disable_signals=False)    
 
     task_details = task_map[cfg.task.name]
     task_cls = task_details['task_cls']   

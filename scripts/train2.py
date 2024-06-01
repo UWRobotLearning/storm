@@ -125,7 +125,7 @@ def get_task_and_dataset(task_name:str, cfg=None): #log max_episode_steps
         #Load buffers from folder
         # import pdb; pdb.set_trace()
         buffer_dict = buffer_dict_from_folder(data_dir)
-        replay_buffer = buffer_dict['mpc_buffer_50_ee_all_obs_real_robot_may29.pt']
+        replay_buffer = buffer_dict['mpc_buffer_50_single_cube_center_ee_all_obs_real_robot_may31.pt']
         
     return env, task, replay_buffer
 
@@ -303,7 +303,7 @@ def main(cfg: DictConfig):
             agent_state = agent.state_dict()
             agent_state['normalization_stats'] = normalization_stats
             if save_train:    
-                torch.save(agent_state, os.path.join(model_dir, 'agent_checkpoint_50ep_ee_obs_real_robot_cube_center_may29_ensemble_100.pt'))
+                torch.save(agent_state, os.path.join(model_dir, 'agent_checkpoint_50ep_ee_obs_real_robot_cube_center_may31_ensemble_100.pt'))
     
         pbar.set_postfix(train_metrics)
 

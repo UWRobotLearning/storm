@@ -17,6 +17,8 @@ from storm_kit.learning.learning_utils import plot_episode, evaluate_policy
 from storm_kit.envs.gym_env_wrapper import GymEnvWrapper
 from task_map import task_map
 import json
+import signal
+import sys
 
 def get_env_and_task(task_name:str, cfg=None): #log max_episode_steps
     if task_name.startswith(('hopper', 'walker2d', 'halfcheetah', 'antmaze')):
@@ -60,8 +62,21 @@ def convert_tensors(obj):
         else:
             return obj
 
+
+def free_gpu_memory():
+    torch.cuda.empty_cache()
+    torch.cuda.synchronize()
+
+def signal_handler(sig, frame):
+    print("Exiting gracefully...")
+    free_gpu_memory()
+    sys.exit(0)
+
+# signal.signal(signal.SIGINT, signal_handler)
+
 @hydra.main(config_name="config", config_path="../content/configs/gym")
 def main(cfg: DictConfig):
+    free_gpu_memory()
     torch.set_default_dtype(torch.float32)
     torch.manual_seed(cfg.seed)
     # torch.manual_seed(2)    
@@ -131,6 +146,7 @@ def main(cfg: DictConfig):
         # checkpoint_path = Path(f'./tmp_results/{cfg.task_name}/BP/models/agent_checkpoint_50ep_ee_state_obs_ensemble_logsumexp_discount_0.pt')
         print('Loading agent checkpoint from {}'.format(checkpoint_path))
         try:
+            # import pdb; pdb.set_trace()
             checkpoint = torch.load(checkpoint_path)
             vf_state_dict = checkpoint['vf_state_dict']
             remove_prefix = 'vf.'
@@ -220,7 +236,7 @@ def main(cfg: DictConfig):
         # buffer_2.save(os.path.join(data_dir, '{}_buffer_3ep.pt'.format(agent_tag)))
         # buffer_3.save(os.path.join(data_dir, '{}_buffer_1ep.pt'.format(agent_tag)))
         for buffer, length in zip(buffers, len_buffer):
-            buffer_filename = os.path.join(data_dir, f'{agent_tag}_buffer_{length}_ee_all_obs_real_robot_may29.pt')
+            buffer_filename = os.path.join(data_dir, f'{agent_tag}_buffer_{length}_single_cube_center_ee_all_obs_real_robot_may31.pt')
             buffer.save(buffer_filename)
             print(f'Saving buffer to {buffer_filename}')
     # print metrics for processing later
@@ -228,6 +244,7 @@ def main(cfg: DictConfig):
     print('Buffer saved keys: {}'.format(buffer_1.keys))
     metrics = convert_tensors(metrics)
     print(json.dumps(metrics))
-
+    if KeyboardInterrupt:
+        free_gpu_memory()
 if __name__ == "__main__":
     main()

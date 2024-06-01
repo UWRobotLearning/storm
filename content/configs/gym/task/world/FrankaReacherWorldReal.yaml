@@ -32,6 +32,6 @@ world_model:
         # pose: [0.0, 0.0, -0.1, 0, 0, 0, 1.0] # x, y, z, qx, qy, qz, qw
         dims: [1.2192, 1.2192, 0.00254] # x, y, z
         pose: [0.45, 0.0, -0.00130, 0, 0, 0, 1.0] # x, y, z, qx, qy, qz, qw -0.00127
-      obstacle:
-        dims: [0.30, 0.30, 0.41] # x, y, z
-        pose: [0.45, 0.0, 0.2, 0, 0, 0, 1.0] # x, y, z, qx, qy, qz, qw
+      # obstacle:
+      #   dims: [0.30, 0.30, 0.41] # x, y, z
+      #   pose: [0.45, 0.0, 0.2, 0, 0, 0, 1.0] # x, y, z, qx, qy, qz, qw
