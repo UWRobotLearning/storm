@@ -34,7 +34,7 @@ task:
 
     goal_pose:
       vec_weight: [1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
-      weight: [0.0,15.0] #[3.0,15.0]
+      weight: [3.0,15.0] #[3.0,15.0]
       cost_type: 'se3_twist'
       norm_type: 'l2'
       hinge_val: 0.01 #-1
@@ -43,7 +43,7 @@ task:
       logcosh_alpha: [1.0, 1.0] #orientation, position (shaping used only for logcosh)
 
     ee_vel_twist:
-      weight: 8e-2 #1.0
+      weight: 0.1 #1.0
       norm_type: 'l2'
       # hinge_val: 0.01
       # vec_weight: [1.0, 1.0, 1.0] 
@@ -54,7 +54,7 @@ task:
       # vec_weight: [1.0, 1.0, 1.0] 
 
     zero_q_vel:
-      weight: 8e-2
+      weight: 0.13
       norm_type: 'l2'
       # hinge_val: 0.2 #0.2
 
@@ -77,7 +77,7 @@ task:
       norm_type: 'l2'
 
     stop_cost:
-      weight: 3.0 #5.0 #1.0 #30.0 #50.0 #50.0 #10.0 #10.0 
+      weight: 1.0 #5.0 #1.0 #30.0 #50.0 #50.0 #10.0 #10.0 
       max_nlimit: 5.0 #1.5 #0.2
 
     stop_cost_acc:
@@ -89,7 +89,7 @@ task:
       order: 1
 
     primitive_collision:
-      weight: 200.0
+      weight: 0.0 #200.0
       distance_threshold_world: 0.03
       distance_threshold_self: 0.03
 
@@ -98,7 +98,7 @@ task:
     #   distance_threshold: 0.05
 
     state_bound:
-      weight: 200.0 
+      weight: 0.0 #200.0 
       bound_thresh: 0.03
 
     retract_state : [0.00, 0.0, 0.00, -1.5, 0.00, 2.0, 0.0] #check
@@ -111,12 +111,12 @@ mppi:
   init_cov          : 0.1 #0.005 #.5 #.5
   gamma             : 0.99 
   td_lam            : 1.0
-  n_iters           : 2 #2 #2
+  n_iters           : 1 #2 #2
   step_size_mean    : 0.9 #0.9
   step_size_cov     : 0.1 #0.7
   beta              : 0.1
   alpha             : 1
-  num_particles     : 400
+  num_particles     : 300 #400
   update_cov        : True
   cov_type          : 'full_AxA'
   kappa             : 0.05

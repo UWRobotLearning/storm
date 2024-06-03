@@ -333,39 +333,39 @@ class ArmTask(nn.Module):
 
         termination = torch.zeros(orig_size, device=self.device).flatten()
         term_cost = torch.zeros(orig_size, device=self.device).flatten()
+        with torch.no_grad():
+            if self.cfg['cost']['primitive_collision']['weight'] > 0:
+                with record_function('arm_task:primitive_collision_cost'):
+                    # link_pos_batch, link_rot_batch = state_dict['link_pos'], state_dict['link_rot']
+                    # link_pos_batch = link_pos_batch.view(-1, self.num_links, 3)
+                    # link_rot_batch = link_rot_batch.view(-1, self.num_links, 3, 3)
+                    # link_pose_dict = state_dict['link_pose_dict']
+                    # print("entered primitive collision cost")
+                    link_spheres_dict = state_dict['link_spheres_dict']
+                    self_coll_dist = state_dict['self_coll_dist']
+                    # coll_cost, coll_cost_info = self.primitive_collision_cost.forward(link_pos_batch, link_rot_batch)
+                    coll_cost, coll_cost_info = self.primitive_collision_cost.forward(link_spheres_dict, self_coll_dist)
+                    collision_violation = torch.logical_or(coll_cost_info['in_coll_world'], coll_cost_info['in_coll_self'])
+                    collision_violation = collision_violation.sum(-1)
+                    termination = torch.logical_or(termination, collision_violation)
+                    term_cost += coll_cost
+                    info = coll_cost_info
+            if self.cfg['cost']['state_bound']['weight'] > 0:
+                with record_function('arm_task:bound_cost'):
+                    # print("entered bound cost")
+                    state_batch = torch.cat((q_pos_batch, q_vel_batch, q_acc_batch), dim=-1).view(-1, 3*self.n_dofs)
+                    bound_cost, bound_cost_info = self.bound_cost.forward(state_batch)
+                    in_bounds = bound_cost_info['in_bounds']#[..., 0:2*self.n_dofs] #only use qpos and qvel
+                    bounds_violation = torch.logical_not(in_bounds).sum(-1)
+                    termination = torch.logical_or(termination, bounds_violation)
+                    term_cost += bound_cost
+                    info['in_bounds'] = bound_cost_info['in_bounds'].view(*orig_size, -1)
+                    info['bound_dist'] = bound_cost_info['bound_dist'].view(*orig_size, -1)
 
-        if self.cfg['cost']['primitive_collision']['weight'] > 0:
-            with record_function('arm_task:primitive_collision_cost'):
-                # link_pos_batch, link_rot_batch = state_dict['link_pos'], state_dict['link_rot']
-                # link_pos_batch = link_pos_batch.view(-1, self.num_links, 3)
-                # link_rot_batch = link_rot_batch.view(-1, self.num_links, 3, 3)
-                # link_pose_dict = state_dict['link_pose_dict']
-                # print("entered primitive collision cost")
-                link_spheres_dict = state_dict['link_spheres_dict']
-                self_coll_dist = state_dict['self_coll_dist']
-                # coll_cost, coll_cost_info = self.primitive_collision_cost.forward(link_pos_batch, link_rot_batch)
-                coll_cost, coll_cost_info = self.primitive_collision_cost.forward(link_spheres_dict, self_coll_dist)
-                collision_violation = torch.logical_or(coll_cost_info['in_coll_world'], coll_cost_info['in_coll_self'])
-                collision_violation = collision_violation.sum(-1)
-                termination = torch.logical_or(termination, collision_violation)
-                term_cost += coll_cost
-                info = coll_cost_info
-        if self.cfg['cost']['state_bound']['weight'] > 0:
-            with record_function('arm_task:bound_cost'):
-                # print("entered bound cost")
-                state_batch = torch.cat((q_pos_batch, q_vel_batch, q_acc_batch), dim=-1).view(-1, 3*self.n_dofs)
-                bound_cost, bound_cost_info = self.bound_cost.forward(state_batch)
-                in_bounds = bound_cost_info['in_bounds']#[..., 0:2*self.n_dofs] #only use qpos and qvel
-                bounds_violation = torch.logical_not(in_bounds).sum(-1)
-                termination = torch.logical_or(termination, bounds_violation)
-                term_cost += bound_cost
-                info['in_bounds'] = bound_cost_info['in_bounds'].view(*orig_size, -1)
-                info['bound_dist'] = bound_cost_info['bound_dist'].view(*orig_size, -1)
-
-            with record_function('arm_task:compute_success'):
-                success = self.compute_success(state_dict).flatten()
-                termination = torch.logical_or(termination, success)
-                info['success'] = success
+                with record_function('arm_task:compute_success'):
+                    success = self.compute_success(state_dict).flatten()
+                    termination = torch.logical_or(termination, success)
+                    info['success'] = success
             
         # termination = torch.logical_or(collision_violation, bounds_violation)
         # termination_cost = coll_cost +  bound_cost

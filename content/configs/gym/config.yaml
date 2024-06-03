@@ -71,7 +71,8 @@ eval:
   load_pretrained: false
   load_critic: false
   pretrained_policy: 'BP/models/agent_checkpoint_0.pt'
-  vf_trained_agent: 'agent_checkpoint_50ep_ee_obs_real_robot_cube_center_may31_ensemble_100.pt'
+  # vf_trained_agent: 'agent_checkpoint_50ep_ee_obs_real_robot_cube_center_jun3data_jun3_ensemble_80.pt'
+  vf_trained_agent: 'agent_checkpoint_50ep_no_rand_ee_obs_may28_ensemble_80.pt'
 
 # set the directory where the output files get saved
 hydra:

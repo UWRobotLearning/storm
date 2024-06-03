@@ -54,7 +54,7 @@ class TrayObjectReacher(ArmReacher):
         # self.friction_cost = FrictionConeCost(**self.object_config['friction_cone_cost']['cube1'], device=self.device)
 
         object_params = self.cfg['object']
-        self.friction_cost = FrictionConeCost(**self.cfg['cost']['friction_cone_cost'], object_params = self.cfg['object'], device=self.device)
+        self.friction_cost = torch.compile(FrictionConeCost(**self.cfg['cost']['friction_cone_cost'], object_params = self.cfg['object'], device=self.device))
 
         self.init_buffers()
 
@@ -142,9 +142,9 @@ class TrayObjectReacher(ArmReacher):
         ee_pos = state_dict['ee_pos']
         ee_vel = state_dict['ee_vel_twist']
         q_vel = state_dict['q_vel']
-        if 'relative_object_pos' in state_dict:
-            relative_object_pos = state_dict['relative_object_pos']
-            cube_pos_norm = torch.sqrt(relative_object_pos[...,0]**2 + relative_object_pos[...,1]**2)
+        # if 'relative_object_pos' in state_dict:
+        #     relative_object_pos = state_dict['relative_object_pos']
+        #     cube_pos_norm = torch.sqrt(relative_object_pos[...,0]**2 + relative_object_pos[...,1]**2)
 
         if ee_pos.ndim == 2:
             goal_ee_pos = self.goal_ee_pos.reshape_as(ee_pos)
@@ -155,9 +155,7 @@ class TrayObjectReacher(ArmReacher):
 
         dist_err = 100*torch.norm(ee_pos - goal_ee_pos, p=2, dim=-1) #l2 err in cm
         twist_norm = torch.norm(ee_vel, p=2, dim=-1)
-        #strict for data collection --> lenient for inference
-        success = (dist_err < 1.0) & (twist_norm < 0.01) #& (cube_pos_norm < 0.01)
-        # print("Success: ",success)
+        success = (dist_err < 2.0) & (twist_norm < 0.02) #& (cube_pos_norm < 0.01)
         return success
     
     def compute_full_state(self, state_dict: Dict[str,torch.Tensor], debug:bool=False)->Dict[str, Union[torch.Tensor, Dict[str, torch.Tensor], Dict[str, Tuple[torch.Tensor, torch.Tensor]]]]:

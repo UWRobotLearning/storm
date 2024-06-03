@@ -35,9 +35,9 @@ eval_script = os.path.join(current_dir, 'evaluate_policy2.py')
 metrics_folder = os.path.join(current_dir, 'metrics')
 if not os.path.exists(metrics_folder):
     os.makedirs(metrics_folder)
-metrics_file = os.path.join(metrics_folder, 'metrics_same_seed_only_rot_train_orientation_inference_ensemble_100.json')
+metrics_file = os.path.join(metrics_folder, 'metrics_temp.json')
 
-vf_agents = ['agent_checkpoint_50ep_ee_all_obs_may22_only_friction_cost_train_ensemble_100.pt',]
+vf_agents = ['agent_checkpoint_50ep_ee_obs_real_robot_cube_center_may29_ensemble_100.pt',]
             #  'agent_checkpoint_50ep_ee_all_obs_may19_ensemble_20.pt',
             #  'agent_checkpoint_50ep_ee_all_obs_may19_ensemble_40.pt', 'agent_checkpoint_50ep_ee_all_obs_may19_ensemble_60.pt',
             #  'agent_checkpoint_50ep_ee_all_obs_may19_ensemble_80.pt', 'agent_checkpoint_50ep_ee_all_obs_may19_ensemble_100.pt',]
@@ -63,13 +63,14 @@ if not load_metrics:
         for pred_temp in prediction_temps:
             command = [
                 'python', eval_script,
-                'task=FrankaTrayReacher',
+                'task=FrankaTrayReacherRealRobot',
                 'eval.num_episodes=20',
                 'eval.load_critic=True',
                 f'eval.vf_trained_agent={model_filename}',
                 'seed=42', #42 is the default seed, for strict eval --> change seed
                 f'train.vf.prediction_temp={pred_temp}',
                 f'train.vf.ensemble_size={ensemble_size}',
+                'real_robot_exp=True'
             ]
 
             result = subprocess.run(command, capture_output=True, text=True)

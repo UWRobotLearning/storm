@@ -8,7 +8,7 @@ model:
     # urdf_path: ${task.robot_urdf}
     robot: ${..robot}
     dt_traj_params:
-      base_dt: 0.025 #0.02 #0.0166 #0.01 #0.02
+      base_dt: 0.02 #0.02 #0.0166 #0.01 #0.02
       base_ratio: 1.0 #0.5
       max_dt: 0.04
     init_state: [0.8, 0.3, 0.0, -1.57, 0.0, 1.86, 0.] #check
@@ -30,12 +30,12 @@ task:
 
   cost:
     friction_cone_cost:
-      weight: 0.0 #3.8 #3 #2.5
+      weight: 0.0 #3.5 #3.8 #3 #2.5
       tangential_cost_weight: 0.0
 
     goal_pose:
       vec_weight: [1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
-      weight: [2.0, 10.0] #[1.7, 7.0] #[1.5, 8.0] #[0.5, 5.0] #[10.0, 50.0] #[50.0, 100.0]
+      weight: [0.6, 8.0] #[1.7, 7.0] #[1.5, 8.0] #[0.5, 5.0] #[10.0, 50.0] #[50.0, 100.0]
       cost_type: 'se3_twist'
       norm_type: 'l2'
       hinge_val: -1
@@ -44,7 +44,7 @@ task:
       logcosh_alpha: [5.0, 5.0] #orientation, position (shaping used only for logcosh)
 
     ee_vel_twist:
-      weight: 8e-2 #0.0 #3e-3 #1.0
+      weight: 0.1 #0.0 #3e-3 #1.0
       norm_type: 'l2'
       # hinge_val: 0.01
       # vec_weight: [1.0, 1.0, 1.0] 
@@ -55,7 +55,7 @@ task:
       # vec_weight: [1.0, 1.0, 1.0] 
 
     zero_q_vel:
-      weight: 0.12
+      weight: 0.1
       norm_type: 'l2'
       # hinge_val: 0.2 #0.2
 
@@ -78,7 +78,7 @@ task:
       norm_type: 'l2'
 
     stop_cost:
-      weight: 0.1 #50.0 #50.0 #10.0 #10.0 
+      weight: 0.5 #50.0 #50.0 #10.0 #10.0 
       max_nlimit: 7.0 #1.5 #0.2
 
     stop_cost_acc:
@@ -90,13 +90,13 @@ task:
       order: 1
 
     primitive_collision:
-      weight: 2000.0
-      distance_threshold_world: 0.05
-      distance_threshold_self: 0.05
+      weight: 0.0
+      distance_threshold_world: 0.01
+      distance_threshold_self: 0.01
 
     state_bound:
-      weight: 2000.0 
-      bound_thresh: 0.02
+      weight: 0.0 
+      bound_thresh: 0.01
 
     retract_state : [0.00, 0.0, 0.00, -1.5, 0.00, 2.0, 0.0] #check
     retract_weight: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0,0.0] #check
@@ -106,7 +106,7 @@ task:
 
 mppi:
   state_batch_size  : 1
-  horizon           : 20
+  horizon           : 20 #20
   init_cov          : 0.2 #0.02 #0.005 #.5 #.5
   gamma             : 0.99 #0.98
   td_lam            : 1.0
@@ -115,7 +115,7 @@ mppi:
   step_size_cov     : 0.5 #0.5
   beta              : 0.1 #0.05
   alpha             : 1
-  num_particles     : 400 #1000 #10000
+  num_particles     : 200 #1000 #10000
   update_cov        : True
   cov_type          : 'full_AxA' # 
   kappa             : 0.05

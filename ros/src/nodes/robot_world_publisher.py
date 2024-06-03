@@ -89,7 +89,7 @@ class RobotWorldPublisher():
                 #publish robot spheres
                 robot_spheres = self.get_robot_collision_spheres(self.robot_state)
                 marker_list = self.get_sphere_marker_list(robot_spheres)
-                print(marker_list)
+                # print(marker_list)
                 self.robot_sphere_marker_array.markers = marker_list
 
                 # _, cost, done_task, cost_terms, done_cost, done_info = self.task.forward(self.robot_state, None)

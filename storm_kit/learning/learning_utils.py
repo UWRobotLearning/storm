@@ -324,7 +324,7 @@ def run_episode(
         compute_termination: bool = True,
         discount: float = 0.99,
         rng:Optional[torch.Generator] = None):
-        
+        # torch.cuda.empty_cache()
         reset_data, state = None, None
         try: 
             obs, reset_info = env.reset(rng=rng)
@@ -345,7 +345,9 @@ def run_episode(
                     'obs': torch.as_tensor(obs).float(),
                     'states': state}
                 # with profile(activities=[ProfilerActivity.CPU, ProfilerActivity.CUDA]) as prof:
+                st= time.time()
                 action, policy_info = policy.get_action(policy_input, deterministic=deterministic)
+                print('run episode action step time:', time.time()-st) 
 
                 # if i == 4:
                 #     print(prof.key_averages().table(sort_by="cuda_time_total", row_limit=40))
@@ -354,10 +356,13 @@ def run_episode(
                 #step tells me about next state
                 next_obs, next_reward, next_done, info = env.step(
                     action, compute_cost=compute_cost, compute_termination=compute_termination)
-                if policy.vf is not None:
+                use_vf = False
+                if policy.vf is not None and use_vf:
                     v_preds, v_info = policy.vf(obs.view(-1, obs.shape[-1]), denormalized=True)
                     # v_preds = v_preds.transpose(0,1)
                     v_preds = v_preds.view(1, -1)
+                else:
+                    v_preds = None
 
                 # policy.vf = 
 
@@ -426,6 +431,7 @@ def evaluate_policy(
     ep_infos = []
     num_steps = 0
     for ep_num in range(num_episodes):
+        
         ep_data, ep_info = run_episode(
         env, task, policy, 
         max_episode_steps,
@@ -478,7 +484,7 @@ def preprocess_dataset(train_dataset, env, task=None, cfg=None, normalize_score_
     # Set range of value functions
     # TODO: Check if this is right since we should take episode length into account too
     # if cfg.clip_values:
-    Vmax = max(0.0, rew_or_cost.max()/(1.-discount)).item()
+    Vmax = max(0.0, rew_or_cost.max()/(1.-discount))
     Vmin = min(0.0, rew_or_cost.min()/(1.-discount), Vmax-1.0/(1-discount))
     info['V_max'] = Vmax
     info['V_min'] = Vmin
@@ -611,7 +617,7 @@ def relabel_dataset(dataset, task):
     dataset["next_observations"] = new_observations_next.to(dataset.device)
     dataset["costs"] = new_cost.to(dataset.device)
     dataset["terminals"] = new_terminals.to(dataset.device)
-    dataset["terminals"][-5:] = 1
+    dataset["terminals"][-4:] = 1
     dataset["success"] = new_success.to(dataset.device)    
     return dataset
 

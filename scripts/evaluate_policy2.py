@@ -62,7 +62,6 @@ def convert_tensors(obj):
         else:
             return obj
 
-
 def free_gpu_memory():
     torch.cuda.empty_cache()
     torch.cuda.synchronize()
@@ -145,6 +144,7 @@ def main(cfg: DictConfig):
         checkpoint_path = Path(f'./tmp_results/{cfg.task_name}/BP/models/{model_filename}')
         # checkpoint_path = Path(f'./tmp_results/{cfg.task_name}/BP/models/agent_checkpoint_50ep_ee_state_obs_ensemble_logsumexp_discount_0.pt')
         print('Loading agent checkpoint from {}'.format(checkpoint_path))
+        # pretrained_policy = torch.compile(pretrained_policy)
         try:
             # import pdb; pdb.set_trace()
             checkpoint = torch.load(checkpoint_path)
@@ -157,6 +157,7 @@ def main(cfg: DictConfig):
             pretrained_vf.eval()
             vf_loaded = True
             print('Loaded Pretrained VF Successfully')
+            pretrained_vf = torch.compile(pretrained_vf)
         except:
             vf_loaded = False
             print('Pretrained VF Not Loaded Successfully')
@@ -236,15 +237,28 @@ def main(cfg: DictConfig):
         # buffer_2.save(os.path.join(data_dir, '{}_buffer_3ep.pt'.format(agent_tag)))
         # buffer_3.save(os.path.join(data_dir, '{}_buffer_1ep.pt'.format(agent_tag)))
         for buffer, length in zip(buffers, len_buffer):
-            buffer_filename = os.path.join(data_dir, f'{agent_tag}_buffer_{length}_single_cube_center_ee_all_obs_real_robot_may31.pt')
+            buffer_filename = os.path.join(data_dir, f'{agent_tag}_buffer_{length}ep_single_cube_center_ee_all_obs_real_robot_jun3.pt')
             buffer.save(buffer_filename)
             print(f'Saving buffer to {buffer_filename}')
     # print metrics for processing later
     # import pdb; pdb.set_trace()
     print('Buffer saved keys: {}'.format(buffer_1.keys))
-    metrics = convert_tensors(metrics)
-    print(json.dumps(metrics))
+    import pdb; pdb.set_trace()
+    metrics_json = convert_tensors(metrics)
+    print(json.dumps(metrics_json))
+
+    tilt_angles = {}
+    ee_max_lin_norms = {}
+    ee_max_ang_norms = {}
+
+    for episode_number, episode_metrics in enumerate(metrics):
+        tilt_angles[episode_number] = episode_metrics.get('tilt_angle_max')
+        ee_max_lin_norms[episode_number] = episode_metrics.get('ee_lin_vel_twist_max')
+
     if KeyboardInterrupt:
         free_gpu_memory()
+    
+
+    
 if __name__ == "__main__":
     main()
