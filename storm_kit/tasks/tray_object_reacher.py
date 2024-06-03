@@ -157,7 +157,7 @@ class TrayObjectReacher(ArmReacher):
 
         dist_err = 100*torch.norm(ee_pos - goal_ee_pos, p=2, dim=-1) #l2 err in cm
         twist_norm = torch.norm(ee_vel, p=2, dim=-1)
-        success = (dist_err < 2.0) & (twist_norm < 0.02) 
+        success = (dist_err < 2.0) & (twist_norm < 0.02)
         # print("Success: ",success)
         return success
     

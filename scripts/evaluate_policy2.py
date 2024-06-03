@@ -219,7 +219,7 @@ def main(cfg: DictConfig):
         if eval_pretrained: agent_tag = 'pretrained_policy'
         else: agent_tag = 'mpc'
         for buffer, length in zip(buffers, len_buffer):
-            buffer_filename = os.path.join(data_dir, f'{agent_tag}_buffer_{length}_rand_may26.pt')
+            buffer_filename = os.path.join(data_dir, f'{agent_tag}_buffer_{length}_cube_center_robust_ablation_jun1.pt')
             buffer.save(buffer_filename)
             print(f'Saving buffer to {buffer_filename}')
     # import pdb; pdb.set_trace()
