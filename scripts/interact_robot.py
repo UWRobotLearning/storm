@@ -31,7 +31,8 @@ from storm_kit.learning.learning_utils import dict_to_device
 from storm_kit.util_file import get_root_path
 from storm_kit.envs.panda_real_robot_env import PandaRealRobotEnv
 from task_map import task_map
-
+from storm_kit.learning.value_functions import EnsembleValueFunction
+from pathlib import Path
 class MPCNode():
     def __init__(self, config):
         self.config = config
@@ -51,17 +52,47 @@ class MPCNode():
         task_details = task_map[config.task_name]
         task_cls = task_details['task_cls']    
         dynamics_model_cls = task_details['dynamics_model_cls']
+        task = task_cls(
+            cfg=config.task.task,  world_cfg=config.task.world, device=config.rl_device, viz_rollouts=False)
 
         self.env = PandaRealRobotEnv(
             config.task, device=config.rl_device,
             headless=False, safe_mode=False,
             auto_reset_on_episode_end=False
         )
+        self.load_critic=False
+        if self.load_critic:
+            #load pretrained critic weights
+            pretrained_vf = EnsembleValueFunction(
+                obs_dim=task.obs_dim, config=config.train.vf, device=config.rl_device)
+            model_filename = config.eval.vf_trained_agent
+            checkpoint_path = Path(f'./tmp_results/{config.task_name}/BP/models/{model_filename}')
+            # checkpoint_path = Path(f'./tmp_results/{cfg.task_name}/BP/models/agent_checkpoint_50ep_ee_state_obs_ensemble_logsumexp_discount_0.pt')
+            print('Loading agent checkpoint from {}'.format(checkpoint_path))
+            # pretrained_policy = torch.compile(pretrained_policy)
+            try:
+                # import pdb; pdb.set_trace()
+                checkpoint = torch.load(checkpoint_path)
+                vf_state_dict = checkpoint['vf_state_dict']
+                remove_prefix = 'vf.'
+                vf_state_dict = {k[len(remove_prefix):] if k.startswith(remove_prefix) else k: v for k, v in vf_state_dict.items()}
+                pretrained_vf.load_state_dict(vf_state_dict)
+                normalization_stats = checkpoint['normalization_stats']
+                pretrained_vf.set_normalization_stats(normalization_stats)
+                pretrained_vf.eval()
+                vf_loaded = True
+                print('Loaded Pretrained VF Successfully')
+                pretrained_vf = torch.compile(pretrained_vf)
+            except:
+                vf_loaded = False
+                print('Pretrained VF Not Loaded Successfully')
+        else:
+            pretrained_vf = None
 
         self.policy = MPCPolicy(
             obs_dim=1, act_dim=1, 
             config=self.config.mpc, task_cls=task_cls, 
-            dynamics_model_cls=dynamics_model_cls, device=self.config.rl_device)
+            dynamics_model_cls=dynamics_model_cls, vf = pretrained_vf, device=self.config.rl_device)
 
         #buffers for different messages
         self.mpc_command = JointState()

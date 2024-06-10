@@ -191,20 +191,24 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 
 # Sample data
-algorithms = ['CV-MPC', 'MPC with friction cone cost (Demonstrator)', 'MPC with orientation cost', 'Learned Cost Baseline']
-metrics = ['S1', 'Alpha', 'v', 'omega']
+algorithms = ['P', 'B1', 'B2', 'B3']
+metrics = ['S1', 'S2','Alpha', 'v', 'omega']
 
 # Mean and standard error values for each algorithm and metric
 mean_values = {
-    'S1': [100, 100, 100 , 73.33],
+    'S1': [100, 100, 100, 73.33],
+    'S2': [100, 100, 100, 85.00],
     'Alpha': [14.58, 15.81, 0.71, 14.23],
     'v': [0.63, 0.60, 0.43, 0.61],
     'omega': [1.00, 0.91, 0.09, 1.11]
 }
-mean_values['S1'] = [value / 100 for value in mean_values['S1']]
+
+# Convert S1 from percentage to scale of 0 to 1
+# mean_values['S1'] = [value / 100 for value in mean_values['S1']]
 
 std_errors = {
     'S1': [0.0, 0.0, 0.0, 1.36],
+    'S2': [0.0, 0.0, 0.0, 2.36],
     'Alpha': [0.38, 0.12, 0.06, 0.51],
     'v': [0.04, 0.04, 0.03, 0.02],
     'omega': [0.05, 0.02, 0.02, 0.01]
@@ -214,29 +218,38 @@ std_errors = {
 sns.set(style="whitegrid")
 
 # Plotting
-x = np.arange(len(algorithms))  # the label locations
-width = 0.2  # the width of the bars
-
-fig, ax = plt.subplots(figsize=(12, 8))
+fig, axs = plt.subplots(2, 2, figsize=(12, 10))
 
 # Colors for each metric
 colors = sns.color_palette("husl", len(metrics))
+colors = ['#7fc97f', '#beaed4','#fdc086','#a6cee3']
 
 # Add bars for each metric
-rects1 = ax.bar(x - 1.5 * width, mean_values['S1'], width, label=r'$S1 (\%)$', yerr=std_errors['S1'], color=colors[0], capsize=5)
-rects2 = ax.bar(x - 0.5 * width, mean_values['Alpha'], width, label=r'$\alpha_{\mathrm{ee}, t}^{\max}$ (deg)', yerr=std_errors['Alpha'], color=colors[1], capsize=5)
-rects3 = ax.bar(x + 0.5 * width, mean_values['v'], width, label=r'$\|\mathbf{v}_{\mathrm{ee}, t}\|_{\max}$ (m/s)', yerr=std_errors['v'], color=colors[2], capsize=5)
-rects4 = ax.bar(x + 1.5 * width, mean_values['omega'], width, label=r'$\|\mathbf{\omega}_{\mathrm{ee}, t}\|_{\max}$ (rad/s)', yerr=std_errors['omega'], color=colors[3], capsize=5)
+axs[0, 0].bar(algorithms, mean_values['S1'], yerr=std_errors['S1'], color=colors[0], capsize=5)
+axs[0, 0].set_title(r'$S_1$', fontsize=20)
+axs[0, 0].set_ylabel('Success (%)', fontsize=20)
 
-# Add some text for labels, title and custom x-axis tick labels, etc.
-ax.set_xlabel('Methods', fontsize=20)
-ax.set_ylabel('Metrics', fontsize=20)
-ax.set_title('Comparison of the proposed method with the baselines', fontsize=16)
-ax.set_xticks(x)
-ax.set_xticklabels(algorithms, fontsize=20)
-ax.legend(fontsize=20)
+axs[0, 1].bar(algorithms, mean_values['Alpha'], yerr=std_errors['Alpha'], color=colors[1], capsize=5)
+axs[0, 1].set_title(r'$\alpha_{\mathrm{ee}, t}^{\max}$', fontsize=20)
+axs[0, 1].set_ylabel('Value', fontsize=20)
 
-fig.tight_layout()
+axs[1, 0].bar(algorithms, mean_values['v'], yerr=std_errors['v'], color=colors[2], capsize=5)
+axs[1, 0].set_title(r'$\|\mathbf{v}_{\mathrm{ee}, t}\|_{\max}$', fontsize=20)
+axs[1, 0].set_ylabel('Value', fontsize=20)
 
+axs[1, 1].bar(algorithms, mean_values['omega'], yerr=std_errors['omega'], color=colors[3], capsize=5)
+axs[1, 1].set_title(r'$\|\mathbf{\omega}_{\mathrm{ee}, t}\|_{\max}$', fontsize=20)
+axs[1, 1].set_ylabel('Value', fontsize=20)
+
+# Set common labels
+for ax in axs.flat:
+    ax.set_xlabel('', fontsize=20)
+    ax.set_xticklabels(algorithms, rotation=0, ha='right', fontsize=20)
+
+fig.suptitle('', fontsize=16)
+fig.tight_layout(rect=[0, 0.03, 1, 0.95])
+plt.savefig('plots/algo_comparison.png')
 plt.show()
+
+
 

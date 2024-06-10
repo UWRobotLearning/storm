@@ -108,7 +108,8 @@ def single_buffer_from_folder(data_dir, capacity=None, device=torch.device('cpu'
     buffer_capacity=total_data_points if capacity is None else capacity
     buffer = ReplayBuffer(buffer_capacity, 7, device)
     for b in episode_buffers:
-        buffer.concatenate(b.state_dict()) 
+        buffer.concatenate(b.state_dict())
+        # buffer.concatenate(b) 
     return buffer
 
 def buffer_dict_from_folder(data_dir, capacity=None, device=torch.device('cpu')):
@@ -324,8 +325,10 @@ def run_episode(
         compute_termination: bool = True,
         discount: float = 0.99,
         rng:Optional[torch.Generator] = None):
-        # torch.cuda.empty_cache()
+        
         reset_data, state = None, None
+        torch.cuda.empty_cache()
+        torch.cuda.synchronize()
         try: 
             obs, reset_info = env.reset(rng=rng)
             state = reset_info['state']
@@ -341,13 +344,14 @@ def run_episode(
 
         for i in range(max_episode_steps):
             with torch.no_grad():
+                # import pdb; pdb.set_trace()
                 policy_input = {
-                    'obs': torch.as_tensor(obs).float(),
+                    'obs': torch.as_tensor(obs[0]).float(),
                     'states': state}
                 # with profile(activities=[ProfilerActivity.CPU, ProfilerActivity.CUDA]) as prof:
                 st= time.time()
                 action, policy_info = policy.get_action(policy_input, deterministic=deterministic)
-                print('run episode action step time:', time.time()-st) 
+                # print('run episode action step time:', time.time()-st) 
 
                 # if i == 4:
                 #     print(prof.key_averages().table(sort_by="cuda_time_total", row_limit=40))
@@ -383,8 +387,8 @@ def run_episode(
             traj_data['number_of_steps'].append(i)
 
             # traj_data['number of steps'] = [i] #current number of steps
-            if policy.vf is not None:
-                traj_data['values'].append(v_preds)
+            # if policy.vf is not None:
+            #     traj_data['values'].append(v_preds)
             if reset_data is not None:
                 goal_dict = reset_data['goal_dict']
                 for k,v in goal_dict.items(): traj_data['goals/'+k].append(v)

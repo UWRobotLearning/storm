@@ -34,7 +34,7 @@ task:
 
     goal_pose:
       vec_weight: [1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
-      weight: [3.0,15.0] #[3.0,15.0]
+      weight: [7.0,15.0] #[3.0,15.0]
       cost_type: 'se3_twist'
       norm_type: 'l2'
       hinge_val: 0.01 #-1
@@ -89,7 +89,7 @@ task:
       order: 1
 
     primitive_collision:
-      weight: 0.0 #200.0
+      weight: 200.0 #200.0
       distance_threshold_world: 0.03
       distance_threshold_self: 0.03
 
@@ -98,7 +98,7 @@ task:
     #   distance_threshold: 0.05
 
     state_bound:
-      weight: 0.0 #200.0 
+      weight: 200.0 #200.0 
       bound_thresh: 0.03
 
     retract_state : [0.00, 0.0, 0.00, -1.5, 0.00, 2.0, 0.0] #check

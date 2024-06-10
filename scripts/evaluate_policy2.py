@@ -237,28 +237,34 @@ def main(cfg: DictConfig):
         # buffer_2.save(os.path.join(data_dir, '{}_buffer_3ep.pt'.format(agent_tag)))
         # buffer_3.save(os.path.join(data_dir, '{}_buffer_1ep.pt'.format(agent_tag)))
         for buffer, length in zip(buffers, len_buffer):
-            buffer_filename = os.path.join(data_dir, f'{agent_tag}_buffer_{length}ep_single_cube_center_ee_all_obs_real_robot_jun3.pt')
+            buffer_filename = os.path.join(data_dir, f'{agent_tag}_buffer_{length}ep_single_cuboid_1_center_ee_all_obs_real_robot_jun5.pt')
             buffer.save(buffer_filename)
             print(f'Saving buffer to {buffer_filename}')
     # print metrics for processing later
     # import pdb; pdb.set_trace()
     print('Buffer saved keys: {}'.format(buffer_1.keys))
-    import pdb; pdb.set_trace()
     metrics_json = convert_tensors(metrics)
     print(json.dumps(metrics_json))
 
     tilt_angles = {}
     ee_max_lin_norms = {}
     ee_max_ang_norms = {}
+    success={}
 
     for episode_number, episode_metrics in enumerate(metrics):
         tilt_angles[episode_number] = episode_metrics.get('tilt_angle_max')
         ee_max_lin_norms[episode_number] = episode_metrics.get('ee_lin_vel_twist_max')
+        ee_max_ang_norms[episode_number] = episode_metrics.get('ee_ang_vel_twist_max')
+        success[episode_number] = episode_metrics.get('success')
+    
+    print('Tilt Angles: {}'.format(tilt_angles))
+    print('EE Max Lin Norms: {}'.format(ee_max_lin_norms))
+    print('EE Max Ang Norms: {}'.format(ee_max_ang_norms))
+    print('Success: {}'.format(success))
 
     if KeyboardInterrupt:
         free_gpu_memory()
     
 
-    
 if __name__ == "__main__":
     main()

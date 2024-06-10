@@ -19,7 +19,7 @@ from torch.utils.tensorboard import SummaryWriter
 from storm_kit.envs.gym_env_wrapper import GymEnvWrapper
 from storm_kit.learning.policies import MPCPolicy, GaussianPolicy
 from storm_kit.learning.value_functions import TwinQFunction, ValueFunction, EnsembleQFunction, EnsembleValueFunction
-from storm_kit.learning.learning_utils import Log, evaluate_policy, preprocess_dataset, dict_to_device, buffer_dict_from_folder #, return_range
+from storm_kit.learning.learning_utils import Log, evaluate_policy, preprocess_dataset, dict_to_device, buffer_dict_from_folder, single_buffer_from_folder #, return_range
 from storm_kit.learning.agents import BPAgent
 from storm_kit.learning.replay_buffer import ReplayBuffer, qlearning_dataset, qlearning_dataset2
 from task_map import task_map
@@ -117,6 +117,7 @@ def get_task_and_dataset(task_name:str, cfg=None): #log max_episode_steps
         #Load dataset
         base_dir = Path('./tmp_results/{}/{}'.format(cfg.task_name, 'policy_eval'))
         data_dir = os.path.join(base_dir, 'data')
+        final_data_dir = os.path.join(base_dir, 'final_data')
 
         #Initialize task
         task = task_cls(
@@ -125,7 +126,8 @@ def get_task_and_dataset(task_name:str, cfg=None): #log max_episode_steps
         #Load buffers from folder
         # import pdb; pdb.set_trace()
         buffer_dict = buffer_dict_from_folder(data_dir)
-        replay_buffer = buffer_dict['mpc_buffer_50ep_single_cube_center_ee_all_obs_real_robot_jun3.pt']
+        # replay_buffer = buffer_dict['mpc_buffer_50ep_single_cube_center_ee_all_obs_real_robot_jun3.pt']
+        replay_buffer = single_buffer_from_folder(final_data_dir)
         
     return env, task, replay_buffer
 
@@ -303,7 +305,7 @@ def main(cfg: DictConfig):
             agent_state = agent.state_dict()
             agent_state['normalization_stats'] = normalization_stats
             if save_train:    
-                torch.save(agent_state, os.path.join(model_dir, 'agent_checkpoint_50ep_ee_obs_real_robot_cube_center_jun3data_jun3_ensemble_80.pt'))
+                torch.save(agent_state, os.path.join(model_dir, 'agent_checkpoint_50ep_ee_obs_real_robot_cube_center_jun5data_jun5_ensemble_80.pt'))
     
         pbar.set_postfix(train_metrics)
 

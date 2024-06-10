@@ -101,26 +101,26 @@ class MPCPolicy(Policy):
             self.init_action[:,:,:] += init_q
         init_mean = self.init_action
 
-        controller = MPPI(
-            **mppi_params, 
-            init_mean=init_mean,
-            task=task,
-            dynamics_model=dynamics_model,
-            sampling_policy=sampling_policy,
-            vf=vf, qf=qf,
-            tensor_args=self.tensor_args)
-        return controller
-
-        # controller = torch.compile(MPPI(
+        # controller = MPPI(
         #     **mppi_params, 
         #     init_mean=init_mean,
         #     task=task,
         #     dynamics_model=dynamics_model,
         #     sampling_policy=sampling_policy,
         #     vf=vf, qf=qf,
-        #     tensor_args=self.tensor_args))
-        # # print("controller: ", controller)
+        #     tensor_args=self.tensor_args)
         # return controller
+
+        controller = torch.compile(MPPI(
+            **mppi_params, 
+            init_mean=init_mean,
+            task=task,
+            dynamics_model=dynamics_model,
+            sampling_policy=sampling_policy,
+            vf=vf, qf=qf,
+            tensor_args=self.tensor_args))
+        # print("controller: ", controller)
+        return controller
 
 
     def init_rollout(self, task_cls, dynamics_model_cls):
