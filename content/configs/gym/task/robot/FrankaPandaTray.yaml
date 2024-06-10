@@ -2,7 +2,8 @@ name: "Franka Panda Tray"
 urdf_path: "urdf/franka_description/franka_panda_tray_test.urdf"
 mesh_dir: "urdf/franka_description/"
 ee_link_name: "tray_link"
-default_dof_pos: [0.0, -0.7853, 0.0, -2.3561, 0.0, 1.5707, 0.7853]
+# default_dof_pos: [0.0, -0.7853, 0.0, -2.3561, 0.0, 1.5707, 0.7853]
+default_dof_pos: [0.05258398901829384, -0.014491995210229524, 0.6823639374858008, -2.1184265004206773, -0.024644127459989645, 2.1130985905594297, 1.5236956237740555]
 
 
 robot_collision_params:

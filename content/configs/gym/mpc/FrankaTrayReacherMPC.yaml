@@ -11,6 +11,8 @@ model:
     max_dt: 0.166
   # ee_link_name: ${task.ee_link_name}
   init_state: [0.8, 0.3, 0.0, -1.57, 0.0, 1.86, 0.] #check
+  # init_state: [0.05258398901829384, -0.014491995210229524, 0.6823639374858008, -2.1184265004206773, -0.024644127459989645, 2.1130985905594297, 1.5236956237740555]
+
   control_space: ${task.task.control_space}
   link_names: ${task.task.robot_link_names}
   robot_keys: ['q_pos', 'q_vel', 'q_acc', 'object_pos','relative_object_pos', 'start_cube_pos']

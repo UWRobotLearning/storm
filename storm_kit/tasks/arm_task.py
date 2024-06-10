@@ -308,9 +308,14 @@ class ArmTask(nn.Module):
         #     bound_dist = bound_cost_info['bound_dist'].view(*orig_size,-1)
         # else:
         #     bound_dist = cost_terms['bound_dist']
-        
+        # import pdb; pdb.set_trace()
+
+        ######all ee obs#######
+        # obs = torch.cat(
+        #     (ee_pos, ee_rot.flatten(-2,-1), ee_vel_twist, ee_acc_twist), dim=-1)
+
         obs = torch.cat(
-            (ee_pos, ee_rot.flatten(-2,-1), ee_vel_twist, ee_acc_twist), dim=-1) # ,  q_pos, q_vel, 
+            (ee_rot.flatten(-2,-1),), dim=-1) # ,  q_pos, q_vel, 
 
         return obs
 
@@ -542,7 +547,7 @@ class ArmTask(nn.Module):
     @property
     def obs_dim(self)->int:
         # return 18 #+ 2*self.n_dofs 
-        return 24
+        return 9 #9 #21 #24
 
     @property
     def action_dim(self)->int:
