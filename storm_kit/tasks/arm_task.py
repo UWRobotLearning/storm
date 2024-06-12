@@ -312,7 +312,7 @@ class ArmTask(nn.Module):
         #     bound_dist = cost_terms['bound_dist']
         
         obs = torch.cat(
-            (ee_pos, ee_rot.flatten(-2,-1), ee_vel_twist, ee_acc_twist), dim=-1) # ,  q_pos, q_vel, 
+            (ee_rot.flatten(-2,-1), ee_vel_twist, ee_acc_twist), dim=-1) # ,  q_pos, q_vel, 
 
         return obs
 
@@ -543,7 +543,7 @@ class ArmTask(nn.Module):
 
     @property
     def obs_dim(self)->int:
-        return 24 #18 #+ 2*self.n_dofs 
+        return 21 #24 #18 #+ 2*self.n_dofs 
 
     @property
     def action_dim(self)->int:

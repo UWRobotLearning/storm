@@ -117,7 +117,7 @@ def get_task_and_dataset(task_name:str, cfg=None): #log max_episode_steps
         #Load dataset
         base_dir = Path('./tmp_results/{}/{}'.format(cfg.task_name, 'policy_eval'))
         data_dir = os.path.join(base_dir, 'data')
-        final_data_dir = os.path.join(base_dir, 'final_data')
+        # final_data_dir = os.path.join(base_dir, 'final_data')
 
         #Initialize task
         task = task_cls(
@@ -126,8 +126,8 @@ def get_task_and_dataset(task_name:str, cfg=None): #log max_episode_steps
         #Load buffers from folder
         # import pdb; pdb.set_trace()
         buffer_dict = buffer_dict_from_folder(data_dir)
-        # replay_buffer = buffer_dict['mpc_buffer_50ep_single_cube_center_ee_all_obs_real_robot_jun3.pt']
-        replay_buffer = single_buffer_from_folder(final_data_dir)
+        replay_buffer = buffer_dict['mpc_buffer_50ep_single_cube_center_ee_all_obs_real_robot_jun11_lateral.pt']
+        # replay_buffer = single_buffer_from_folder(final_data_dir)
         
     return env, task, replay_buffer
 
@@ -305,7 +305,7 @@ def main(cfg: DictConfig):
             agent_state = agent.state_dict()
             agent_state['normalization_stats'] = normalization_stats
             if save_train:    
-                torch.save(agent_state, os.path.join(model_dir, 'agent_checkpoint_50ep_ee_obs_real_robot_cube_center_jun5data_jun5_ensemble_80.pt'))
+                torch.save(agent_state, os.path.join(model_dir, 'agent_checkpoint_50ep_ee_obs_real_robot_cube_center_jun11data_jun11_ensemble_80.pt'))
     
         pbar.set_postfix(train_metrics)
 

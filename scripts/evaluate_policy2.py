@@ -237,7 +237,7 @@ def main(cfg: DictConfig):
         # buffer_2.save(os.path.join(data_dir, '{}_buffer_3ep.pt'.format(agent_tag)))
         # buffer_3.save(os.path.join(data_dir, '{}_buffer_1ep.pt'.format(agent_tag)))
         for buffer, length in zip(buffers, len_buffer):
-            buffer_filename = os.path.join(data_dir, f'{agent_tag}_buffer_{length}ep_single_cuboid_1_center_ee_all_obs_real_robot_jun5.pt')
+            buffer_filename = os.path.join(data_dir, f'{agent_tag}_buffer_{length}ep_single_cube_center_ee_all_obs_real_robot_jun11_lateral.pt')
             buffer.save(buffer_filename)
             print(f'Saving buffer to {buffer_filename}')
     # print metrics for processing later

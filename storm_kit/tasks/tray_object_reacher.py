@@ -155,7 +155,7 @@ class TrayObjectReacher(ArmReacher):
 
         dist_err = 100*torch.norm(ee_pos - goal_ee_pos, p=2, dim=-1) #l2 err in cm
         twist_norm = torch.norm(ee_vel, p=2, dim=-1)
-        success = (dist_err < 1.5) & (twist_norm < 0.02) #& (cube_pos_norm < 0.01)
+        success = (dist_err < 2.0) & (twist_norm < 0.02) #& (cube_pos_norm < 0.01)
         return success
     
     def compute_full_state(self, state_dict: Dict[str,torch.Tensor], debug:bool=False)->Dict[str, Union[torch.Tensor, Dict[str, torch.Tensor], Dict[str, Tuple[torch.Tensor, torch.Tensor]]]]:

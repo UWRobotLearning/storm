@@ -126,6 +126,7 @@ class MPPI(GaussianMPC):
         if self.vf is not None:
             self.prediction_temp = self.vf.prediction_temp
         self.traj_value_returns = torch.zeros(1, self.num_particles, self.horizon, device=self.device)
+        self.value_weight = 0.05
 
     def _update_distribution(self, trajectories):
         """
@@ -355,7 +356,7 @@ class MPPI(GaussianMPC):
             # costs += traj_value_returns
             # costs += value_preds #* (1-terminals) #TODO: Check weighting
         traj_returns = cost_to_go(costs, self.gammalam_seq)
-        traj_returns = traj_returns[...,0] + traj_value_returns[...,0]
+        traj_returns = traj_returns[...,0] + self.value_weight*traj_value_returns[...,0]
         # traj_returns = traj_returns + traj_value_returns
         # traj_returns = traj_returns[...,0]
         # if not self.time_based_weights: traj_returns = traj_returns[:,0]
