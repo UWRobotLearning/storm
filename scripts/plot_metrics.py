@@ -43,7 +43,7 @@ metrics_file = os.path.join(metrics_folder, 'metrics_temp.json')
 #              'agent_checkpoint_50ep_no_rand_ee_obs_may30_baseline_ensemble_20.pt','agent_checkpoint_50ep_no_rand_ee_obs_may30_baseline_ensemble_40.pt',
 #              'agent_checkpoint_50ep_no_rand_ee_obs_may30_baseline_ensemble_60.pt','agent_checkpoint_50ep_no_rand_ee_obs_may30_baseline_ensemble_80.pt',
 #              'agent_checkpoint_50ep_no_rand_ee_obs_may30_baseline_ensemble_100.pt']
-vf_agents = ['agent_checkpoint_50ep_no_rand_ee_obs_jun01_ablation_mu1_ensemble_80.pt']
+vf_agents = ['agent_checkpoint_50ep_no_rand_ee_obs_may28_ensemble_80.pt']
 prediction_temps = [1,10,20,30,40,50]
 
 metrics_dict = {str(get_ensemble_size(agent)): {} for agent in vf_agents}
@@ -69,7 +69,7 @@ if not load_metrics:
             continue
         print(ensemble_size)
         for pred_temp in prediction_temps:
-            if pred_temp != 30:
+            if pred_temp != 20:
                 continue
             command = [
                 'python', eval_script,
@@ -80,6 +80,7 @@ if not load_metrics:
                 'seed=42',
                 f'train.vf.prediction_temp={pred_temp}',
                 f'train.vf.ensemble_size={ensemble_size}',
+                # 'train.vf.aggregation="log_sum_exp"',
             ]
 
             result = subprocess.run(command, capture_output=True, text=True)

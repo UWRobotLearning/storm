@@ -601,7 +601,7 @@ def relabel_dataset(dataset, task):
     dataset["next_observations"] = new_observations_next.to(dataset.device)
     dataset["costs"] = new_cost.to(dataset.device)
     dataset["terminals"] = new_terminals.to(dataset.device)
-    dataset["terminals"][-8:] = 1
+    dataset["terminals"][-5:] = 1
     dataset["success"] = new_success.to(dataset.device)    
     return dataset
 

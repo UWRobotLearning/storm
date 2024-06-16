@@ -311,12 +311,25 @@ class ArmTask(nn.Module):
         # import pdb; pdb.set_trace()
 
         ######all ee obs#######
-        # obs = torch.cat(
-        #     (ee_pos, ee_rot.flatten(-2,-1), ee_vel_twist, ee_acc_twist), dim=-1)
-
         obs = torch.cat(
-            (ee_rot.flatten(-2,-1),), dim=-1) # ,  q_pos, q_vel, 
+            (ee_pos, ee_rot.flatten(-2,-1), ee_vel_twist, ee_acc_twist), dim=-1)
 
+        # obs = torch.cat(
+        #             (ee_vel_twist, ee_acc_twist), dim=-1)
+
+        # import pdb; pdb.set_trace()
+        # gravity_vector = torch.tensor([0, 0, -9.81], device=self.device).float().expand(ee_rot.size(0), -1)        
+        # rotated_gravity_vector = torch.bmm(ee_rot, gravity_vector.unsqueeze(2)).squeeze(2)
+        #rotated gravity vector
+        # gravity_vector = torch.tensor([0, 0, -9.81], device=ee_rot.device).float().expand(ee_rot.size(0), -1)
+        # g_ee = torch.einsum('...ij,...j->...i', ee_rot, gravity_vector)
+
+        # #surface normal
+        # normal_vector = ee_rot[..., 2]  #z axis of the ee should be the normal
+        # obs = torch.cat(
+        #     (normal_vector,), dim=-1) # ,  q_pos, q_vel, 
+        # import pdb; pdb.set_trace()
+        
         return obs
 
     @torch.jit.export
@@ -547,7 +560,7 @@ class ArmTask(nn.Module):
     @property
     def obs_dim(self)->int:
         # return 18 #+ 2*self.n_dofs 
-        return 9 #9 #21 #24
+        return 24 #3 #12 #9 #21 #24
 
     @property
     def action_dim(self)->int:
