@@ -35,8 +35,8 @@ vf:
     dropout_prob: 0.01
     layer_norm: true
   ensemble_size: 80
-  # aggregation: 'None'
-  aggregation: 'log_sum_exp'
+  aggregation: 'None'
+  # aggregation: 'log_sum_exp'
   prediction_temp: 20.0 
   prior_factor: 0.0
   w_init: 0.0 #3e-3

@@ -181,3 +181,4 @@ robot_data/*
 wandb/*
 
 plots/*
+plotting_scripts/*

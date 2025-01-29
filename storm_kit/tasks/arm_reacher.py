@@ -291,6 +291,8 @@ class ArmReacher(ArmTask):
         bounds_violation = torch.logical_not(term_info['in_bounds']).sum(-1).nonzero().numel() if 'in_bounds' in term_info else 0
         success = term_info['success'].nonzero().numel() if 'success' in term_info else 0
 
+        steps_to_goal = len(ee_vel_twist)
+
         #Last 10 step avg error
         # last_n_dist_err =  torch.mean(dist_err[-10:]).item()
         # last_n_dist_err_rel = last_n_dist_err / dist_err[0].item()
@@ -322,7 +324,8 @@ class ArmReacher(ArmTask):
             'success': success,
             'ee vel twist max': ee_vel_twist_max,
             'ee lin vel twist max': ee_lin_vel_twist_max,
-            'ee ang vel twist max': ee_ang_vel_twist_max,}
+            'ee ang vel twist max': ee_ang_vel_twist_max,
+            'steps to goal': steps_to_goal}
             # 'last_10_dist_err': last_n_dist_err,
             # 'last_10_dist_err_rel': last_n_dist_err_rel,
             # 'max_q_vel': max_q_vel,
