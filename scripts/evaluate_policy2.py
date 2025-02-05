@@ -19,22 +19,22 @@ from task_map import task_map
 import json
 
 
-def get_env_and_task(task_name:str, cfg=None): #log max_episode_steps
+def get_env_and_task(task_name: str, cfg=None):  # log max_episode_steps
     if task_name.startswith(('hopper', 'walker2d', 'halfcheetah', 'antmaze')):
         env = gym.make(task_name)
         task = None
         dynamics_model_cls = None
-        task_cls=None
+        task_cls = None
     else:
         task_details = task_map[task_name]
-        task_cls = task_details['task_cls']    
+        task_cls = task_details['task_cls']
         dynamics_model_cls = task_details['dynamics_model_cls']
-        #Initialize environment
+        # Initialize environment
         if not cfg.real_robot_exp:
             from storm_kit.envs.isaac_gym_robot_env import IsaacGymRobotEnv
             env = IsaacGymRobotEnv(
-                cfg.task.env, cfg.task.world, cfg.rl_device, 
-                cfg.sim_device, cfg.graphics_device_id, 
+                cfg.task.env, cfg.task.world, cfg.rl_device,
+                cfg.sim_device, cfg.graphics_device_id,
                 cfg.headless, False, cfg.force_render
             )
         else:
@@ -49,23 +49,25 @@ def get_env_and_task(task_name:str, cfg=None): #log max_episode_steps
 
     return env, task, task_cls, dynamics_model_cls
 
+
 def convert_tensors(obj):
-        if isinstance(obj, torch.Tensor):
-            return obj.tolist()
-        elif isinstance(obj, list):
-            return [convert_tensors(item) for item in obj]
-        elif isinstance(obj, dict):
-            return {key: convert_tensors(value) for key, value in obj.items()}
-        elif isinstance(obj, np.int64):
-            return int(obj)
-        else:
-            return obj
+    if isinstance(obj, torch.Tensor):
+        return obj.tolist()
+    elif isinstance(obj, list):
+        return [convert_tensors(item) for item in obj]
+    elif isinstance(obj, dict):
+        return {key: convert_tensors(value) for key, value in obj.items()}
+    elif isinstance(obj, np.int64):
+        return int(obj)
+    else:
+        return obj
+
 
 @hydra.main(config_name="config", config_path="../content/configs/gym")
 def main(cfg: DictConfig):
     torch.set_default_dtype(torch.float32)
     torch.manual_seed(cfg.seed)
-    # torch.manual_seed(2)    
+    # torch.manual_seed(2)
     base_dir = Path('./tmp_results/{}/{}'.format(cfg.task_name, 'policy_eval'))
     model_dir = os.path.join(base_dir, 'models')
     data_dir = os.path.join(base_dir, 'data')
@@ -79,35 +81,38 @@ def main(cfg: DictConfig):
         if not os.path.exists(data_dir):
             os.makedirs(data_dir)
 
-    #Initialize environment
-    env, task, task_cls, dyn_model_cls = get_env_and_task(cfg.task_name, cfg=cfg)
+    # Initialize environment
+    env, task, task_cls, dyn_model_cls = get_env_and_task(
+        cfg.task_name, cfg=cfg)
     try:
         env.seed(cfg.seed)
     except:
         print('Env does not have seed function')
 
-
-    #Initialize MPC Policy
+    # Initialize MPC Policy
     obs_dim = task.obs_dim
     act_dim = task.action_dim
     act_lows, act_highs = task.action_lims
-    
-    eval_pretrained = cfg.eval.eval_pretrained #and (cfg.eval.pretrained_policy is not None)
-    load_pretrained = cfg.eval.load_pretrained #and (cfg.eval.pretrained_policy is not None)
-    load_pretrained = eval_pretrained or load_pretrained 
+
+    eval_pretrained = cfg.eval.eval_pretrained
+    load_pretrained = cfg.eval.load_pretrained
+    load_pretrained = eval_pretrained or load_pretrained
 
     pretrained_policy = None
     policy_loaded = False
     if eval_pretrained or load_pretrained:
-        #load pretrained policy weights
-        pretrained_policy = GaussianPolicy(obs_dim=obs_dim, act_dim=act_dim, config=cfg.train.policy, act_lows=act_lows, act_highs=act_highs, device=cfg.rl_device) #task=None,
-        checkpoint_path = Path(f'./tmp_results/{cfg.task_name}/BP/models/agent_checkpoint_50ep_no_goal_obs.pt')
+        # Load pretrained policy weights
+        pretrained_policy = GaussianPolicy(obs_dim=obs_dim, act_dim=act_dim, config=cfg.train.policy,
+                                           act_lows=act_lows, act_highs=act_highs, device=cfg.rl_device)  # task=None,
+        checkpoint_path = Path(
+            f'./tmp_results/{cfg.task_name}/BP/models/agent_checkpoint_50ep_no_goal_obs.pt')
         print('Loading agent checkpoint from {}'.format(checkpoint_path))
         try:
             checkpoint = torch.load(checkpoint_path)
             policy_state_dict = checkpoint['policy_state_dict']
             remove_prefix = 'policy.'
-            policy_state_dict = {k[len(remove_prefix):] if k.startswith(remove_prefix) else k: v for k, v in policy_state_dict.items()}
+            policy_state_dict = {k[len(remove_prefix):] if k.startswith(
+                remove_prefix) else k: v for k, v in policy_state_dict.items()}
             pretrained_policy.load_state_dict(policy_state_dict)
             pretrained_policy.eval()
             policy_loaded = True
@@ -116,24 +121,25 @@ def main(cfg: DictConfig):
             policy_loaded = False
             print('Pretrained Policy Not Loaded Successfully')
 
-    #Load pretrained critic
+    # Load pretrained critic
     pretrained_vf = None
-    normalization_stats=None
+    normalization_stats = None
     vf_loaded = False
     if cfg.eval.load_critic:
-        #load pretrained critic weights
-        # import pdb; pdb.set_trace()
+        # Load pretrained critic weights
         pretrained_vf = EnsembleValueFunction(
             obs_dim=obs_dim, config=cfg.train.vf, device=cfg.rl_device)
         model_filename = cfg.eval.vf_trained_agent
-        checkpoint_path = Path(f'./tmp_results/{cfg.task_name}/BP/models/{model_filename}')
-        # checkpoint_path = Path(f'./tmp_results/{cfg.task_name}/BP/models/agent_checkpoint_50ep_ee_all_obs_may19_ensemble_100.pt')
+        checkpoint_path = Path(
+            f'./tmp_results/{cfg.task_name}/BP/models/{model_filename}')
+        # Checkpoint_path = Path(f'./tmp_results/{cfg.task_name}/BP/models/agent_checkpoint_50ep_ee_all_obs_may19_ensemble_100.pt')
         print('Loading agent checkpoint from {}'.format(checkpoint_path))
         try:
             checkpoint = torch.load(checkpoint_path)
             vf_state_dict = checkpoint['vf_state_dict']
             remove_prefix = 'vf.'
-            vf_state_dict = {k[len(remove_prefix):] if k.startswith(remove_prefix) else k: v for k, v in vf_state_dict.items()}
+            vf_state_dict = {k[len(remove_prefix):] if k.startswith(
+                remove_prefix) else k: v for k, v in vf_state_dict.items()}
             pretrained_vf.load_state_dict(vf_state_dict)
             normalization_stats = checkpoint['normalization_stats']
             pretrained_vf.set_normalization_stats(normalization_stats)
@@ -144,7 +150,6 @@ def main(cfg: DictConfig):
             vf_loaded = False
             print('Pretrained VF Not Loaded Successfully')
 
-
     if eval_pretrained and policy_loaded:
         print('Evaluating Pretrained Policy')
         policy = pretrained_policy
@@ -153,21 +158,21 @@ def main(cfg: DictConfig):
         policy = MPCPolicy(
             obs_dim=obs_dim, act_dim=act_dim, config=cfg.mpc,
             task_cls=task_cls, dynamics_model_cls=dyn_model_cls,
-            sampling_policy=pretrained_policy, vf=pretrained_vf if vf_loaded else None, 
+            sampling_policy=pretrained_policy, vf=pretrained_vf if vf_loaded else None,
             device=cfg.rl_device)
-        # policy.set_prediction_metrics(normalization_stats)
 
-    st=time.time()
+    st = time.time()
     num_episodes = cfg.eval.num_episodes
     deterministic_eval = cfg.eval.deterministic_eval
     max_episode_steps = cfg.task.env.get('episodeLength', 1000)
-    print('Collecting {0} episodes. Deterministic = {1}, Max Episode Steps = {2}'.format(num_episodes, deterministic_eval, max_episode_steps))
+    print('Collecting {0} episodes. Deterministic = {1}, Max Episode Steps = {2}'.format(
+        num_episodes, deterministic_eval, max_episode_steps))
 
     policy.eval()
     eval_episodes, eval_info = evaluate_policy(
         env, None, policy, max_episode_steps,
-        num_episodes=num_episodes, 
-        deterministic = deterministic_eval,
+        num_episodes=num_episodes,
+        deterministic=deterministic_eval,
         compute_cost=True,
         compute_termination=True,
         discount=cfg.train.agent.discount,
@@ -175,56 +180,47 @@ def main(cfg: DictConfig):
         rng=eval_rng)
 
     print(eval_info)
-    # print(eval_episodes[0])
-    # exit()
     buffer_1 = ReplayBuffer(capacity=eval_info['Eval/num_steps'])
     buffer_2 = ReplayBuffer(capacity=eval_info['Eval/num_steps'])
     buffer_3 = ReplayBuffer(capacity=eval_info['Eval/num_steps'])
     buffer_4 = ReplayBuffer(capacity=eval_info['Eval/num_steps'])
     buffer_5 = ReplayBuffer(capacity=eval_info['Eval/num_steps'])
     buffer_6 = ReplayBuffer(capacity=eval_info['Eval/num_steps'])
-    # buffer_7 = ReplayBuffer(capacity=eval_info['Eval/num_steps'])
-    # buffer_8 = ReplayBuffer(capacity=eval_info['Eval/num_steps'])
-    # for episode in eval_episodes:
-    #     episode_metrics = task.compute_metrics(episode)
-    #     buffer.add_batch(episode)
-    #     if episode <= eval_info['Eval/num_steps']-1:
-    #         buffer_1.add_batch(episode)
-    #     if cfg.debug:
-    #         plot_episode(episode, block=False)
-    #     print(episode_metrics)
 
-    #more modular
     metrics = []
-    buffers = [buffer_1, buffer_2, buffer_3, buffer_4, buffer_5, buffer_6]#,buffer_7, buffer_8]
-    len_buffer = [50,60,70,80,90,100]#,350,300,250,200,150,100,50] #define up to which episode index each buffer should store data
+    buffers = [buffer_1, buffer_2, buffer_3, buffer_4,
+               buffer_5, buffer_6]
+    len_buffer = [50, 60, 70, 80, 90, 100]
     compute_metrics = True
     for index, episode in enumerate(eval_episodes, start=1):
         if compute_metrics:
             episode_metrics = task.compute_metrics(episode)
             metrics.append(episode_metrics)
             print(f"Episode {index}: {episode_metrics}")
-        #add episodes to each buffer based on its permissible length
+        # Add episodes to each buffer based on its permissible length
         for buffer, len in zip(buffers, len_buffer):
             if index <= len:
                 buffer.add_batch(episode)
         if cfg.debug:
             plot_episode(episode, block=False)
-    #sanity check for buffer contents
+    # Sanity check for buffer contents
     for buf_index, buffer in enumerate(buffers, start=1):
-            print(f"Buffer {buf_index}: {buffer}")
+        print(f"Buffer {buf_index}: {buffer}")
     print('Time taken = {}'.format(time.time() - st))
     data_dir = data_dir if cfg.eval.save_buffer else None
     if data_dir is not None:
-        if eval_pretrained: agent_tag = 'pretrained_policy'
-        else: agent_tag = 'mpc'
+        if eval_pretrained:
+            agent_tag = 'pretrained_policy'
+        else:
+            agent_tag = 'mpc'
         for buffer, length in zip(buffers, len_buffer):
-            buffer_filename = os.path.join(data_dir, f'{agent_tag}_buffer_{length}_cube_center_robust_ablation_jun1.pt')
+            buffer_filename = os.path.join(
+                data_dir, f'{agent_tag}_buffer_{length}_cube_center_robust_ablation_jun1.pt')
             buffer.save(buffer_filename)
             print(f'Saving buffer to {buffer_filename}')
-    # import pdb; pdb.set_trace()
     metrics = convert_tensors(metrics)
     print(json.dumps(metrics))
+
 
 if __name__ == "__main__":
     main()
